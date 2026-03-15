@@ -1,65 +1,53 @@
-import Image from "next/image";
-
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main style={{ fontFamily: "Arial, sans-serif", backgroundColor: "#0b0b0b", color: "white", minHeight: "100vh" }}>
+      <header
+        style={{
+          borderBottom: "1px solid #222",
+          padding: "20px 40px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <h1 style={{ margin: 0, fontSize: "28px", fontWeight: "bold" }}>FULL FIGHT NEWS</h1>
+        <nav style={{ display: "flex", gap: "20px", fontSize: "14px" }}>
+          <span>Home</span>
+          <span>News</span>
+          <span>Fighters</span>
+          <span>Events</span>
+          <span>Results</span>
+        </nav>
+      </header>
+
+      <section style={{ padding: "60px 40px", borderBottom: "1px solid #222" }}>
+        <p style={{ color: "#999", textTransform: "uppercase", fontSize: "12px", letterSpacing: "2px" }}>
+          Combat Sports Platform
+        </p>
+        <h2 style={{ fontSize: "48px", maxWidth: "800px", margin: "10px 0" }}>
+          The latest news, events and fight results from UFC, MMA and Boxing.
+        </h2>
+        <p style={{ color: "#bbb", maxWidth: "700px", lineHeight: 1.6 }}>
+          Full Fight News is being built to track breaking combat sports news, upcoming events, fighter profiles and fight results in one place.
+        </p>
+      </section>
+
+      <section style={{ padding: "40px", display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px" }}>
+        <div style={{ backgroundColor: "#111", padding: "20px", border: "1px solid #222", borderRadius: "12px" }}>
+          <h3>Latest News</h3>
+          <p style={{ color: "#aaa" }}>Daily stories, headlines and updates from the fight world.</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <div style={{ backgroundColor: "#111", padding: "20px", border: "1px solid #222", borderRadius: "12px" }}>
+          <h3>Upcoming Events</h3>
+          <p style={{ color: "#aaa" }}>Track the next UFC, MMA and boxing cards.</p>
         </div>
-      </main>
-    </div>
+
+        <div style={{ backgroundColor: "#111", padding: "20px", border: "1px solid #222", borderRadius: "12px" }}>
+          <h3>Fight Results</h3>
+          <p style={{ color: "#aaa" }}>See results, winners, methods and round details.</p>
+        </div>
+      </section>
+    </main>
   );
 }
