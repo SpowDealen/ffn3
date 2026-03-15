@@ -1,4 +1,4 @@
-import Link from "next/link";
+import TarjetaInicio from "../components/TarjetaInicio";
 
 export default function Home() {
   return (
@@ -49,81 +49,33 @@ export default function Home() {
         style={{
           padding: "40px",
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
+          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
           gap: "20px",
         }}
       >
-        <Link
+        <TarjetaInicio
           href="/noticias"
-          style={{
-            backgroundColor: "#111",
-            padding: "20px",
-            border: "1px solid #222",
-            borderRadius: "12px",
-            textDecoration: "none",
-            color: "white",
-            display: "block",
-          }}
-        >
-          <h3>Noticias</h3>
-          <p style={{ color: "#aaa" }}>
-            Actualidad diaria, titulares y novedades del mundo de la lucha.
-          </p>
-        </Link>
+          titulo="Noticias"
+          descripcion="Actualidad diaria, titulares y novedades del mundo de la lucha."
+        />
 
-        <Link
+        <TarjetaInicio
           href="/eventos"
-          style={{
-            backgroundColor: "#111",
-            padding: "20px",
-            border: "1px solid #222",
-            borderRadius: "12px",
-            textDecoration: "none",
-            color: "white",
-            display: "block",
-          }}
-        >
-          <h3>Eventos</h3>
-          <p style={{ color: "#aaa" }}>
-            Sigue las próximas carteleras de UFC, MMA, boxeo y más.
-          </p>
-        </Link>
+          titulo="Eventos"
+          descripcion="Sigue las próximas carteleras de UFC, MMA, boxeo y más."
+        />
 
-        <Link
+        <TarjetaInicio
           href="/resultados"
-          style={{
-            backgroundColor: "#111",
-            padding: "20px",
-            border: "1px solid #222",
-            borderRadius: "12px",
-            textDecoration: "none",
-            color: "white",
-            display: "block",
-          }}
-        >
-          <h3>Resultados</h3>
-          <p style={{ color: "#aaa" }}>
-            Consulta ganadores, métodos de victoria y estadísticas.
-          </p>
-        </Link>
+          titulo="Resultados"
+          descripcion="Consulta ganadores, métodos de victoria y estadísticas."
+        />
 
-        <Link
+        <TarjetaInicio
           href="/disciplinas"
-          style={{
-            backgroundColor: "#111",
-            padding: "20px",
-            border: "1px solid #222",
-            borderRadius: "12px",
-            textDecoration: "none",
-            color: "white",
-            display: "block",
-          }}
-        >
-          <h3>Disciplinas</h3>
-          <p style={{ color: "#aaa" }}>
-            Explora el contenido por MMA, boxeo, Muay Thai, kickboxing y más.
-          </p>
-        </Link>
+          titulo="Disciplinas"
+          descripcion="Explora el contenido por MMA, boxeo, Muay Thai, kickboxing y más."
+        />
       </section>
     </main>
   );
