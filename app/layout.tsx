@@ -1,9 +1,11 @@
+import type { Metadata } from "next";
 import "./globals.css";
 import Navbar from "../components/Navbar";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Full Fight News",
-  description: "Noticias, eventos, resultados y disciplinas de deportes de combate",
+  description:
+    "Noticias, eventos, resultados, luchadores, disciplinas y categorías de peso del mundo de los deportes de combate.",
 };
 
 export default function RootLayout({
@@ -16,9 +18,10 @@ export default function RootLayout({
       <body
         style={{
           margin: 0,
-          backgroundColor: "#0b0b0b",
+          background:
+            "radial-gradient(circle at top, #151826 0%, #0b0b0b 35%, #070707 100%)",
           color: "white",
-          fontFamily: "Arial, sans-serif",
+          fontFamily: "Arial, Helvetica, sans-serif",
         }}
       >
         <Navbar />

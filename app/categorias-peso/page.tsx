@@ -1,19 +1,15 @@
 import Link from "next/link";
 import {client} from "../../sanity/lib/client";
-import {eventosQuery} from "../../sanity/lib/queries";
+import {categoriasPesoQuery} from "../../sanity/lib/queries";
 
-type Evento = {
+type CategoriaPeso = {
   _id: string;
   nombre: string;
   slug: string;
-  fecha?: string;
-  ciudad?: string;
-  pais?: string;
-  recinto?: string;
-  cartelPrincipal?: string;
-  estado?: string;
+  limitePeso?: number;
+  unidad?: string;
   descripcion?: string;
-  organizacion?: string;
+  activa?: boolean;
   disciplina?: string;
 };
 
@@ -64,25 +60,20 @@ const introStyle = {
   margin: 0,
 };
 
-function formatearFecha(fecha?: string) {
-  if (!fecha) return null;
-  return new Date(fecha).toLocaleDateString("es-ES");
-}
-
-export default async function EventosPage() {
-  const eventos: Evento[] = await client.fetch(eventosQuery);
+export default async function CategoriasPesoPage() {
+  const categorias: CategoriaPeso[] = await client.fetch(categoriasPesoQuery);
 
   return (
     <main style={{minHeight: "100vh", color: "white"}}>
       <section style={containerStyle}>
         <section style={{...heroCardStyle, marginBottom: "34px"}}>
-          <p style={sectionLabelStyle}>Calendario editorial</p>
+          <p style={sectionLabelStyle}>Divisiones editoriales</p>
 
-          <h1 style={titleStyle}>Eventos</h1>
+          <h1 style={titleStyle}>Categorías de peso</h1>
 
           <p style={introStyle}>
-            Consulta próximos eventos y archivo competitivo con una estructura clara,
-            pensada para seguir carteleras, organizaciones, disciplinas y contexto de cada cita.
+            Explora divisiones por disciplina con una estructura clara para entender
+            límites, contexto competitivo y organización del sistema de pesos.
           </p>
 
           <div
@@ -105,10 +96,10 @@ export default async function EventosPage() {
                   marginBottom: "8px",
                 }}
               >
-                Cobertura
+                Función
               </p>
               <p style={{margin: 0, color: "#d7d7d7", lineHeight: 1.6}}>
-                Próximas citas, archivo histórico y seguimiento estructurado de eventos.
+                Ordenar el mapa competitivo por divisiones y límites dentro de cada disciplina.
               </p>
             </div>
 
@@ -122,28 +113,29 @@ export default async function EventosPage() {
                   marginBottom: "8px",
                 }}
               >
-                Registrados
+                Registradas
               </p>
               <p style={{margin: 0, color: "#d7d7d7", lineHeight: 1.6}}>
-                {eventos.length} eventos visibles en el calendario.
+                {categorias.length} categorías visibles en la plataforma.
               </p>
             </div>
           </div>
         </section>
 
-        {eventos.length === 0 ? (
-          <p style={{color: "#888"}}>Todavía no hay eventos publicados.</p>
+        {categorias.length === 0 ? (
+          <p style={{color: "#888"}}>Todavía no hay categorías publicadas.</p>
         ) : (
           <section
             style={{
               display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
               gap: "20px",
             }}
           >
-            {eventos.map((evento, index) => (
+            {categorias.map((categoria, index) => (
               <Link
-                key={evento._id}
-                href={`/eventos/${evento.slug}`}
+                key={categoria._id}
+                href={`/categorias-peso/${categoria.slug}`}
                 style={{
                   textDecoration: "none",
                   color: "inherit",
@@ -174,61 +166,48 @@ export default async function EventosPage() {
 
                   <h2
                     style={{
-                      fontSize: "32px",
-                      margin: "0 0 12px 0",
-                      letterSpacing: "-0.8px",
+                      fontSize: "28px",
+                      marginBottom: "12px",
+                      letterSpacing: "-0.7px",
                       lineHeight: 1.15,
                     }}
                   >
-                    {evento.nombre}
+                    {categoria.nombre}
                   </h2>
-
-                  {evento.cartelPrincipal && (
-                    <p
-                      style={{
-                        color: "#f5c542",
-                        margin: "0 0 14px 0",
-                        fontSize: "18px",
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      {evento.cartelPrincipal}
-                    </p>
-                  )}
-
-                  {evento.descripcion && (
-                    <p
-                      style={{
-                        color: "#ccc",
-                        margin: "0 0 18px 0",
-                        lineHeight: 1.8,
-                        fontSize: "17px",
-                        maxWidth: "980px",
-                      }}
-                    >
-                      {evento.descripcion}
-                    </p>
-                  )}
 
                   <div
                     style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "12px",
-                      fontSize: "14px",
-                      color: "#8a8a8a",
+                      display: "grid",
+                      gap: "8px",
+                      color: "#bbb",
+                      fontSize: "15px",
+                      lineHeight: 1.7,
                     }}
                   >
-                    {evento.organizacion && <span>Organización: {evento.organizacion}</span>}
-                    {evento.disciplina && <span>Disciplina: {evento.disciplina}</span>}
-                    {evento.estado && <span>Estado: {evento.estado}</span>}
-                    {evento.fecha && <span>Fecha: {formatearFecha(evento.fecha)}</span>}
-                    {evento.ciudad && evento.pais && (
-                      <span>
-                        Lugar: {evento.ciudad}, {evento.pais}
-                      </span>
+                    {categoria.disciplina && (
+                      <p style={{margin: 0}}>Disciplina: {categoria.disciplina}</p>
                     )}
-                    {evento.recinto && <span>Recinto: {evento.recinto}</span>}
+
+                    {typeof categoria.limitePeso === "number" && (
+                      <p style={{margin: 0}}>
+                        Límite: {categoria.limitePeso} {categoria.unidad}
+                      </p>
+                    )}
+
+                    {categoria.descripcion && (
+                      <p style={{margin: 0, color: "#c8c8c8"}}>
+                        {categoria.descripcion}
+                      </p>
+                    )}
+
+                    <p
+                      style={{
+                        margin: 0,
+                        color: categoria.activa ? "#4ade80" : "#f87171",
+                      }}
+                    >
+                      {categoria.activa ? "Activa" : "Inactiva"}
+                    </p>
                   </div>
 
                   <p
@@ -240,7 +219,7 @@ export default async function EventosPage() {
                       opacity: 0.92,
                     }}
                   >
-                    Ver evento →
+                    Ver categoría →
                   </p>
                 </article>
               </Link>
