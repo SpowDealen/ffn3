@@ -703,31 +703,63 @@ export const disciplinaPorSlugQuery = groq`
     nombre,
     descripcion,
     "slug": slug.current,
-    "eventos": *[_type == "evento" && disciplina._ref == ^._id] | order(coalesce(fecha, _createdAt) desc)[0...12]{
+    activa,
+    "organizaciones": *[
+      _type == "organizacion" &&
+      references(^._id)
+    ] | order(nombre asc){
+      _id,
+      nombre,
+      "slug": slug.current,
+      descripcionCorta,
+      paisOrigen,
+      sede,
+      anioFundacion,
+      activa,
+      logo
+    },
+    "categoriasPeso": *[
+      _type == "categoriaPeso" &&
+      disciplina._ref == ^._id
+    ] | order(limitePeso asc, nombre asc){
+      _id,
+      nombre,
+      "slug": slug.current,
+      limitePeso,
+      unidad,
+      descripcion
+    },
+    "luchadores": *[
+      _type == "luchador" &&
+      disciplina._ref == ^._id
+    ] | order(nombre asc)[0...24]{
+      _id,
+      nombre,
+      "slug": slug.current,
+      apodo,
+      nacionalidad,
+      imagen,
+      record,
+      activo,
+      "categoriaPeso": categoriaPeso->nombre,
+      "categoriaPesoSlug": categoriaPeso->slug.current,
+      "organizacion": organizacion->nombre,
+      "organizacionSlug": organizacion->slug.current
+    },
+    "eventos": *[
+      _type == "evento" &&
+      disciplina._ref == ^._id
+    ] | order(coalesce(fecha, _createdAt) desc)[0...12]{
       _id,
       nombre,
       "slug": slug.current,
       fecha,
       ciudad,
       pais,
+      recinto,
+      imagen,
       "organizacion": organizacion->nombre,
       "organizacionSlug": organizacion->slug.current
-    },
-    "noticias": *[_type == "noticia" && disciplina._ref == ^._id] | order(coalesce(fechaPublicacion, _createdAt) desc)[0...12]{
-      _id,
-      titulo,
-      "slug": slug.current,
-      extracto,
-      fechaPublicacion
-    },
-    "luchadores": *[_type == "luchador" && disciplina._ref == ^._id] | order(nombre asc)[0...24]{
-      _id,
-      nombre,
-      "slug": slug.current,
-      apodo,
-      imagen,
-      "categoriaPeso": categoriaPeso->nombre,
-      "categoriaPesoSlug": categoriaPeso->slug.current
     }
   }
 `

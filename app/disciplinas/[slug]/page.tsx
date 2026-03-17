@@ -1,28 +1,46 @@
 import Link from "next/link";
-import {notFound} from "next/navigation";
-import {client} from "../../../sanity/lib/client";
-import {
-  disciplinaPorSlugQuery,
-  noticiasPorDisciplinaQuery,
-  luchadoresPorDisciplinaQuery,
-  eventosPorDisciplinaQuery,
-} from "../../../sanity/lib/queries";
+import { notFound } from "next/navigation";
+import imageUrlBuilder from "@sanity/image-url";
+import { client } from "../../../sanity/lib/client";
+import { disciplinaPorSlugQuery } from "../../../sanity/lib/queries";
 
-type Disciplina = {
+type RouteParams = {
+  slug: string;
+};
+
+type PageProps = {
+  params: Promise<RouteParams> | RouteParams;
+};
+
+type ImagenSanity =
+  | {
+      asset?: {
+        _ref?: string;
+        _type?: string;
+      };
+    }
+  | null
+  | undefined;
+
+type Organizacion = {
   _id: string;
   nombre: string;
   slug: string;
-  descripcion?: string;
+  descripcionCorta?: string;
+  paisOrigen?: string;
+  sede?: string;
+  anioFundacion?: number;
   activa?: boolean;
+  logo?: ImagenSanity;
 };
 
-type Noticia = {
+type CategoriaPeso = {
   _id: string;
-  titulo: string;
+  nombre: string;
   slug: string;
-  extracto?: string;
-  fechaPublicacion?: string;
-  destacada?: boolean;
+  limitePeso?: number;
+  unidad?: string;
+  descripcion?: string;
 };
 
 type Luchador = {
@@ -33,491 +51,610 @@ type Luchador = {
   nacionalidad?: string;
   record?: string;
   activo?: boolean;
-  organizacion?: string;
-  categoriaPeso?: string;
+  imagen?: ImagenSanity;
+  categoriaPesoNombre?: string;
+  categoriaPesoSlug?: string;
+  organizacionNombre?: string;
+  organizacionSlug?: string;
 };
 
-type Evento = {
+type Disciplina = {
   _id: string;
   nombre: string;
   slug: string;
-  fecha?: string;
-  ciudad?: string;
-  pais?: string;
-  cartelPrincipal?: string;
-  estado?: string;
-  organizacion?: string;
+  descripcion?: string;
+  activa?: boolean;
+  organizaciones?: Organizacion[];
+  categoriasPeso?: CategoriaPeso[];
+  luchadores?: Luchador[];
 };
 
-type PageProps = {
-  params: Promise<{
-    slug: string;
-  }>;
-};
+const builder = imageUrlBuilder(client);
 
-function formatearFecha(fecha?: string) {
-  if (!fecha) return null;
-  return new Date(fecha).toLocaleDateString("es-ES");
+function getImageUrl(source?: ImagenSanity) {
+  if (!source?.asset?._ref) return null;
+
+  try {
+    return builder.image(source).width(500).height(500).fit("crop").url();
+  } catch {
+    return null;
+  }
 }
 
-export default async function DisciplinaDetallePage({params}: PageProps) {
-  const {slug} = await params;
+async function resolveParams(params: Promise<RouteParams> | RouteParams) {
+  return params instanceof Promise ? await params : params;
+}
 
-  if (!slug) {
-    notFound();
-  }
+export default async function DisciplinaDetallePage({ params }: PageProps) {
+  const { slug } = await resolveParams(params);
 
-  const [disciplina, noticias, luchadores, eventos]: [
-    Disciplina | null,
-    Noticia[],
-    Luchador[],
-    Evento[],
-  ] = await Promise.all([
-    client.fetch(disciplinaPorSlugQuery, {slug}),
-    client.fetch(noticiasPorDisciplinaQuery, {slug}),
-    client.fetch(luchadoresPorDisciplinaQuery, {slug}),
-    client.fetch(eventosPorDisciplinaQuery, {slug}),
-  ]);
+  const disciplina = await client.fetch<Disciplina | null>(disciplinaPorSlugQuery, { slug });
 
   if (!disciplina) {
     notFound();
   }
 
+  const organizaciones = Array.isArray(disciplina.organizaciones)
+    ? disciplina.organizaciones
+    : [];
+
+  const categoriasPeso = Array.isArray(disciplina.categoriasPeso)
+    ? disciplina.categoriasPeso
+    : [];
+
+  const luchadores = Array.isArray(disciplina.luchadores) ? disciplina.luchadores : [];
+
   return (
-    <main className="disciplina-detalle-shell">
-      <style>{`
-        .disciplina-detalle-shell {
-          min-height: 100vh;
-          color: white;
-        }
-
-        .disciplina-detalle-container {
-          width: 100%;
-          max-width: 1240px;
-          margin: 0 auto;
-          padding: 40px 28px 60px;
-          box-sizing: border-box;
-        }
-
-        .disciplina-detalle-back {
-          display: inline-block;
-          margin-bottom: 22px;
-          color: #9ca3af;
-          text-decoration: none;
-          font-size: 14px;
-          line-height: 1.4;
-        }
-
-        .disciplina-detalle-hero {
-          background:
-            linear-gradient(135deg, rgba(20,24,38,0.92) 0%, rgba(10,10,10,0.96) 55%, rgba(6,6,6,0.98) 100%);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 22px;
-          padding: 34px;
-          box-shadow: 0 10px 30px rgba(0,0,0,0.22);
-          margin-bottom: 30px;
-        }
-
-        .disciplina-detalle-section-label {
-          color: #8f8f8f;
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 1.8px;
-          margin: 0 0 10px 0;
-        }
-
-        .disciplina-detalle-title {
-          font-size: clamp(2.2rem, 5vw, 3.2rem);
-          margin: 0 0 14px 0;
-          letter-spacing: -1.2px;
-          line-height: 1.05;
-          word-break: break-word;
-        }
-
-        .disciplina-detalle-estado {
-          margin: 0 0 18px 0;
-          font-size: 15px;
-          font-weight: 700;
-          line-height: 1.5;
-        }
-
-        .disciplina-detalle-estado--activa {
-          color: #4ade80;
-        }
-
-        .disciplina-detalle-estado--inactiva {
-          color: #f87171;
-        }
-
-        .disciplina-detalle-descripcion {
-          color: #d1d5db;
-          line-height: 1.85;
-          font-size: clamp(0.98rem, 1.5vw, 1.06rem);
-          max-width: 900px;
-          margin: 0;
-        }
-
-        .disciplina-detalle-stats {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 22px;
-          margin-top: 26px;
-          padding-top: 18px;
-          border-top: 1px solid rgba(255,255,255,0.08);
-        }
-
-        .disciplina-detalle-stat-label {
-          font-size: 12px;
-          color: #7f7f7f;
-          text-transform: uppercase;
-          letter-spacing: 1.6px;
-          margin: 0 0 8px 0;
-        }
-
-        .disciplina-detalle-stat-text {
-          margin: 0;
-          color: #d7d7d7;
-          line-height: 1.6;
-        }
-
-        .disciplina-detalle-stack {
-          display: grid;
-          gap: 24px;
-        }
-
-        .disciplina-detalle-two-cols {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 24px;
-        }
-
-        .disciplina-detalle-section-title {
-          font-size: clamp(1.6rem, 3vw, 1.875rem);
-          margin: 0 0 18px 0;
-          letter-spacing: -0.8px;
-          line-height: 1.15;
-        }
-
-        .disciplina-detalle-empty {
-          color: #888;
-          margin: 0;
-          line-height: 1.7;
-        }
-
-        .disciplina-detalle-list {
-          display: grid;
-          gap: 16px;
-        }
-
-        .disciplina-detalle-link {
-          text-decoration: none;
-          color: inherit;
-          min-width: 0;
-        }
-
-        .disciplina-detalle-card {
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          background:
-            linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 18px;
-          padding: 24px;
-          box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-          transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-          box-sizing: border-box;
-          min-width: 0;
-        }
-
-        .disciplina-detalle-link:hover .disciplina-detalle-card {
-          transform: translateY(-2px);
-          border-color: rgba(255,255,255,0.14);
-          box-shadow: 0 14px 34px rgba(0,0,0,0.26);
-        }
-
-        .disciplina-detalle-card-badge {
-          color: #f5c542;
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 1.6px;
-          margin: 0 0 10px 0;
-        }
-
-        .disciplina-detalle-card-title {
-          font-size: clamp(1.25rem, 2.3vw, 1.5rem);
-          margin: 0 0 12px 0;
-          line-height: 1.2;
-          letter-spacing: -0.5px;
-          word-break: break-word;
-        }
-
-        .disciplina-detalle-card-subtitle {
-          color: #f5c542;
-          margin: 0 0 10px 0;
-          line-height: 1.5;
-          word-break: break-word;
-        }
-
-        .disciplina-detalle-card-text {
-          color: #c8c8c8;
-          line-height: 1.75;
-          margin: 0 0 14px 0;
-          word-break: break-word;
-        }
-
-        .disciplina-detalle-card-data {
-          display: grid;
-          gap: 6px;
-          color: #bbb;
-          font-size: 15px;
-          line-height: 1.65;
-          min-width: 0;
-        }
-
-        .disciplina-detalle-card-data p {
-          margin: 0;
-          word-break: break-word;
-        }
-
-        @media (max-width: 900px) {
-          .disciplina-detalle-container {
-            padding: 28px 18px 44px;
-          }
-
-          .disciplina-detalle-hero {
-            padding: 24px;
-            border-radius: 20px;
-          }
-
-          .disciplina-detalle-stats {
-            grid-template-columns: 1fr;
-            gap: 18px;
-          }
-
-          .disciplina-detalle-two-cols {
-            grid-template-columns: 1fr;
-          }
-
-          .disciplina-detalle-card {
-            padding: 22px;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .disciplina-detalle-container {
-            padding: 22px 14px 36px;
-          }
-
-          .disciplina-detalle-back {
-            margin-bottom: 18px;
-          }
-
-          .disciplina-detalle-hero {
-            padding: 18px;
-            border-radius: 18px;
-            margin-bottom: 22px;
-          }
-
-          .disciplina-detalle-stack {
-            gap: 22px;
-          }
-
-          .disciplina-detalle-two-cols {
-            gap: 22px;
-          }
-
-          .disciplina-detalle-list {
-            gap: 14px;
-          }
-
-          .disciplina-detalle-card {
-            padding: 18px;
-            border-radius: 16px;
-          }
-
-          .disciplina-detalle-card-data {
-            font-size: 14px;
-          }
-
-          .disciplina-detalle-card-text {
-            line-height: 1.7;
-          }
-        }
-      `}</style>
-
-      <section className="disciplina-detalle-container">
-        <Link href="/disciplinas" className="disciplina-detalle-back">
-          ← Volver a disciplinas
-        </Link>
-
-        <section className="disciplina-detalle-hero">
-          <p className="disciplina-detalle-section-label">Disciplina</p>
-
-          <h1 className="disciplina-detalle-title">{disciplina.nombre}</h1>
-
-          <p
-            className={`disciplina-detalle-estado ${
-              disciplina.activa
-                ? "disciplina-detalle-estado--activa"
-                : "disciplina-detalle-estado--inactiva"
-            }`}
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "var(--ffn-bg)",
+        color: "var(--ffn-text)",
+        padding: "40px 20px 80px",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: "1440px",
+          margin: "0 auto",
+          display: "grid",
+          gap: "28px",
+        }}
+      >
+        <section
+          style={{
+            padding: "32px",
+            borderRadius: "28px",
+            background: "var(--ffn-surface)",
+            border: "1px solid var(--ffn-border)",
+            display: "grid",
+            gap: "18px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: "12px",
+            }}
           >
-            {disciplina.activa ? "Activa" : "Inactiva"}
-          </p>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "8px 12px",
+                borderRadius: "999px",
+                fontSize: "0.78rem",
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                border: "1px solid var(--ffn-border-strong)",
+                color: "var(--ffn-text-soft)",
+                background: "rgba(255,255,255,0.04)",
+              }}
+            >
+              Disciplina
+            </span>
 
-          <p className="disciplina-detalle-descripcion">
-            {disciplina.descripcion || "Esta disciplina todavía no tiene descripción publicada."}
-          </p>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "8px 12px",
+                borderRadius: "999px",
+                fontSize: "0.78rem",
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                border: "1px solid var(--ffn-border-strong)",
+                color: disciplina.activa ? "var(--ffn-text)" : "var(--ffn-text-soft)",
+                background: disciplina.activa
+                  ? "rgba(255,255,255,0.06)"
+                  : "rgba(255,255,255,0.02)",
+              }}
+            >
+              {disciplina.activa ? "Activa" : "Inactiva"}
+            </span>
+          </div>
 
-          <div className="disciplina-detalle-stats">
-            <div>
-              <p className="disciplina-detalle-stat-label">Noticias</p>
-              <p className="disciplina-detalle-stat-text">{noticias.length} relacionadas</p>
-            </div>
+          <div style={{ display: "grid", gap: "14px" }}>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: "clamp(2.2rem, 5vw, 4rem)",
+                lineHeight: 1,
+                letterSpacing: "-0.04em",
+              }}
+            >
+              {disciplina.nombre}
+            </h1>
 
-            <div>
-              <p className="disciplina-detalle-stat-label">Luchadores</p>
-              <p className="disciplina-detalle-stat-text">{luchadores.length} relacionados</p>
-            </div>
-
-            <div>
-              <p className="disciplina-detalle-stat-label">Eventos</p>
-              <p className="disciplina-detalle-stat-text">{eventos.length} relacionados</p>
-            </div>
+            <p
+              style={{
+                margin: 0,
+                maxWidth: "900px",
+                fontSize: "1.05rem",
+                lineHeight: 1.8,
+                color: "var(--ffn-text-soft)",
+              }}
+            >
+              {disciplina.descripcion ||
+                `Explora la disciplina ${disciplina.nombre} con acceso directo a sus organizaciones, categorías de peso y luchadores relacionados.`}
+            </p>
           </div>
         </section>
 
-        <section className="disciplina-detalle-stack">
-          <section>
-            <p className="disciplina-detalle-section-label">Actualidad relacionada</p>
-            <h2 className="disciplina-detalle-section-title">Noticias</h2>
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
+            gap: "24px",
+          }}
+        >
+          <div
+            style={{
+              gridColumn: "span 12",
+            }}
+          >
+            <SectionTitle
+              title="Organizaciones relacionadas"
+              subtitle="Promotoras y entidades vinculadas directamente a esta disciplina."
+            />
 
-            {noticias.length === 0 ? (
-              <p className="disciplina-detalle-empty">
-                Todavía no hay noticias relacionadas con esta disciplina.
-              </p>
-            ) : (
-              <div className="disciplina-detalle-list">
-                {noticias.map((noticia) => (
-                  <Link
-                    key={noticia._id}
-                    href={`/noticias/${noticia.slug}`}
-                    className="disciplina-detalle-link"
-                  >
-                    <article className="disciplina-detalle-card">
-                      {noticia.destacada && (
-                        <p className="disciplina-detalle-card-badge">Destacada</p>
-                      )}
+            {organizaciones.length > 0 ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                  gap: "18px",
+                }}
+              >
+                {organizaciones.map((organizacion) => {
+                  const logoUrl = getImageUrl(organizacion.logo);
 
-                      <h3 className="disciplina-detalle-card-title">{noticia.titulo}</h3>
+                  return (
+                    <Link
+                      key={organizacion._id}
+                      href={`/organizaciones/${organizacion.slug}`}
+                      style={{
+                        textDecoration: "none",
+                        color: "inherit",
+                        display: "grid",
+                        gap: "14px",
+                        padding: "20px",
+                        borderRadius: "24px",
+                        background: "var(--ffn-surface)",
+                        border: "1px solid var(--ffn-border)",
+                      }}
+                    >
+                      {logoUrl ? (
+                        <div
+                          style={{
+                            width: "64px",
+                            height: "64px",
+                            borderRadius: "18px",
+                            overflow: "hidden",
+                            background: "rgba(255,255,255,0.04)",
+                            border: "1px solid var(--ffn-border)",
+                          }}
+                        >
+                          <img
+                            src={logoUrl}
+                            alt={organizacion.nombre}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                              display: "block",
+                            }}
+                          />
+                        </div>
+                      ) : null}
 
-                      {noticia.extracto && (
-                        <p className="disciplina-detalle-card-text">{noticia.extracto}</p>
-                      )}
+                      <div style={{ display: "grid", gap: "8px" }}>
+                        <h2
+                          style={{
+                            margin: 0,
+                            fontSize: "1.15rem",
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {organizacion.nombre}
+                        </h2>
 
-                      {noticia.fechaPublicacion && (
-                        <p style={{color: "#8a8a8a", fontSize: "14px", margin: 0}}>
-                          Fecha: {formatearFecha(noticia.fechaPublicacion)}
+                        <p
+                          style={{
+                            margin: 0,
+                            color: "var(--ffn-text-soft)",
+                            lineHeight: 1.65,
+                            fontSize: "0.95rem",
+                          }}
+                        >
+                          {organizacion.descripcionCorta ||
+                            "Organización vinculada a esta disciplina dentro del ecosistema editorial de la web."}
                         </p>
-                      )}
-                    </article>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: "8px",
+                            marginTop: "4px",
+                          }}
+                        >
+                          {organizacion.paisOrigen ? (
+                            <MetaPill>{organizacion.paisOrigen}</MetaPill>
+                          ) : null}
+                          {organizacion.sede ? <MetaPill>{organizacion.sede}</MetaPill> : null}
+                          {organizacion.anioFundacion ? (
+                            <MetaPill>Fundada en {organizacion.anioFundacion}</MetaPill>
+                          ) : null}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState text="Todavía no hay organizaciones conectadas a esta disciplina." />
+            )}
+          </div>
+
+          <div
+            style={{
+              gridColumn: "span 12",
+            }}
+          >
+            <SectionTitle
+              title="Categorías de peso"
+              subtitle="Divisiones vinculadas directamente a esta disciplina."
+            />
+
+            {categoriasPeso.length > 0 ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "18px",
+                }}
+              >
+                {categoriasPeso.map((categoria) => (
+                  <Link
+                    key={categoria._id}
+                    href={`/categorias-peso/${categoria.slug}`}
+                    style={{
+                      textDecoration: "none",
+                      color: "inherit",
+                      display: "grid",
+                      gap: "12px",
+                      padding: "20px",
+                      borderRadius: "24px",
+                      background: "var(--ffn-surface)",
+                      border: "1px solid var(--ffn-border)",
+                    }}
+                  >
+                    <div style={{ display: "grid", gap: "8px" }}>
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontSize: "1.08rem",
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        {categoria.nombre}
+                      </h3>
+
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: "0.95rem",
+                          lineHeight: 1.6,
+                          color: "var(--ffn-text-soft)",
+                        }}
+                      >
+                        {typeof categoria.limitePeso === "number"
+                          ? `Límite: ${categoria.limitePeso} ${categoria.unidad || ""}`.trim()
+                          : "Categoría disponible dentro de esta disciplina."}
+                      </p>
+
+                      {categoria.descripcion ? (
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: "0.92rem",
+                            lineHeight: 1.65,
+                            color: "var(--ffn-text-muted)",
+                          }}
+                        >
+                          {categoria.descripcion}
+                        </p>
+                      ) : null}
+                    </div>
                   </Link>
                 ))}
               </div>
+            ) : (
+              <EmptyState text="Todavía no hay categorías de peso cargadas para esta disciplina." />
             )}
-          </section>
+          </div>
 
-          <section className="disciplina-detalle-two-cols">
-            <div>
-              <p className="disciplina-detalle-section-label">Protagonistas</p>
-              <h2 className="disciplina-detalle-section-title">Luchadores</h2>
+          <div
+            style={{
+              gridColumn: "span 12",
+            }}
+          >
+            <SectionTitle
+              title="Luchadores"
+              subtitle="Talento relacionado con esta disciplina dentro de la base editorial actual."
+            />
 
-              {luchadores.length === 0 ? (
-                <p className="disciplina-detalle-empty">
-                  Todavía no hay luchadores relacionados con esta disciplina.
-                </p>
-              ) : (
-                <div className="disciplina-detalle-list">
-                  {luchadores.map((luchador) => (
+            {luchadores.length > 0 ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                  gap: "18px",
+                }}
+              >
+                {luchadores.map((luchador) => {
+                  const imageUrl = getImageUrl(luchador.imagen);
+
+                  return (
                     <Link
                       key={luchador._id}
                       href={`/luchadores/${luchador.slug}`}
-                      className="disciplina-detalle-link"
+                      style={{
+                        textDecoration: "none",
+                        color: "inherit",
+                        display: "grid",
+                        gap: "14px",
+                        padding: "20px",
+                        borderRadius: "24px",
+                        background: "var(--ffn-surface)",
+                        border: "1px solid var(--ffn-border)",
+                      }}
                     >
-                      <article className="disciplina-detalle-card">
-                        <h3 className="disciplina-detalle-card-title">{luchador.nombre}</h3>
+                      {imageUrl ? (
+                        <div
+                          style={{
+                            width: "100%",
+                            aspectRatio: "16 / 10",
+                            borderRadius: "18px",
+                            overflow: "hidden",
+                            border: "1px solid var(--ffn-border)",
+                            background: "rgba(255,255,255,0.03)",
+                          }}
+                        >
+                          <img
+                            src={imageUrl}
+                            alt={luchador.nombre}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                              display: "block",
+                            }}
+                          />
+                        </div>
+                      ) : null}
 
-                        {luchador.apodo && (
-                          <p className="disciplina-detalle-card-subtitle">
+                      <div style={{ display: "grid", gap: "8px" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: "10px",
+                          }}
+                        >
+                          <h3
+                            style={{
+                              margin: 0,
+                              fontSize: "1.08rem",
+                              lineHeight: 1.2,
+                            }}
+                          >
+                            {luchador.nombre}
+                          </h3>
+
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "6px 10px",
+                              borderRadius: "999px",
+                              fontSize: "0.75rem",
+                              fontWeight: 700,
+                              letterSpacing: "0.06em",
+                              textTransform: "uppercase",
+                              border: "1px solid var(--ffn-border-strong)",
+                              color: luchador.activo
+                                ? "var(--ffn-text)"
+                                : "var(--ffn-text-soft)",
+                              background: luchador.activo
+                                ? "rgba(255,255,255,0.06)"
+                                : "rgba(255,255,255,0.02)",
+                            }}
+                          >
+                            {luchador.activo ? "Activo" : "Inactivo"}
+                          </span>
+                        </div>
+
+                        {luchador.apodo ? (
+                          <p
+                            style={{
+                              margin: 0,
+                              color: "var(--ffn-text-soft)",
+                              fontSize: "0.95rem",
+                              lineHeight: 1.5,
+                            }}
+                          >
                             “{luchador.apodo}”
                           </p>
-                        )}
+                        ) : null}
 
-                        <div className="disciplina-detalle-card-data">
-                          {luchador.nacionalidad && (
-                            <p>Nacionalidad: {luchador.nacionalidad}</p>
-                          )}
-                          {luchador.organizacion && (
-                            <p>Organización: {luchador.organizacion}</p>
-                          )}
-                          {luchador.categoriaPeso && (
-                            <p>Categoría: {luchador.categoriaPeso}</p>
-                          )}
-                          {luchador.record && <p>Récord: {luchador.record}</p>}
-                          <p>Estado: {luchador.activo ? "Activo" : "Inactivo"}</p>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: "8px",
+                            marginTop: "4px",
+                          }}
+                        >
+                          {luchador.nacionalidad ? (
+                            <MetaPill>{luchador.nacionalidad}</MetaPill>
+                          ) : null}
+
+                          {luchador.record ? <MetaPill>Récord: {luchador.record}</MetaPill> : null}
+
+                          {luchador.categoriaPesoNombre && luchador.categoriaPesoSlug ? (
+                            <MetaPillLink href={`/categorias-peso/${luchador.categoriaPesoSlug}`}>
+                              {luchador.categoriaPesoNombre}
+                            </MetaPillLink>
+                          ) : null}
+
+                          {luchador.organizacionNombre && luchador.organizacionSlug ? (
+                            <MetaPillLink href={`/organizaciones/${luchador.organizacionSlug}`}>
+                              {luchador.organizacionNombre}
+                            </MetaPillLink>
+                          ) : null}
                         </div>
-                      </article>
+                      </div>
                     </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <p className="disciplina-detalle-section-label">Calendario relacionado</p>
-              <h2 className="disciplina-detalle-section-title">Eventos</h2>
-
-              {eventos.length === 0 ? (
-                <p className="disciplina-detalle-empty">
-                  Todavía no hay eventos relacionados con esta disciplina.
-                </p>
-              ) : (
-                <div className="disciplina-detalle-list">
-                  {eventos.map((evento) => (
-                    <Link
-                      key={evento._id}
-                      href={`/eventos/${evento.slug}`}
-                      className="disciplina-detalle-link"
-                    >
-                      <article className="disciplina-detalle-card">
-                        <h3 className="disciplina-detalle-card-title">{evento.nombre}</h3>
-
-                        {evento.cartelPrincipal && (
-                          <p className="disciplina-detalle-card-subtitle">
-                            {evento.cartelPrincipal}
-                          </p>
-                        )}
-
-                        <div className="disciplina-detalle-card-data">
-                          {evento.organizacion && <p>Organización: {evento.organizacion}</p>}
-                          {evento.estado && <p>Estado: {evento.estado}</p>}
-                          {evento.fecha && <p>Fecha: {formatearFecha(evento.fecha)}</p>}
-                          {evento.ciudad && evento.pais && (
-                            <p>
-                              Lugar: {evento.ciudad}, {evento.pais}
-                            </p>
-                          )}
-                        </div>
-                      </article>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState text="Todavía no hay luchadores cargados para esta disciplina." />
+            )}
+          </div>
         </section>
-      </section>
+      </div>
     </main>
+  );
+}
+
+function SectionTitle({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: "8px",
+        marginBottom: "16px",
+      }}
+    >
+      <h2
+        style={{
+          margin: 0,
+          fontSize: "1.45rem",
+          lineHeight: 1.1,
+        }}
+      >
+        {title}
+      </h2>
+      <p
+        style={{
+          margin: 0,
+          color: "var(--ffn-text-soft)",
+          lineHeight: 1.7,
+          fontSize: "0.98rem",
+        }}
+      >
+        {subtitle}
+      </p>
+    </div>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        padding: "20px",
+        borderRadius: "22px",
+        background: "var(--ffn-surface)",
+        border: "1px solid var(--ffn-border)",
+        color: "var(--ffn-text-soft)",
+        lineHeight: 1.7,
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function MetaPill({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "8px 10px",
+        borderRadius: "999px",
+        fontSize: "0.78rem",
+        fontWeight: 600,
+        color: "var(--ffn-text-soft)",
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid var(--ffn-border)",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function MetaPillLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "8px 10px",
+        borderRadius: "999px",
+        fontSize: "0.78rem",
+        fontWeight: 600,
+        color: "var(--ffn-text)",
+        background: "rgba(255,255,255,0.06)",
+        border: "1px solid var(--ffn-border)",
+        textDecoration: "none",
+      }}
+    >
+      {children}
+    </Link>
   );
 }
