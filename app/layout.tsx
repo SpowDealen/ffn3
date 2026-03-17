@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type {Metadata} from "next";
 import "./globals.css";
 import Navbar from "../components/Navbar";
 
@@ -22,6 +22,7 @@ export default function RootLayout({
             "radial-gradient(circle at top, #151826 0%, #0b0b0b 35%, #070707 100%)",
           color: "white",
           fontFamily: "Arial, Helvetica, sans-serif",
+          minHeight: "100vh",
         }}
       >
         <Navbar />

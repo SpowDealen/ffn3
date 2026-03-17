@@ -24,41 +24,63 @@ export const combateType = defineType({
       title: 'Luchador azul',
       type: 'reference',
       to: [{type: 'luchador'}],
-      validation: Rule => Rule.required(),
+      validation: Rule =>
+        Rule.required().custom((value, context) => {
+          const rojoRef = (context.document as {luchadorRojo?: {_ref?: string}} | undefined)
+            ?.luchadorRojo?._ref
+
+          if (!value?._ref || !rojoRef) return true
+          if (value._ref === rojoRef) {
+            return 'El luchador azul no puede ser el mismo que el luchador rojo.'
+          }
+
+          return true
+        }),
     }),
     defineField({
       name: 'ganador',
       title: 'Ganador',
       type: 'reference',
       to: [{type: 'luchador'}],
+      description: 'Déjalo vacío si el combate aún no ha finalizado.',
     }),
     defineField({
       name: 'metodo',
       title: 'Método',
       type: 'string',
       description: 'Ejemplo: KO, TKO, Sumisión, Decisión unánime',
+      validation: Rule => Rule.max(120),
     }),
     defineField({
       name: 'asalto',
       title: 'Asalto',
       type: 'number',
+      validation: Rule => Rule.integer().min(1).max(15),
     }),
     defineField({
       name: 'tiempo',
       title: 'Tiempo',
       type: 'string',
       description: 'Ejemplo: 3:42',
+      validation: Rule =>
+        Rule.regex(/^\d{1,2}:\d{2}$/, {
+          name: 'tiempo',
+          invert: false,
+        }).warning('Usa el formato 3:42'),
     }),
     defineField({
       name: 'categoriaPeso',
       title: 'Categoría de peso',
-      type: 'string',
+      type: 'reference',
+      to: [{type: 'categoriaPeso'}],
+      validation: Rule => Rule.required(),
     }),
     defineField({
       name: 'tituloEnJuego',
       title: 'Título en juego',
       type: 'boolean',
       initialValue: false,
+      validation: Rule => Rule.required(),
     }),
     defineField({
       name: 'cartelera',
@@ -72,12 +94,15 @@ export const combateType = defineType({
         layout: 'radio',
       },
       initialValue: 'principal',
+      validation: Rule => Rule.required(),
     }),
     defineField({
       name: 'orden',
       title: 'Orden en el evento',
       type: 'number',
       description: '1 = combate principal, 2 = coestelar, etc.',
+      validation: Rule =>
+        Rule.integer().min(1).warning('Usa 1, 2, 3... según el orden del combate'),
     }),
     defineField({
       name: 'estado',
@@ -100,11 +125,21 @@ export const combateType = defineType({
       rojo: 'luchadorRojo.nombre',
       azul: 'luchadorAzul.nombre',
       evento: 'evento.nombre',
+      estado: 'estado',
+      cartelera: 'cartelera',
+      tituloEnJuego: 'tituloEnJuego',
     },
-    prepare({rojo, azul, evento}) {
+    prepare({rojo, azul, evento, estado, cartelera, tituloEnJuego}) {
+      const extras = [
+        evento,
+        cartelera,
+        estado ? `Estado: ${estado}` : null,
+        tituloEnJuego ? 'Título en juego' : null,
+      ].filter(Boolean)
+
       return {
         title: `${rojo || 'Sin asignar'} vs ${azul || 'Sin asignar'}`,
-        subtitle: evento || 'Sin evento',
+        subtitle: extras.length > 0 ? extras.join(' · ') : 'Sin datos extra',
       }
     },
   },

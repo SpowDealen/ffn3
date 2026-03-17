@@ -9,7 +9,7 @@ export const disciplinaType = defineType({
       name: 'nombre',
       title: 'Nombre',
       type: 'string',
-      validation: Rule => Rule.required(),
+      validation: Rule => Rule.required().min(2).max(100),
     }),
     defineField({
       name: 'slug',
@@ -26,18 +26,28 @@ export const disciplinaType = defineType({
       title: 'Descripción',
       type: 'text',
       rows: 4,
+      description: 'Resumen editorial breve de la disciplina.',
+      validation: Rule => Rule.min(10).max(800),
     }),
     defineField({
       name: 'activa',
       title: 'Activa',
       type: 'boolean',
       initialValue: true,
+      validation: Rule => Rule.required(),
     }),
   ],
   preview: {
     select: {
       title: 'nombre',
       subtitle: 'slug.current',
+      activa: 'activa',
+    },
+    prepare({title, subtitle, activa}) {
+      return {
+        title,
+        subtitle: `${subtitle || 'sin-slug'} · ${activa ? 'Activa' : 'Inactiva'}`,
+      }
     },
   },
 })

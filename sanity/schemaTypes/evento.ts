@@ -9,7 +9,7 @@ export const eventoType = defineType({
       name: 'nombre',
       title: 'Nombre',
       type: 'string',
-      validation: Rule => Rule.required(),
+      validation: Rule => Rule.required().min(3).max(140),
     }),
     defineField({
       name: 'slug',
@@ -45,22 +45,26 @@ export const eventoType = defineType({
       name: 'ciudad',
       title: 'Ciudad',
       type: 'string',
+      validation: Rule => Rule.max(100),
     }),
     defineField({
       name: 'pais',
       title: 'País',
       type: 'string',
+      validation: Rule => Rule.max(100),
     }),
     defineField({
       name: 'recinto',
       title: 'Recinto',
       type: 'string',
+      validation: Rule => Rule.max(140),
     }),
     defineField({
       name: 'cartelPrincipal',
       title: 'Cartel principal',
       type: 'string',
       description: 'Ejemplo: Topuria vs Holloway',
+      validation: Rule => Rule.max(140),
     }),
     defineField({
       name: 'imagen',
@@ -69,6 +73,7 @@ export const eventoType = defineType({
       options: {
         hotspot: true,
       },
+      validation: Rule => Rule.required(),
     }),
     defineField({
       name: 'estado',
@@ -90,13 +95,36 @@ export const eventoType = defineType({
       title: 'Descripción',
       type: 'text',
       rows: 5,
+      description: 'Resumen editorial del evento para su página y listados.',
+      validation: Rule => Rule.min(20).max(1600),
     }),
   ],
   preview: {
     select: {
       title: 'nombre',
-      subtitle: 'cartelPrincipal',
+      cartelPrincipal: 'cartelPrincipal',
+      organizacion: 'organizacion.nombre',
+      estado: 'estado',
+      fecha: 'fecha',
       media: 'imagen',
+    },
+    prepare({title, cartelPrincipal, organizacion, estado, fecha, media}) {
+      const fechaFormateada = fecha
+        ? new Date(fecha).toLocaleDateString('es-ES')
+        : 'Sin fecha'
+
+      const subtitleParts = [
+        organizacion,
+        cartelPrincipal,
+        estado ? `Estado: ${estado}` : null,
+        fechaFormateada,
+      ].filter(Boolean)
+
+      return {
+        title,
+        subtitle: subtitleParts.join(' · '),
+        media,
+      }
     },
   },
 })

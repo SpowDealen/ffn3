@@ -9,7 +9,7 @@ export const categoriaPesoType = defineType({
       name: 'nombre',
       title: 'Nombre',
       type: 'string',
-      validation: Rule => Rule.required(),
+      validation: Rule => Rule.required().min(2).max(120),
     }),
     defineField({
       name: 'slug',
@@ -33,44 +33,45 @@ export const categoriaPesoType = defineType({
       title: 'Límite de peso',
       type: 'number',
       description: 'Ejemplo: 145',
+      validation: Rule => Rule.required().positive(),
     }),
     defineField({
       name: 'unidad',
       title: 'Unidad',
       type: 'string',
+      initialValue: 'lb',
       options: {
         list: [
-          {title: 'lb', value: 'lb'},
-          {title: 'kg', value: 'kg'},
+          {title: 'Libras (lb)', value: 'lb'},
+          {title: 'Kilogramos (kg)', value: 'kg'},
         ],
         layout: 'radio',
       },
-      initialValue: 'lb',
+      validation: Rule => Rule.required(),
     }),
     defineField({
       name: 'descripcion',
       title: 'Descripción',
       type: 'text',
       rows: 4,
-    }),
-    defineField({
-      name: 'activa',
-      title: 'Activa',
-      type: 'boolean',
-      initialValue: true,
+      description: 'Resumen editorial breve de la categoría de peso.',
+      validation: Rule => Rule.min(10).max(500),
     }),
   ],
   preview: {
     select: {
       title: 'nombre',
-      disciplina: 'disciplina.nombre',
+      subtitle: 'disciplina.nombre',
       limitePeso: 'limitePeso',
       unidad: 'unidad',
     },
-    prepare({title, disciplina, limitePeso, unidad}) {
+    prepare({title, subtitle, limitePeso, unidad}) {
+      const peso =
+        limitePeso && unidad ? ` · ${limitePeso}${unidad}` : ''
+
       return {
         title,
-        subtitle: `${disciplina || 'Sin disciplina'}${limitePeso ? ` · ${limitePeso} ${unidad}` : ''}`,
+        subtitle: `${subtitle || 'Sin disciplina'}${peso}`,
       }
     },
   },

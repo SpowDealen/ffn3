@@ -6,14 +6,12 @@ import {eventoType} from './evento'
 import {combateType} from './combate'
 import {noticiaType} from './noticia'
 
-export const schema = {
-  types: [
-    disciplinaType,
-    organizacionType,
-    categoriaPesoType,
-    luchadorType,
-    eventoType,
-    combateType,
-    noticiaType,
-  ],
-}
+export const schemaTypes = [
+  disciplinaType,
+  organizacionType,
+  categoriaPesoType,
+  luchadorType,
+  eventoType,
+  combateType,
+  noticiaType,
+]
