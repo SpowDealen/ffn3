@@ -42,6 +42,13 @@ export const eventoType = defineType({
       validation: Rule => Rule.required(),
     }),
     defineField({
+      name: 'horaLocal',
+      title: 'Hora local',
+      type: 'string',
+      description: 'Ejemplo: 22:00 o 04:00 (hora peninsular española)',
+      validation: Rule => Rule.max(60),
+    }),
+    defineField({
       name: 'ciudad',
       title: 'Ciudad',
       type: 'string',
@@ -67,6 +74,39 @@ export const eventoType = defineType({
       validation: Rule => Rule.max(140),
     }),
     defineField({
+      name: 'dondeVer',
+      title: 'Dónde ver',
+      type: 'string',
+      description: 'Ejemplo: ESPN+, DAZN, UFC Fight Pass, Eurosport, TV en abierto...',
+      validation: Rule => Rule.max(180),
+    }),
+    defineField({
+      name: 'descripcionCorta',
+      title: 'Descripción corta',
+      type: 'text',
+      rows: 3,
+      description: 'Resumen breve para tarjetas, listados y cabeceras.',
+      validation: Rule => Rule.max(280),
+    }),
+    defineField({
+      name: 'descripcion',
+      title: 'Descripción editorial',
+      type: 'text',
+      rows: 8,
+      description:
+        'Texto principal del evento: contexto, interés del show, protagonistas, cartelera y lectura editorial.',
+      validation: Rule => Rule.min(20).max(3000),
+    }),
+    defineField({
+      name: 'notas',
+      title: 'Notas adicionales',
+      type: 'text',
+      rows: 4,
+      description:
+        'Campo opcional para detalles extra: cambios de última hora, contexto histórico, particularidades del evento, etc.',
+      validation: Rule => Rule.max(1200),
+    }),
+    defineField({
       name: 'imagen',
       title: 'Imagen',
       type: 'image',
@@ -90,14 +130,6 @@ export const eventoType = defineType({
       initialValue: 'proximo',
       validation: Rule => Rule.required(),
     }),
-    defineField({
-      name: 'descripcion',
-      title: 'Descripción',
-      type: 'text',
-      rows: 5,
-      description: 'Resumen editorial del evento para su página y listados.',
-      validation: Rule => Rule.min(20).max(1600),
-    }),
   ],
   preview: {
     select: {
@@ -106,16 +138,21 @@ export const eventoType = defineType({
       organizacion: 'organizacion.nombre',
       estado: 'estado',
       fecha: 'fecha',
+      ciudad: 'ciudad',
+      pais: 'pais',
       media: 'imagen',
     },
-    prepare({title, cartelPrincipal, organizacion, estado, fecha, media}) {
+    prepare({title, cartelPrincipal, organizacion, estado, fecha, ciudad, pais, media}) {
       const fechaFormateada = fecha
         ? new Date(fecha).toLocaleDateString('es-ES')
         : 'Sin fecha'
 
+      const ubicacion = [ciudad, pais].filter(Boolean).join(', ')
+
       const subtitleParts = [
         organizacion,
         cartelPrincipal,
+        ubicacion,
         estado ? `Estado: ${estado}` : null,
         fechaFormateada,
       ].filter(Boolean)

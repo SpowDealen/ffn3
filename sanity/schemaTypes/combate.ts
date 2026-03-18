@@ -43,6 +43,33 @@ export const combateType = defineType({
       type: 'reference',
       to: [{type: 'luchador'}],
       description: 'Déjalo vacío si el combate aún no ha finalizado.',
+      validation: Rule =>
+        Rule.custom((value, context) => {
+          const doc = context.document as
+            | {
+                estado?: string
+                luchadorRojo?: {_ref?: string}
+                luchadorAzul?: {_ref?: string}
+              }
+            | undefined
+
+          if (!doc) return true
+
+          if (doc.estado === 'finalizado' && !value?._ref) {
+            return 'Si el combate está finalizado, debes indicar un ganador.'
+          }
+
+          if (!value?._ref) return true
+
+          const rojoRef = doc.luchadorRojo?._ref
+          const azulRef = doc.luchadorAzul?._ref
+
+          if (value._ref !== rojoRef && value._ref !== azulRef) {
+            return 'El ganador debe ser uno de los dos luchadores del combate.'
+          }
+
+          return true
+        }),
     }),
     defineField({
       name: 'metodo',
@@ -53,13 +80,13 @@ export const combateType = defineType({
     }),
     defineField({
       name: 'asalto',
-      title: 'Asalto',
+      title: 'Asalto final',
       type: 'number',
       validation: Rule => Rule.integer().min(1).max(15),
     }),
     defineField({
       name: 'tiempo',
-      title: 'Tiempo',
+      title: 'Tiempo final',
       type: 'string',
       description: 'Ejemplo: 3:42',
       validation: Rule =>
@@ -119,6 +146,42 @@ export const combateType = defineType({
       initialValue: 'programado',
       validation: Rule => Rule.required(),
     }),
+    defineField({
+      name: 'resumen',
+      title: 'Resumen del combate',
+      type: 'text',
+      rows: 3,
+      description:
+        'Resumen breve de lo ocurrido en el combate. Ideal para la ficha pública y bloques relacionados.',
+      validation: Rule => Rule.max(400),
+    }),
+    defineField({
+      name: 'desarrollo',
+      title: 'Desarrollo del combate',
+      type: 'text',
+      rows: 8,
+      description:
+        'Explica cómo se desenvolvió el combate: ritmo, dominio, momentos clave, cambios de guion y desenlace.',
+      validation: Rule => Rule.max(3000),
+    }),
+    defineField({
+      name: 'momentoClave',
+      title: 'Momento clave',
+      type: 'text',
+      rows: 3,
+      description:
+        'Golpe, derribo, sumisión, corte, cuenta o instante decisivo que cambió el combate.',
+      validation: Rule => Rule.max(500),
+    }),
+    defineField({
+      name: 'consecuencia',
+      title: 'Consecuencia del resultado',
+      type: 'text',
+      rows: 3,
+      description:
+        'Qué implica este resultado: defensa titular, ascenso en el ranking, revancha, polémica, oportunidad futura, etc.',
+      validation: Rule => Rule.max(700),
+    }),
   ],
   preview: {
     select: {
@@ -128,12 +191,16 @@ export const combateType = defineType({
       estado: 'estado',
       cartelera: 'cartelera',
       tituloEnJuego: 'tituloEnJuego',
+      metodo: 'metodo',
+      asalto: 'asalto',
     },
-    prepare({rojo, azul, evento, estado, cartelera, tituloEnJuego}) {
+    prepare({rojo, azul, evento, estado, cartelera, tituloEnJuego, metodo, asalto}) {
       const extras = [
         evento,
         cartelera,
         estado ? `Estado: ${estado}` : null,
+        metodo ? `Método: ${metodo}` : null,
+        asalto ? `R${asalto}` : null,
         tituloEnJuego ? 'Título en juego' : null,
       ].filter(Boolean)
 

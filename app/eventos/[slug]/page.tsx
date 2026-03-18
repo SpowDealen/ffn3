@@ -11,6 +11,22 @@ type SluggedEntity = {
   _id?: string;
   nombre?: string;
   slug?: string;
+  apodo?: string;
+  imagen?: unknown;
+};
+
+type EventoOrganizacion = {
+  _id?: string;
+  nombre?: string;
+  slug?: string;
+  logo?: unknown;
+  sitioWeb?: string;
+};
+
+type EventoDisciplina = {
+  _id?: string;
+  nombre?: string;
+  slug?: string;
 };
 
 type Evento = {
@@ -18,34 +34,33 @@ type Evento = {
   nombre: string;
   slug: string;
   fecha?: string;
+  horaLocal?: string;
   ciudad?: string;
   pais?: string;
   recinto?: string;
   cartelPrincipal?: string;
   estado?: string;
+  descripcionCorta?: string;
   descripcion?: string;
-  organizacion?:
-    | string
-    | {
-        _id?: string;
-        nombre?: string;
-        slug?: string;
-        logo?: unknown;
-        sitioWeb?: string;
-      };
-  disciplina?: string;
+  dondeVer?: string;
+  notas?: string;
+  organizacion?: EventoOrganizacion | string;
+  disciplina?: EventoDisciplina | string;
 };
 
 type Combate = {
   _id: string;
   metodo?: string;
-  asaltosProgramados?: number;
-  asaltoFinal?: number;
-  tiempoFinal?: string;
+  asalto?: number;
+  tiempo?: string;
   tituloEnJuego?: boolean;
   cartelera?: string;
   orden?: number;
   estado?: string;
+  resumen?: string;
+  desarrollo?: string;
+  momentoClave?: string;
+  consecuencia?: string;
   luchadorRojo?: SluggedEntity | string;
   luchadorAzul?: SluggedEntity | string;
   ganador?: SluggedEntity | string;
@@ -75,13 +90,13 @@ type PageProps = {
   }>;
 };
 
-function getEntityName(value?: SluggedEntity | string | null): string {
+function getEntityName(value?: SluggedEntity | EventoOrganizacion | EventoDisciplina | string | null): string {
   if (!value) return "";
   if (typeof value === "string") return value;
   return value.nombre || "";
 }
 
-function getEntitySlug(value?: SluggedEntity | string | null): string | undefined {
+function getEntitySlug(value?: SluggedEntity | EventoOrganizacion | EventoDisciplina | string | null): string | undefined {
   if (!value || typeof value === "string") return undefined;
   return value.slug || undefined;
 }
@@ -90,7 +105,28 @@ function formatDate(value?: string): string {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("es-ES");
+  return date.toLocaleDateString("es-ES", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function formatEstado(value?: string): string {
+  if (!value) return "";
+  if (value === "proximo") return "Próximo";
+  if (value === "celebrado") return "Celebrado";
+  if (value === "cancelado") return "Cancelado";
+  if (value === "programado") return "Programado";
+  if (value === "finalizado") return "Finalizado";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatCartelera(value?: string): string {
+  if (!value) return "";
+  if (value === "principal") return "Cartelera principal";
+  if (value === "preliminar") return "Cartelera preliminar";
+  return value;
 }
 
 export default async function EventoDetallePage({ params }: PageProps) {
@@ -104,10 +140,11 @@ export default async function EventoDetallePage({ params }: PageProps) {
     notFound();
   }
 
-  const organizacionNombre =
-    typeof evento.organizacion === "string"
-      ? evento.organizacion
-      : evento.organizacion?.nombre || "";
+  const organizacionNombre = getEntityName(evento.organizacion);
+  const organizacionSlug = getEntitySlug(evento.organizacion);
+
+  const disciplinaNombre = getEntityName(evento.disciplina);
+  const disciplinaSlug = getEntitySlug(evento.disciplina);
 
   const protagonistasMap = new Map<string, Protagonista>();
 
@@ -140,18 +177,22 @@ export default async function EventoDetallePage({ params }: PageProps) {
       <style>{`
         .evento-detalle-shell {
           min-height: 100vh;
-          color: white;
+          color: var(--ffn-text, white);
           padding: 56px 28px 80px;
           box-sizing: border-box;
         }
 
         .evento-detalle-container {
-          max-width: 1100px;
+          max-width: 1180px;
           margin: 0 auto;
         }
 
+        .evento-detalle-hero {
+          margin-bottom: 34px;
+        }
+
         .evento-detalle-eyebrow {
-          color: #8f8f8f;
+          color: var(--ffn-text-muted, #8f8f8f);
           font-size: 12px;
           text-transform: uppercase;
           letter-spacing: 2px;
@@ -159,28 +200,28 @@ export default async function EventoDetallePage({ params }: PageProps) {
         }
 
         .evento-detalle-title {
-          font-size: clamp(2.35rem, 6vw, 3.5rem);
-          line-height: 1.04;
+          font-size: clamp(2.35rem, 6vw, 3.7rem);
+          line-height: 1.02;
           margin: 0 0 16px 0;
-          letter-spacing: -1.8px;
-          max-width: 920px;
+          letter-spacing: -2px;
+          max-width: 980px;
           word-break: break-word;
         }
 
         .evento-detalle-cartel {
-          color: #f5c542;
-          font-size: clamp(1.1rem, 2.6vw, 1.5rem);
+          color: var(--ffn-accent, #f5c542);
+          font-size: clamp(1.08rem, 2.6vw, 1.45rem);
           line-height: 1.45;
-          margin: 0 0 18px 0;
+          margin: 0 0 14px 0;
           word-break: break-word;
         }
 
-        .evento-detalle-descripcion {
-          color: #b9b9b9;
-          font-size: clamp(1.02rem, 2vw, 1.25rem);
-          line-height: 1.85;
-          margin: 0 0 30px 0;
-          max-width: 920px;
+        .evento-detalle-lead {
+          color: var(--ffn-text-soft, #b9b9b9);
+          font-size: clamp(1rem, 2vw, 1.18rem);
+          line-height: 1.8;
+          margin: 0;
+          max-width: 940px;
         }
 
         .evento-detalle-meta {
@@ -188,7 +229,7 @@ export default async function EventoDetallePage({ params }: PageProps) {
           flex-wrap: wrap;
           gap: 12px;
           margin-bottom: 42px;
-          padding-bottom: 22px;
+          padding-bottom: 24px;
           border-bottom: 1px solid rgba(255,255,255,0.08);
         }
 
@@ -199,9 +240,67 @@ export default async function EventoDetallePage({ params }: PageProps) {
           border-radius: 999px;
           border: 1px solid rgba(255,255,255,0.08);
           background: rgba(255,255,255,0.03);
-          color: #888;
+          color: #c9c9c9;
           font-size: 13px;
           line-height: 1.4;
+        }
+
+        .evento-detalle-meta-pill a {
+          color: inherit;
+          text-decoration: none;
+        }
+
+        .evento-detalle-layout {
+          display: grid;
+          grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.95fr);
+          gap: 22px;
+          align-items: start;
+          margin-bottom: 56px;
+        }
+
+        .evento-detalle-panel {
+          background:
+            linear-gradient(180deg, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.02) 100%);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 20px;
+          padding: 24px;
+          box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+          min-width: 0;
+          box-sizing: border-box;
+        }
+
+        .evento-detalle-panel-title {
+          margin: 0 0 14px 0;
+          font-size: 1.05rem;
+          line-height: 1.2;
+          letter-spacing: -0.3px;
+        }
+
+        .evento-detalle-panel-text {
+          margin: 0;
+          color: var(--ffn-text-soft, #b9b9b9);
+          line-height: 1.82;
+          font-size: 15px;
+          white-space: pre-line;
+        }
+
+        .evento-detalle-info-list {
+          display: grid;
+          gap: 12px;
+          margin: 0;
+        }
+
+        .evento-detalle-info-item {
+          margin: 0;
+          color: var(--ffn-text-soft, #b9b9b9);
+          line-height: 1.65;
+          font-size: 15px;
+          word-break: break-word;
+        }
+
+        .evento-detalle-info-item strong {
+          color: white;
+          font-weight: 600;
         }
 
         .evento-detalle-section {
@@ -225,12 +324,7 @@ export default async function EventoDetallePage({ params }: PageProps) {
           line-height: 1.7;
         }
 
-        .evento-detalle-grid-protagonistas {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 18px;
-        }
-
+        .evento-detalle-grid-protagonistas,
         .evento-detalle-grid-noticias {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -278,7 +372,7 @@ export default async function EventoDetallePage({ params }: PageProps) {
         }
 
         .evento-detalle-card-badge {
-          color: #f5c542;
+          color: var(--ffn-accent, #f5c542);
           font-size: 12px;
           text-transform: uppercase;
           letter-spacing: 1.6px;
@@ -286,7 +380,7 @@ export default async function EventoDetallePage({ params }: PageProps) {
         }
 
         .evento-detalle-card-title {
-          font-size: clamp(1.35rem, 2.4vw, 1.7rem);
+          font-size: clamp(1.35rem, 2.4vw, 1.72rem);
           line-height: 1.2;
           margin: 0 0 12px 0;
           letter-spacing: -0.5px;
@@ -294,25 +388,26 @@ export default async function EventoDetallePage({ params }: PageProps) {
         }
 
         .evento-detalle-card-subtitle {
-          color: #f5c542;
+          color: var(--ffn-accent, #f5c542);
           margin: 0 0 14px 0;
-          font-size: clamp(1rem, 1.8vw, 1.06rem);
+          font-size: clamp(1rem, 1.8vw, 1.05rem);
           line-height: 1.5;
           word-break: break-word;
         }
 
         .evento-detalle-card-text {
-          color: #b9b9b9;
+          color: var(--ffn-text-soft, #b9b9b9);
           font-size: 15px;
-          line-height: 1.7;
+          line-height: 1.75;
           margin: 0 0 18px 0;
           word-break: break-word;
+          white-space: pre-line;
         }
 
         .evento-detalle-card-data {
           display: grid;
           gap: 8px;
-          color: #bbb;
+          color: #c3c3c3;
           font-size: 15px;
           line-height: 1.65;
           min-width: 0;
@@ -329,15 +424,18 @@ export default async function EventoDetallePage({ params }: PageProps) {
         }
 
         .evento-detalle-cta {
-          margin: 18px 0 0 0;
-          color: #f5c542;
+          color: var(--ffn-accent, #f5c542);
           font-size: 14px;
           line-height: 1.4;
-          margin-top: auto;
+          margin: auto 0 0 0;
           padding-top: 18px;
         }
 
         @media (max-width: 1100px) {
+          .evento-detalle-layout {
+            grid-template-columns: minmax(0, 1fr);
+          }
+
           .evento-detalle-grid-protagonistas,
           .evento-detalle-grid-noticias {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -357,6 +455,7 @@ export default async function EventoDetallePage({ params }: PageProps) {
             margin-bottom: 42px;
           }
 
+          .evento-detalle-panel,
           .evento-detalle-card {
             padding: 22px;
           }
@@ -392,13 +491,16 @@ export default async function EventoDetallePage({ params }: PageProps) {
             gap: 16px;
           }
 
+          .evento-detalle-panel,
           .evento-detalle-card {
             padding: 18px;
             border-radius: 16px;
           }
 
           .evento-detalle-card-text,
-          .evento-detalle-card-data {
+          .evento-detalle-card-data,
+          .evento-detalle-panel-text,
+          .evento-detalle-info-item {
             font-size: 14px;
           }
 
@@ -413,33 +515,51 @@ export default async function EventoDetallePage({ params }: PageProps) {
       `}</style>
 
       <section className="evento-detalle-container">
-        <p className="evento-detalle-eyebrow">Evento</p>
+        <header className="evento-detalle-hero">
+          <p className="evento-detalle-eyebrow">Evento</p>
 
-        <h1 className="evento-detalle-title">{evento.nombre}</h1>
+          <h1 className="evento-detalle-title">{evento.nombre}</h1>
 
-        {evento.cartelPrincipal && (
-          <p className="evento-detalle-cartel">{evento.cartelPrincipal}</p>
-        )}
+          {evento.cartelPrincipal && (
+            <p className="evento-detalle-cartel">{evento.cartelPrincipal}</p>
+          )}
 
-        {evento.descripcion && (
-          <p className="evento-detalle-descripcion">{evento.descripcion}</p>
-        )}
+          {(evento.descripcionCorta || evento.descripcion) && (
+            <p className="evento-detalle-lead">
+              {evento.descripcionCorta || evento.descripcion}
+            </p>
+          )}
+        </header>
 
         <div className="evento-detalle-meta">
           {organizacionNombre && (
             <span className="evento-detalle-meta-pill">
-              Organización: {organizacionNombre}
+              Organización:{" "}
+              {organizacionSlug ? (
+                <Link href={`/organizaciones/${organizacionSlug}`}>
+                  {organizacionNombre}
+                </Link>
+              ) : (
+                organizacionNombre
+              )}
             </span>
           )}
 
-          {evento.disciplina && (
+          {disciplinaNombre && (
             <span className="evento-detalle-meta-pill">
-              Disciplina: {evento.disciplina}
+              Disciplina:{" "}
+              {disciplinaSlug ? (
+                <Link href={`/disciplinas/${disciplinaSlug}`}>{disciplinaNombre}</Link>
+              ) : (
+                disciplinaNombre
+              )}
             </span>
           )}
 
           {evento.estado && (
-            <span className="evento-detalle-meta-pill">Estado: {evento.estado}</span>
+            <span className="evento-detalle-meta-pill">
+              Estado: {formatEstado(evento.estado)}
+            </span>
           )}
 
           {evento.fecha && (
@@ -448,16 +568,95 @@ export default async function EventoDetallePage({ params }: PageProps) {
             </span>
           )}
 
-          {evento.ciudad && evento.pais && (
+          {evento.horaLocal && (
             <span className="evento-detalle-meta-pill">
-              Lugar: {evento.ciudad}, {evento.pais}
+              Hora: {evento.horaLocal}
+            </span>
+          )}
+
+          {(evento.ciudad || evento.pais) && (
+            <span className="evento-detalle-meta-pill">
+              Lugar: {[evento.ciudad, evento.pais].filter(Boolean).join(", ")}
             </span>
           )}
 
           {evento.recinto && (
-            <span className="evento-detalle-meta-pill">Recinto: {evento.recinto}</span>
+            <span className="evento-detalle-meta-pill">
+              Recinto: {evento.recinto}
+            </span>
+          )}
+
+          {evento.dondeVer && (
+            <span className="evento-detalle-meta-pill">
+              Dónde verlo: {evento.dondeVer}
+            </span>
           )}
         </div>
+
+        <section className="evento-detalle-layout">
+          <article className="evento-detalle-panel">
+            <h2 className="evento-detalle-panel-title">Sobre el evento</h2>
+            <p className="evento-detalle-panel-text">
+              {evento.descripcion ||
+                "Este evento todavía no tiene una descripción editorial desarrollada."}
+            </p>
+          </article>
+
+          <aside className="evento-detalle-panel">
+            <h2 className="evento-detalle-panel-title">Ficha rápida</h2>
+
+            <div className="evento-detalle-info-list">
+              {evento.fecha && (
+                <p className="evento-detalle-info-item">
+                  <strong>Fecha:</strong> {formatDate(evento.fecha)}
+                </p>
+              )}
+
+              {evento.horaLocal && (
+                <p className="evento-detalle-info-item">
+                  <strong>Hora:</strong> {evento.horaLocal}
+                </p>
+              )}
+
+              {(evento.ciudad || evento.pais) && (
+                <p className="evento-detalle-info-item">
+                  <strong>Ubicación:</strong>{" "}
+                  {[evento.ciudad, evento.pais].filter(Boolean).join(", ")}
+                </p>
+              )}
+
+              {evento.recinto && (
+                <p className="evento-detalle-info-item">
+                  <strong>Recinto:</strong> {evento.recinto}
+                </p>
+              )}
+
+              {evento.cartelPrincipal && (
+                <p className="evento-detalle-info-item">
+                  <strong>Pelea principal:</strong> {evento.cartelPrincipal}
+                </p>
+              )}
+
+              {evento.dondeVer && (
+                <p className="evento-detalle-info-item">
+                  <strong>Dónde verlo:</strong> {evento.dondeVer}
+                </p>
+              )}
+
+              {evento.estado && (
+                <p className="evento-detalle-info-item">
+                  <strong>Estado:</strong> {formatEstado(evento.estado)}
+                </p>
+              )}
+
+              {evento.notas && (
+                <p className="evento-detalle-info-item">
+                  <strong>Notas:</strong> {evento.notas}
+                </p>
+              )}
+            </div>
+          </aside>
+        </section>
 
         <section className="evento-detalle-section">
           <h2 className="evento-detalle-section-title">Protagonistas del evento</h2>
@@ -502,7 +701,7 @@ export default async function EventoDetallePage({ params }: PageProps) {
         </section>
 
         <section className="evento-detalle-section">
-          <h2 className="evento-detalle-section-title">Combates del evento</h2>
+          <h2 className="evento-detalle-section-title">Cartelera completa</h2>
 
           {combates.length === 0 ? (
             <p className="evento-detalle-empty">
@@ -522,6 +721,11 @@ export default async function EventoDetallePage({ params }: PageProps) {
                     className="evento-detalle-link"
                   >
                     <article className="evento-detalle-card">
+                      <p className="evento-detalle-card-label">
+                        {formatCartelera(combate.cartelera)}
+                        {typeof combate.orden === "number" ? ` · Orden ${combate.orden}` : ""}
+                      </p>
+
                       <h3 className="evento-detalle-card-title">
                         {luchadorRojoNombre} vs {luchadorAzulNombre}
                       </h3>
@@ -532,19 +736,28 @@ export default async function EventoDetallePage({ params }: PageProps) {
                         </p>
                       )}
 
+                      {combate.resumen && (
+                        <p className="evento-detalle-card-text">{combate.resumen}</p>
+                      )}
+
                       <div className="evento-detalle-card-data">
                         {combate.categoriaPeso && <p>Categoría: {combate.categoriaPeso}</p>}
-                        {combate.estado && <p>Estado: {combate.estado}</p>}
+                        {combate.estado && <p>Estado: {formatEstado(combate.estado)}</p>}
                         {combate.metodo && <p>Método: {combate.metodo}</p>}
-                        {typeof combate.asaltoFinal === "number" && (
-                          <p>Asalto final: {combate.asaltoFinal}</p>
+                        {typeof combate.asalto === "number" && (
+                          <p>Asalto final: {combate.asalto}</p>
                         )}
-                        {combate.tiempoFinal && <p>Tiempo final: {combate.tiempoFinal}</p>}
-                        {combate.cartelera && <p>Cartelera: {combate.cartelera}</p>}
-                        {combate.tituloEnJuego && <p>Pelea con título en juego</p>}
+                        {combate.tiempo && <p>Tiempo final: {combate.tiempo}</p>}
+                        {combate.tituloEnJuego && <p>Título en juego</p>}
+                        {combate.momentoClave && (
+                          <p>Momento clave: {combate.momentoClave}</p>
+                        )}
+                        {combate.consecuencia && (
+                          <p>Consecuencia: {combate.consecuencia}</p>
+                        )}
                       </div>
 
-                      <p className="evento-detalle-cta">Ver resultado</p>
+                      <p className="evento-detalle-cta">Ver resultado completo</p>
                     </article>
                   </Link>
                 );
