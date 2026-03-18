@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { client } from "../../../sanity/lib/client";
-import {
-  categoriaPesoPorSlugQuery,
-  combatesPorCategoriaQuery,
-  luchadoresPorCategoriaQuery,
-} from "../../../sanity/lib/queries";
+import { categoriaPesoPorSlugQuery } from "../../../sanity/lib/queries";
+
+type PageProps = {
+  params: Promise<{
+    slug: string;
+  }>;
+};
 
 type SluggedEntity = {
   _id?: string;
@@ -13,21 +15,27 @@ type SluggedEntity = {
   slug?: string;
 };
 
-type CategoriaPeso = {
-  _id: string;
-  nombre: string;
-  slug: string;
+type CategoriaPesoData = {
+  _id?: string;
+  nombre?: string;
+  slug?: string;
   limitePeso?: number;
   unidad?: string;
   descripcion?: string;
   activa?: boolean;
-  disciplina?: string;
+  disciplina?: string | SluggedEntity | null;
+  disciplinaSlug?: string;
+
+  luchadores?: unknown[];
+  luchadoresRelacionados?: unknown[];
+  combates?: unknown[];
+  combatesRelacionados?: unknown[];
 };
 
-type Luchador = {
+type LuchadorNormalizado = {
   _id: string;
   nombre: string;
-  slug: string;
+  slug?: string;
   apodo?: string;
   nacionalidad?: string;
   record?: string;
@@ -36,7 +44,7 @@ type Luchador = {
   organizacion?: string;
 };
 
-type Combate = {
+type CombateNormalizado = {
   _id: string;
   metodo?: string;
   asaltoFinal?: number;
@@ -47,33 +55,158 @@ type Combate = {
   estado?: string;
   evento?: string;
   eventoSlug?: string;
-  luchadorRojo?: SluggedEntity | string;
-  luchadorAzul?: SluggedEntity | string;
-  ganador?: SluggedEntity | string;
+  luchadorRojo?: string;
+  luchadorRojoSlug?: string;
+  luchadorAzul?: string;
+  luchadorAzulSlug?: string;
+  ganador?: string;
+  ganadorSlug?: string;
 };
 
-type PageProps = {
-  params: Promise<{
-    slug: string;
-  }>;
-};
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
 
-function getEntityName(value?: SluggedEntity | string | null) {
+function getString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function getNumber(value: unknown): number | undefined {
+  return typeof value === "number" && !Number.isNaN(value) ? value : undefined;
+}
+
+function getBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function getSlug(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) return value;
+
+  if (isObject(value)) {
+    const directSlug = getString(value.slug);
+    if (directSlug) return directSlug;
+
+    if (isObject(value.slug)) {
+      return getString(value.slug.current);
+    }
+  }
+
+  return undefined;
+}
+
+function getEntityName(value: unknown): string {
   if (!value) return "";
   if (typeof value === "string") return value;
-  return value.nombre || "";
+  if (isObject(value)) {
+    return getString(value.nombre) || "";
+  }
+  return "";
+}
+
+function normalizeLuchador(item: unknown): LuchadorNormalizado | null {
+  if (!isObject(item)) return null;
+
+  const _id = getString(item._id);
+  const nombre = getString(item.nombre);
+
+  if (!_id || !nombre) return null;
+
+  return {
+    _id,
+    nombre,
+    slug: getSlug(item.slug),
+    apodo: getString(item.apodo),
+    nacionalidad: getString(item.nacionalidad),
+    record: getString(item.record),
+    activo: getBoolean(item.activo),
+    disciplina: getEntityName(item.disciplina),
+    organizacion: getEntityName(item.organizacion),
+  };
+}
+
+function normalizeCombate(item: unknown): CombateNormalizado | null {
+  if (!isObject(item)) return null;
+
+  const _id = getString(item._id);
+  if (!_id) return null;
+
+  const luchadorRojo = isObject(item.luchadorRojo) ? item.luchadorRojo : item.luchadorRojo;
+  const luchadorAzul = isObject(item.luchadorAzul) ? item.luchadorAzul : item.luchadorAzul;
+  const ganador = isObject(item.ganador) ? item.ganador : item.ganador;
+  const evento = isObject(item.evento) ? item.evento : item.evento;
+
+  return {
+    _id,
+    metodo: getString(item.metodo),
+    asaltoFinal: getNumber(item.asaltoFinal ?? item.asalto),
+    tiempoFinal: getString(item.tiempoFinal ?? item.tiempo),
+    tituloEnJuego: getBoolean(item.tituloEnJuego),
+    cartelera: getString(item.cartelera),
+    orden: getNumber(item.orden),
+    estado: getString(item.estado),
+    evento: getEntityName(evento),
+    eventoSlug:
+      getString(item.eventoSlug) ||
+      (isObject(evento) ? getSlug(evento) : undefined),
+    luchadorRojo: getEntityName(luchadorRojo),
+    luchadorRojoSlug:
+      getString(item.luchadorRojoSlug) ||
+      (isObject(luchadorRojo) ? getSlug(luchadorRojo) : undefined),
+    luchadorAzul: getEntityName(luchadorAzul),
+    luchadorAzulSlug:
+      getString(item.luchadorAzulSlug) ||
+      (isObject(luchadorAzul) ? getSlug(luchadorAzul) : undefined),
+    ganador: getEntityName(ganador),
+    ganadorSlug:
+      getString(item.ganadorSlug) ||
+      (isObject(ganador) ? getSlug(ganador) : undefined),
+  };
+}
+
+function getArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 export default async function CategoriaPesoDetallePage({ params }: PageProps) {
   const { slug } = await params;
 
-  const categoria: CategoriaPeso | null = await client.fetch(categoriaPesoPorSlugQuery, { slug });
-  const luchadores: Luchador[] = await client.fetch(luchadoresPorCategoriaQuery, { slug });
-  const combates: Combate[] = await client.fetch(combatesPorCategoriaQuery, { slug });
+  const categoriaRaw = await client.fetch<CategoriaPesoData | null>(categoriaPesoPorSlugQuery, { slug });
 
-  if (!categoria) {
+  if (!categoriaRaw) {
     notFound();
   }
+
+  const categoria = {
+    _id: categoriaRaw._id || "",
+    nombre: categoriaRaw.nombre || "Categoría sin nombre",
+    slug: categoriaRaw.slug || slug,
+    limitePeso: categoriaRaw.limitePeso,
+    unidad: categoriaRaw.unidad,
+    descripcion: categoriaRaw.descripcion,
+    activa: categoriaRaw.activa,
+    disciplina: getEntityName(categoriaRaw.disciplina),
+    disciplinaSlug:
+      categoriaRaw.disciplinaSlug ||
+      (isObject(categoriaRaw.disciplina) ? getSlug(categoriaRaw.disciplina) : undefined),
+  };
+
+  const luchadoresFuente =
+    getArray(categoriaRaw.luchadores).length > 0
+      ? getArray(categoriaRaw.luchadores)
+      : getArray(categoriaRaw.luchadoresRelacionados);
+
+  const combatesFuente =
+    getArray(categoriaRaw.combates).length > 0
+      ? getArray(categoriaRaw.combates)
+      : getArray(categoriaRaw.combatesRelacionados);
+
+  const luchadores = luchadoresFuente
+    .map(normalizeLuchador)
+    .filter((item): item is LuchadorNormalizado => item !== null);
+
+  const combates = combatesFuente
+    .map(normalizeCombate)
+    .filter((item): item is CombateNormalizado => item !== null);
 
   const mostrarEstadoCategoria = typeof categoria.activa === "boolean";
 
@@ -362,7 +495,7 @@ export default async function CategoriaPesoDetallePage({ params }: PageProps) {
 
             {typeof categoria.limitePeso === "number" && (
               <span className="categoria-detalle-meta-pill">
-                Límite: {categoria.limitePeso} {categoria.unidad}
+                Límite: {categoria.limitePeso} {categoria.unidad || ""}
               </span>
             )}
 
@@ -393,12 +526,10 @@ export default async function CategoriaPesoDetallePage({ params }: PageProps) {
             </p>
           ) : (
             <div className="categoria-detalle-grid-luchadores">
-              {luchadores.map((luchador) => (
-                <Link
-                  key={luchador._id}
-                  href={`/luchadores/${luchador.slug}`}
-                  className="categoria-detalle-link"
-                >
+              {luchadores.map((luchador) => {
+                const tieneSlug = typeof luchador.slug === "string" && luchador.slug.trim().length > 0;
+
+                const contenido = (
                   <article className="categoria-detalle-card">
                     <h3 className="categoria-detalle-card-title">{luchador.nombre}</h3>
 
@@ -415,10 +546,26 @@ export default async function CategoriaPesoDetallePage({ params }: PageProps) {
                       )}
                     </div>
 
-                    <p className="categoria-detalle-cta">Ver perfil del luchador</p>
+                    <p className="categoria-detalle-cta">
+                      {tieneSlug ? "Ver perfil del luchador" : "Perfil no disponible"}
+                    </p>
                   </article>
-                </Link>
-              ))}
+                );
+
+                if (!tieneSlug) {
+                  return <div key={luchador._id}>{contenido}</div>;
+                }
+
+                return (
+                  <Link
+                    key={luchador._id}
+                    href={`/luchadores/${luchador.slug}`}
+                    className="categoria-detalle-link"
+                  >
+                    {contenido}
+                  </Link>
+                );
+              })}
             </div>
           )}
         </section>
@@ -433,9 +580,8 @@ export default async function CategoriaPesoDetallePage({ params }: PageProps) {
           ) : (
             <div className="categoria-detalle-grid-combates">
               {combates.map((combate) => {
-                const luchadorRojoNombre = getEntityName(combate.luchadorRojo) || "Luchador rojo";
-                const luchadorAzulNombre = getEntityName(combate.luchadorAzul) || "Luchador azul";
-                const ganadorNombre = getEntityName(combate.ganador);
+                const luchadorRojoNombre = combate.luchadorRojo || "Luchador rojo";
+                const luchadorAzulNombre = combate.luchadorAzul || "Luchador azul";
 
                 return (
                   <Link
@@ -448,23 +594,14 @@ export default async function CategoriaPesoDetallePage({ params }: PageProps) {
                         {luchadorRojoNombre} vs {luchadorAzulNombre}
                       </h3>
 
-                      {ganadorNombre && (
+                      {combate.ganador && (
                         <p className="categoria-detalle-card-highlight">
-                          Ganador: {ganadorNombre}
+                          Ganador: {combate.ganador}
                         </p>
                       )}
 
                       <div className="categoria-detalle-card-data">
-                        {combate.evento && combate.eventoSlug ? (
-                          <p>
-                            Evento:{" "}
-                            <span className="categoria-detalle-card-inline-link">
-                              {combate.evento}
-                            </span>
-                          </p>
-                        ) : (
-                          combate.evento && <p>Evento: {combate.evento}</p>
-                        )}
+                        {combate.evento && <p>Evento: {combate.evento}</p>}
                         {combate.estado && <p>Estado: {combate.estado}</p>}
                         {combate.metodo && <p>Método: {combate.metodo}</p>}
                         {typeof combate.asaltoFinal === "number" && (

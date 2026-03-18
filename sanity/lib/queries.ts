@@ -5,7 +5,8 @@ import {groq} from 'next-sanity'
    ========================= */
 
 export const noticiaDestacadaQuery = groq`
-  *[_type == "noticia" && destacada == true] | order(coalesce(fechaPublicacion, _createdAt) desc)[0]{
+  *[_type == "noticia" && destacada == true]
+    | order(coalesce(fechaPublicacion, _createdAt) desc)[0]{
     _id,
     titulo,
     "slug": slug.current,
@@ -18,16 +19,17 @@ export const noticiaDestacadaQuery = groq`
     "eventoRelacionadoSlug": eventoRelacionado->slug.current,
     "organizacionRelacionada": organizacionRelacionada->nombre,
     "organizacionRelacionadaSlug": organizacionRelacionada->slug.current,
-    "luchadoresRelacionados": luchadoresRelacionados[]->{
+    "luchadoresRelacionados": coalesce(luchadoresRelacionados[]->{
       _id,
       nombre,
       "slug": slug.current
-    }
+    }, [])
   }
 `
 
 export const ultimasNoticiasQuery = groq`
-  *[_type == "noticia"] | order(coalesce(fechaPublicacion, _createdAt) desc)[0...6]{
+  *[_type == "noticia"]
+    | order(coalesce(fechaPublicacion, _createdAt) desc)[0...6]{
     _id,
     titulo,
     "slug": slug.current,
@@ -37,14 +39,17 @@ export const ultimasNoticiasQuery = groq`
     "disciplina": disciplina->nombre,
     "disciplinaSlug": disciplina->slug.current,
     "eventoRelacionado": eventoRelacionado->nombre,
-    "eventoRelacionadoSlug": eventoRelacionado->slug.current,
-    "organizacionRelacionada": organizacionRelacionada->nombre,
-    "organizacionRelacionadaSlug": organizacionRelacionada->slug.current
+    "eventoRelacionadoSlug": eventoRelacionado->slug.current
   }
 `
 
-export const proximoEventoQuery = groq`
-  *[_type == "evento" && defined(fecha) && fecha >= now()] | order(fecha asc)[0]{
+export const proximosEventosQuery = groq`
+  *[
+    _type == "evento" &&
+    defined(fecha) &&
+    fecha >= string::split(now(), "T")[0]
+  ]
+    | order(fecha asc)[0...6]{
     _id,
     nombre,
     "slug": slug.current,
@@ -53,44 +58,57 @@ export const proximoEventoQuery = groq`
     ciudad,
     pais,
     recinto,
-    imagen,
+    estado,
     descripcionCorta,
+    "organizacion": organizacion->nombre,
+    "organizacionSlug": organizacion->slug.current,
     "disciplina": disciplina->nombre,
     "disciplinaSlug": disciplina->slug.current,
-    "organizacion": organizacion->nombre,
-    "organizacionSlug": organizacion->slug.current
+    "imagen": imagen
   }
 `
 
+/* Compatibilidad con archivos viejos que aún importen el singular */
+export const proximoEventoQuery = proximosEventosQuery
+
 export const luchadoresDestacadosQuery = groq`
-  *[_type == "luchador" && destacada == true] | order(_createdAt desc)[0...6]{
+  *[
+    _type == "luchador" &&
+    destacadoHome == true
+  ]
+    | order(ordenDestacadoHome asc, nombre asc)[0...6]{
     _id,
     nombre,
     "slug": slug.current,
     apodo,
-    nacionalidad,
-    imagen,
     record,
+    nacionalidad,
+    activo,
+    destacadoHome,
+    ordenDestacadoHome,
     "disciplina": disciplina->nombre,
     "disciplinaSlug": disciplina->slug.current,
+    "organizacion": organizacion->nombre,
+    "organizacionSlug": organizacion->slug.current,
     "categoriaPeso": categoriaPeso->nombre,
     "categoriaPesoSlug": categoriaPeso->slug.current,
-    "organizacion": organizacion->nombre,
-    "organizacionSlug": organizacion->slug.current
+    "imagen": imagen
   }
 `
 
 export const disciplinasHomeQuery = groq`
-  *[_type == "disciplina"] | order(nombre asc)[0...6]{
+  *[_type == "disciplina" && (!defined(activa) || activa == true)]
+    | order(nombre asc){
     _id,
     nombre,
-    descripcion,
-    "slug": slug.current
+    "slug": slug.current,
+    descripcion
   }
 `
 
 export const categoriasPesoHomeQuery = groq`
-  *[_type == "categoriaPeso"] | order(limitePeso asc, nombre asc)[0...6]{
+  *[_type == "categoriaPeso"]
+    | order(nombre asc){
     _id,
     nombre,
     "slug": slug.current,
@@ -120,11 +138,12 @@ export const noticiasQuery = groq`
     "eventoRelacionadoSlug": eventoRelacionado->slug.current,
     "organizacionRelacionada": organizacionRelacionada->nombre,
     "organizacionRelacionadaSlug": organizacionRelacionada->slug.current,
-    "luchadoresRelacionadosData": luchadoresRelacionados[]->{
+    "luchadoresRelacionados": coalesce(luchadoresRelacionados[]->nombre, []),
+    "luchadoresRelacionadosData": coalesce(luchadoresRelacionados[]->{
       _id,
       nombre,
       "slug": slug.current
-    }
+    }, [])
   }
 `
 
@@ -137,83 +156,18 @@ export const noticiaPorSlugQuery = groq`
     contenido,
     fechaPublicacion,
     destacada,
-    "disciplina": disciplina->{
-      _id,
-      nombre,
-      "slug": slug.current
-    },
-    "disciplinaSlug": disciplina->slug.current,
-    "eventoRelacionado": eventoRelacionado->{
-      _id,
-      nombre,
-      "slug": slug.current
-    },
-    "eventoRelacionadoSlug": eventoRelacionado->slug.current,
-    "organizacionRelacionada": organizacionRelacionada->{
-      _id,
-      nombre,
-      "slug": slug.current
-    },
-    "organizacionRelacionadaSlug": organizacionRelacionada->slug.current,
-    "luchadoresRelacionadosData": luchadoresRelacionados[]->{
-      _id,
-      nombre,
-      apodo,
-      imagen,
-      "slug": slug.current
-    }
-  }
-`
-
-export const noticiasPorDisciplinaQuery = groq`
-  *[_type == "noticia" && disciplina->slug.current == $slug] | order(coalesce(fechaPublicacion, _createdAt) desc)[0...12]{
-    _id,
-    titulo,
-    "slug": slug.current,
-    extracto,
-    fechaPublicacion,
-    destacada,
-    "eventoRelacionado": eventoRelacionado->nombre,
-    "eventoRelacionadoSlug": eventoRelacionado->slug.current,
-    "organizacionRelacionada": organizacionRelacionada->nombre,
-    "organizacionRelacionadaSlug": organizacionRelacionada->slug.current
-  }
-`
-
-export const noticiasPorEventoQuery = groq`
-  *[_type == "noticia" && eventoRelacionado->slug.current == $slug] | order(coalesce(fechaPublicacion, _createdAt) desc)[0...12]{
-    _id,
-    titulo,
-    "slug": slug.current,
-    extracto,
-    fechaPublicacion,
-    destacada,
-    "disciplina": disciplina->nombre,
-    "disciplinaSlug": disciplina->slug.current,
-    "organizacionRelacionada": organizacionRelacionada->nombre,
-    "organizacionRelacionadaSlug": organizacionRelacionada->slug.current,
-    "luchadoresRelacionados": luchadoresRelacionados[]->nombre
-  }
-`
-
-export const noticiasPorLuchadorQuery = groq`
-  *[
-    _type == "noticia" &&
-    references(*[_type == "luchador" && slug.current == $slug][0]._id)
-  ] | order(coalesce(fechaPublicacion, _createdAt) desc)[0...12]{
-    _id,
-    titulo,
-    "slug": slug.current,
-    extracto,
-    fechaPublicacion,
-    destacada,
     "disciplina": disciplina->nombre,
     "disciplinaSlug": disciplina->slug.current,
     "eventoRelacionado": eventoRelacionado->nombre,
     "eventoRelacionadoSlug": eventoRelacionado->slug.current,
     "organizacionRelacionada": organizacionRelacionada->nombre,
     "organizacionRelacionadaSlug": organizacionRelacionada->slug.current,
-    "luchadoresRelacionados": luchadoresRelacionados[]->nombre
+    "luchadoresRelacionados": coalesce(luchadoresRelacionados[]->nombre, []),
+    "luchadoresRelacionadosData": coalesce(luchadoresRelacionados[]->{
+      _id,
+      nombre,
+      "slug": slug.current
+    }, [])
   }
 `
 
@@ -222,7 +176,7 @@ export const noticiasPorLuchadorQuery = groq`
    ========================= */
 
 export const eventosQuery = groq`
-  *[_type == "evento"] | order(coalesce(fecha, _createdAt) desc){
+  *[_type == "evento"] | order(fecha desc){
     _id,
     nombre,
     "slug": slug.current,
@@ -231,16 +185,16 @@ export const eventosQuery = groq`
     ciudad,
     pais,
     recinto,
-    imagen,
+    estado,
     descripcionCorta,
     descripcion,
     dondeVer,
     notas,
-    estado,
+    "organizacion": organizacion->nombre,
+    "organizacionSlug": organizacion->slug.current,
     "disciplina": disciplina->nombre,
     "disciplinaSlug": disciplina->slug.current,
-    "organizacion": organizacion->nombre,
-    "organizacionSlug": organizacion->slug.current
+    imagen
   }
 `
 
@@ -254,102 +208,45 @@ export const eventoPorSlugQuery = groq`
     ciudad,
     pais,
     recinto,
-    imagen,
-    cartelPrincipal,
+    estado,
     descripcionCorta,
     descripcion,
     dondeVer,
     notas,
-    estado,
-    "disciplina": disciplina->{
-      _id,
-      nombre,
-      "slug": slug.current
-    },
+    "organizacion": organizacion->nombre,
+    "organizacionSlug": organizacion->slug.current,
+    "disciplina": disciplina->nombre,
     "disciplinaSlug": disciplina->slug.current,
-    "organizacion": organizacion->{
+    imagen,
+    "combates": coalesce(*[_type == "combate" && evento._ref == ^._id] | order(orden asc){
       _id,
-      nombre,
-      "slug": slug.current,
-      logo,
-      sitioWeb
-    },
-    "combates": *[_type == "combate" && references(^._id)] | order(cartelera asc, orden asc, _createdAt asc){
-      _id,
-      orden,
-      estado,
       metodo,
       asalto,
       tiempo,
-      cartelera,
-      tituloEnJuego,
+      estado,
       resumen,
       desarrollo,
       momentoClave,
       consecuencia,
-      "evento": evento->nombre,
-      "eventoSlug": evento->slug.current,
-      luchadorRojo->{
-        _id,
-        nombre,
-        "slug": slug.current
-      },
-      luchadorAzul->{
-        _id,
-        nombre,
-        "slug": slug.current
-      },
-      ganador->{
-        _id,
-        nombre,
-        "slug": slug.current
-      },
+      cartelera,
+      tituloEnJuego,
+      "luchadorRojo": luchadorRojo->nombre,
+      "luchadorRojoSlug": luchadorRojo->slug.current,
+      "luchadorAzul": luchadorAzul->nombre,
+      "luchadorAzulSlug": luchadorAzul->slug.current,
+      "ganador": ganador->nombre,
+      "ganadorSlug": ganador->slug.current,
       "categoriaPeso": categoriaPeso->nombre,
       "categoriaPesoSlug": categoriaPeso->slug.current
-    },
-    "noticiasRelacionadas": *[_type == "noticia" && references(^._id)] | order(coalesce(fechaPublicacion, _createdAt) desc)[0...6]{
+    }, []),
+    "noticiasRelacionadas": coalesce(*[_type == "noticia" && eventoRelacionado._ref == ^._id]
+      | order(coalesce(fechaPublicacion, _createdAt) desc)[0...5]{
       _id,
       titulo,
       "slug": slug.current,
       extracto,
       fechaPublicacion
-    },
-    "protagonistas": array::unique(
-      *[_type == "combate" && references(^._id)].luchadorRojo[]->{
-        _id,
-        nombre,
-        "slug": slug.current,
-        imagen,
-        apodo
-      } +
-      *[_type == "combate" && references(^._id)].luchadorAzul[]->{
-        _id,
-        nombre,
-        "slug": slug.current,
-        imagen,
-        apodo
-      }
-    )
-  }
-`
-
-export const eventosPorDisciplinaQuery = groq`
-  *[_type == "evento" && disciplina->slug.current == $slug] | order(coalesce(fecha, _createdAt) desc){
-    _id,
-    nombre,
-    "slug": slug.current,
-    fecha,
-    horaLocal,
-    ciudad,
-    pais,
-    recinto,
-    imagen,
-    descripcionCorta,
-    estado,
-    "disciplina": disciplina->nombre,
-    "disciplinaSlug": disciplina->slug.current,
-    "organizacion": organizacion->nombre,
-    "organizacionSlug": organizacion->slug.current
+    }, [])
   }
 `
 
@@ -363,16 +260,20 @@ export const luchadoresQuery = groq`
     nombre,
     "slug": slug.current,
     apodo,
-    nacionalidad,
-    imagen,
     record,
-    biografia,
+    nacionalidad,
+    activo,
+    rankingDisciplina,
+    destacadoHome,
+    ordenDestacadoHome,
     "disciplina": disciplina->nombre,
     "disciplinaSlug": disciplina->slug.current,
+    "organizacion": organizacion->nombre,
+    "organizacionSlug": organizacion->slug.current,
     "categoriaPeso": categoriaPeso->nombre,
     "categoriaPesoSlug": categoriaPeso->slug.current,
-    "organizacion": organizacion->nombre,
-    "organizacionSlug": organizacion->slug.current
+    imagen,
+    descripcion
   }
 `
 
@@ -382,103 +283,53 @@ export const luchadorPorSlugQuery = groq`
     nombre,
     "slug": slug.current,
     apodo,
-    nacionalidad,
-    imagen,
     record,
-    biografia,
-    fechaNacimiento,
-    altura,
-    alcance,
-    stance,
+    nacionalidad,
     activo,
-    descripcion,
+    rankingDisciplina,
+    destacadoHome,
+    ordenDestacadoHome,
     "disciplina": disciplina->nombre,
     "disciplinaSlug": disciplina->slug.current,
-    "categoriaPeso": categoriaPeso->{
+    "organizacion": organizacion->nombre,
+    "organizacionSlug": organizacion->slug.current,
+    "categoriaPeso": categoriaPeso->nombre,
+    "categoriaPesoSlug": categoriaPeso->slug.current,
+    imagen,
+    descripcion,
+    "combatesRelacionados": coalesce(*[
+      _type == "combate" &&
+      (
+        luchadorRojo._ref == ^._id ||
+        luchadorAzul._ref == ^._id
+      )
+    ] | order(_createdAt desc)[0...8]{
       _id,
-      nombre,
-      "slug": slug.current,
-      limitePeso,
-      unidad
-    },
-    "organizacion": organizacion->{
-      _id,
-      nombre,
-      "slug": slug.current
-    },
-    "combates": *[_type == "combate" && (luchadorRojo._ref == ^._id || luchadorAzul._ref == ^._id)] | order(coalesce(evento->fecha, _createdAt) desc){
-      _id,
-      estado,
       metodo,
       asalto,
       tiempo,
-      cartelera,
-      tituloEnJuego,
-      resumen,
+      estado,
       "evento": evento->nombre,
       "eventoSlug": evento->slug.current,
-      "fechaEvento": evento->fecha,
+      "luchadorRojo": luchadorRojo->nombre,
+      "luchadorRojoSlug": luchadorRojo->slug.current,
+      "luchadorAzul": luchadorAzul->nombre,
+      "luchadorAzulSlug": luchadorAzul->slug.current,
+      "ganador": ganador->nombre,
+      "ganadorSlug": ganador->slug.current,
       "categoriaPeso": categoriaPeso->nombre,
-      "categoriaPesoSlug": categoriaPeso->slug.current,
-      luchadorRojo->{
-        _id,
-        nombre,
-        "slug": slug.current
-      },
-      luchadorAzul->{
-        _id,
-        nombre,
-        "slug": slug.current
-      },
-      ganador->{
-        _id,
-        nombre,
-        "slug": slug.current
-      }
-    },
-    "noticiasRelacionadas": *[_type == "noticia" && references(^._id)] | order(coalesce(fechaPublicacion, _createdAt) desc)[0...6]{
+      "categoriaPesoSlug": categoriaPeso->slug.current
+    }, []),
+    "noticiasRelacionadas": coalesce(*[
+      _type == "noticia" &&
+      references(^._id)
+    ] | order(coalesce(fechaPublicacion, _createdAt) desc)[0...6]{
       _id,
       titulo,
       "slug": slug.current,
       extracto,
       fechaPublicacion
-    }
-  }
-`
-
-export const luchadoresPorDisciplinaQuery = groq`
-  *[_type == "luchador" && disciplina->slug.current == $slug] | order(nombre asc){
-    _id,
-    nombre,
-    "slug": slug.current,
-    apodo,
-    nacionalidad,
-    imagen,
-    record,
-    "disciplina": disciplina->nombre,
-    "disciplinaSlug": disciplina->slug.current,
-    "categoriaPeso": categoriaPeso->nombre,
-    "categoriaPesoSlug": categoriaPeso->slug.current,
-    "organizacion": organizacion->nombre,
-    "organizacionSlug": organizacion->slug.current
-  }
-`
-
-export const luchadoresPorCategoriaQuery = groq`
-  *[_type == "luchador" && categoriaPeso->slug.current == $slug] | order(nombre asc){
-    _id,
-    nombre,
-    "slug": slug.current,
-    apodo,
-    nacionalidad,
-    imagen,
-    record,
-    "disciplina": disciplina->nombre,
-    "disciplinaSlug": disciplina->slug.current,
-    "categoriaPeso": categoriaPeso->nombre,
-    "categoriaPesoSlug": categoriaPeso->slug.current,
-    "organizacion": organizacion->nombre,
-    "organizacionSlug": organizacion->slug.current
+    }, [])
   }
 `
 
@@ -486,55 +337,45 @@ export const luchadoresPorCategoriaQuery = groq`
    RESULTADOS / COMBATES
    ========================= */
 
-export const resultadosQuery = groq`
-  *[_type == "combate"] | order(coalesce(evento->fecha, _createdAt) desc){
+export const combatesQuery = groq`
+  *[_type == "combate"] | order(_createdAt desc){
     _id,
-    orden,
-    estado,
+    _createdAt,
     metodo,
     asalto,
     tiempo,
-    cartelera,
     tituloEnJuego,
+    cartelera,
+    orden,
+    estado,
     resumen,
+    desarrollo,
+    momentoClave,
+    consecuencia,
     "evento": evento->nombre,
     "eventoSlug": evento->slug.current,
-    "fechaEvento": evento->fecha,
+    "luchadorRojo": luchadorRojo->nombre,
+    "luchadorRojoSlug": luchadorRojo->slug.current,
+    "luchadorAzul": luchadorAzul->nombre,
+    "luchadorAzulSlug": luchadorAzul->slug.current,
+    "ganador": ganador->nombre,
+    "ganadorSlug": ganador->slug.current,
     "categoriaPeso": categoriaPeso->nombre,
-    "categoriaPesoSlug": categoriaPeso->slug.current,
-    "organizacion": evento->organizacion->nombre,
-    "organizacionSlug": evento->organizacion->slug.current,
-    "disciplina": evento->disciplina->nombre,
-    "disciplinaSlug": evento->disciplina->slug.current,
-    luchadorRojo->{
-      _id,
-      nombre,
-      "slug": slug.current
-    },
-    luchadorAzul->{
-      _id,
-      nombre,
-      "slug": slug.current
-    },
-    ganador->{
-      _id,
-      nombre,
-      "slug": slug.current
-    }
+    "categoriaPesoSlug": categoriaPeso->slug.current
   }
 `
 
-export const resultadoPorIdQuery = groq`
+export const combatePorIdQuery = groq`
   *[_type == "combate" && _id == $id][0]{
     _id,
     _createdAt,
-    orden,
-    estado,
     metodo,
     asalto,
     tiempo,
-    cartelera,
     tituloEnJuego,
+    cartelera,
+    orden,
+    estado,
     resumen,
     desarrollo,
     momentoClave,
@@ -548,170 +389,45 @@ export const resultadoPorIdQuery = groq`
       ciudad,
       pais,
       recinto,
-      cartelPrincipal,
       descripcionCorta,
       descripcion,
       dondeVer,
       estado
-    },
-    "disciplina": evento->disciplina->nombre,
-    "disciplinaSlug": evento->disciplina->slug.current,
-    "categoriaPeso": categoriaPeso->{
-      _id,
-      nombre,
-      "slug": slug.current,
-      limitePeso,
-      unidad
     },
     "organizacion": evento->organizacion->{
       _id,
       nombre,
       "slug": slug.current
     },
-    luchadorRojo->{
+    "disciplina": evento->disciplina->nombre,
+    "disciplinaSlug": evento->disciplina->slug.current,
+    "luchadorRojo": luchadorRojo->{
       _id,
       nombre,
+      "slug": slug.current,
       apodo,
-      imagen,
-      "slug": slug.current
+      imagen
     },
-    luchadorAzul->{
+    "luchadorAzul": luchadorAzul->{
       _id,
       nombre,
+      "slug": slug.current,
       apodo,
-      imagen,
-      "slug": slug.current
+      imagen
     },
-    ganador->{
+    "ganador": ganador->{
       _id,
       nombre,
-      "slug": slug.current
-    }
-  }
-`
-
-export const combatePorIdQuery = resultadoPorIdQuery
-export const combatesQuery = resultadosQuery
-
-export const combatesPorCategoriaQuery = groq`
-  *[_type == "combate" && categoriaPeso->slug.current == $slug] | order(coalesce(evento->fecha, _createdAt) desc){
-    _id,
-    orden,
-    estado,
-    metodo,
-    asalto,
-    tiempo,
-    cartelera,
-    tituloEnJuego,
-    resumen,
-    "evento": evento->nombre,
-    "eventoSlug": evento->slug.current,
-    "fechaEvento": evento->fecha,
-    "disciplina": evento->disciplina->nombre,
-    "disciplinaSlug": evento->disciplina->slug.current,
-    "categoriaPeso": categoriaPeso->nombre,
-    "categoriaPesoSlug": categoriaPeso->slug.current,
-    "organizacion": evento->organizacion->nombre,
-    "organizacionSlug": evento->organizacion->slug.current,
-    luchadorRojo->{
-      _id,
-      nombre,
-      "slug": slug.current
+      "slug": slug.current,
+      apodo,
+      imagen
     },
-    luchadorAzul->{
+    "categoriaPeso": categoriaPeso->{
       _id,
       nombre,
-      "slug": slug.current
-    },
-    ganador->{
-      _id,
-      nombre,
-      "slug": slug.current
-    }
-  }
-`
-
-export const combatesPorLuchadorQuery = groq`
-  *[
-    _type == "combate" &&
-    (
-      luchadorRojo->slug.current == $slug ||
-      luchadorAzul->slug.current == $slug
-    )
-  ] | order(coalesce(evento->fecha, _createdAt) desc){
-    _id,
-    orden,
-    estado,
-    metodo,
-    asalto,
-    tiempo,
-    cartelera,
-    tituloEnJuego,
-    resumen,
-    "evento": evento->nombre,
-    "eventoSlug": evento->slug.current,
-    "fechaEvento": evento->fecha,
-    "disciplina": evento->disciplina->nombre,
-    "disciplinaSlug": evento->disciplina->slug.current,
-    "categoriaPeso": categoriaPeso->nombre,
-    "categoriaPesoSlug": categoriaPeso->slug.current,
-    "organizacion": evento->organizacion->nombre,
-    "organizacionSlug": evento->organizacion->slug.current,
-    luchadorRojo->{
-      _id,
-      nombre,
-      "slug": slug.current
-    },
-    luchadorAzul->{
-      _id,
-      nombre,
-      "slug": slug.current
-    },
-    ganador->{
-      _id,
-      nombre,
-      "slug": slug.current
-    }
-  }
-`
-
-export const combatesPorEventoQuery = groq`
-  *[_type == "combate" && evento->slug.current == $slug] | order(cartelera asc, orden asc, _createdAt asc){
-    _id,
-    orden,
-    estado,
-    metodo,
-    asalto,
-    tiempo,
-    cartelera,
-    tituloEnJuego,
-    resumen,
-    desarrollo,
-    momentoClave,
-    consecuencia,
-    "evento": evento->nombre,
-    "eventoSlug": evento->slug.current,
-    "fechaEvento": evento->fecha,
-    "disciplina": evento->disciplina->nombre,
-    "disciplinaSlug": evento->disciplina->slug.current,
-    "categoriaPeso": categoriaPeso->nombre,
-    "categoriaPesoSlug": categoriaPeso->slug.current,
-    "organizacion": evento->organizacion->nombre,
-    "organizacionSlug": evento->organizacion->slug.current,
-    luchadorRojo->{
-      _id,
-      nombre,
-      "slug": slug.current
-    },
-    luchadorAzul->{
-      _id,
-      nombre,
-      "slug": slug.current
-    },
-    ganador->{
-      _id,
-      nombre,
-      "slug": slug.current
+      "slug": slug.current,
+      limitePeso,
+      unidad
     }
   }
 `
@@ -724,8 +440,9 @@ export const disciplinasQuery = groq`
   *[_type == "disciplina"] | order(nombre asc){
     _id,
     nombre,
+    "slug": slug.current,
     descripcion,
-    "slug": slug.current
+    activa
   }
 `
 
@@ -733,10 +450,10 @@ export const disciplinaPorSlugQuery = groq`
   *[_type == "disciplina" && slug.current == $slug][0]{
     _id,
     nombre,
-    descripcion,
     "slug": slug.current,
+    descripcion,
     activa,
-    "organizaciones": *[
+    "organizaciones": coalesce(*[
       _type == "organizacion" &&
       references(^._id)
     ] | order(nombre asc){
@@ -749,39 +466,45 @@ export const disciplinaPorSlugQuery = groq`
       anioFundacion,
       activa,
       logo
-    },
-    "categoriasPeso": *[
+    }, []),
+    "categoriasPeso": coalesce(*[
       _type == "categoriaPeso" &&
       disciplina._ref == ^._id
-    ] | order(limitePeso asc, nombre asc){
+    ] | order(limitePeso asc){
       _id,
       nombre,
       "slug": slug.current,
       limitePeso,
       unidad,
       descripcion
-    },
-    "luchadores": *[
+    }, []),
+    "rankingTop": coalesce(*[
       _type == "luchador" &&
-      disciplina._ref == ^._id
-    ] | order(nombre asc)[0...24]{
+      disciplina._ref == ^._id &&
+      defined(rankingDisciplina)
+    ] | order(rankingDisciplina asc)[0...10]{
       _id,
       nombre,
       "slug": slug.current,
       apodo,
       nacionalidad,
-      imagen,
       record,
       activo,
+      imagen,
+      rankingDisciplina,
       "categoriaPeso": categoriaPeso->nombre,
       "categoriaPesoSlug": categoriaPeso->slug.current,
       "organizacion": organizacion->nombre,
       "organizacionSlug": organizacion->slug.current
-    },
-    "eventos": *[
+    }, []),
+    "totalLuchadores": count(*[
+      _type == "luchador" &&
+      disciplina._ref == ^._id
+    ]),
+    "eventos": coalesce(*[
       _type == "evento" &&
       disciplina._ref == ^._id
-    ] | order(coalesce(fecha, _createdAt) desc)[0...12]{
+    ] | order(fecha desc)[0...6]{
       _id,
       nombre,
       "slug": slug.current,
@@ -790,12 +513,11 @@ export const disciplinaPorSlugQuery = groq`
       ciudad,
       pais,
       recinto,
-      imagen,
       descripcionCorta,
       estado,
       "organizacion": organizacion->nombre,
       "organizacionSlug": organizacion->slug.current
-    }
+    }, [])
   }
 `
 
@@ -804,7 +526,7 @@ export const disciplinaPorSlugQuery = groq`
    ========================= */
 
 export const categoriasPesoQuery = groq`
-  *[_type == "categoriaPeso"] | order(limitePeso asc, nombre asc){
+  *[_type == "categoriaPeso"] | order(nombre asc){
     _id,
     nombre,
     "slug": slug.current,
@@ -826,55 +548,36 @@ export const categoriaPesoPorSlugQuery = groq`
     descripcion,
     "disciplina": disciplina->nombre,
     "disciplinaSlug": disciplina->slug.current,
-    "luchadores": *[
+    "luchadores": coalesce(*[
       _type == "luchador" &&
-      (
-        categoriaPeso._ref == ^._id ||
-        categoriaPeso == ^.nombre
-      )
+      categoriaPeso._ref == ^._id
     ] | order(nombre asc){
       _id,
       nombre,
-      apodo,
-      imagen,
       "slug": slug.current,
-      "disciplina": disciplina->nombre,
-      "disciplinaSlug": disciplina->slug.current,
+      apodo,
+      record,
       "organizacion": organizacion->nombre,
       "organizacionSlug": organizacion->slug.current
-    },
-    "combates": *[
+    }, []),
+    "combatesRelacionados": coalesce(*[
       _type == "combate" &&
-      (
-        categoriaPeso._ref == ^._id ||
-        categoriaPeso == ^.nombre
-      )
-    ] | order(coalesce(evento->fecha, _createdAt) desc){
+      categoriaPeso._ref == ^._id
+    ] | order(_createdAt desc)[0...10]{
       _id,
-      estado,
       metodo,
       asalto,
       tiempo,
-      resumen,
+      estado,
       "evento": evento->nombre,
       "eventoSlug": evento->slug.current,
-      "fechaEvento": evento->fecha,
-      luchadorRojo->{
-        _id,
-        nombre,
-        "slug": slug.current
-      },
-      luchadorAzul->{
-        _id,
-        nombre,
-        "slug": slug.current
-      },
-      ganador->{
-        _id,
-        nombre,
-        "slug": slug.current
-      }
-    }
+      "luchadorRojo": luchadorRojo->nombre,
+      "luchadorRojoSlug": luchadorRojo->slug.current,
+      "luchadorAzul": luchadorAzul->nombre,
+      "luchadorAzulSlug": luchadorAzul->slug.current,
+      "ganador": ganador->nombre,
+      "ganadorSlug": ganador->slug.current
+    }, [])
   }
 `
 
@@ -893,16 +596,15 @@ export const organizacionesQuery = groq`
     sede,
     anioFundacion,
     identidad,
-    datosCuriosos,
-    logo,
-    banner,
     sitioWeb,
     activa,
-    "disciplinas": disciplinas[]->{
+    logo,
+    banner,
+    "disciplinas": coalesce(disciplinas[]->{
       _id,
       nombre,
       "slug": slug.current
-    }
+    }, [])
   }
 `
 
@@ -918,48 +620,19 @@ export const organizacionPorSlugQuery = groq`
     anioFundacion,
     identidad,
     datosCuriosos,
-    logo,
-    banner,
     sitioWeb,
     activa,
-    "disciplinas": disciplinas[]->{
+    logo,
+    banner,
+    "disciplinas": coalesce(disciplinas[]->{
       _id,
       nombre,
       "slug": slug.current
-    },
-    "eventos": *[_type == "evento" && organizacion._ref == ^._id] | order(coalesce(fecha, _createdAt) desc)[0...12]{
-      _id,
-      nombre,
-      "slug": slug.current,
-      fecha,
-      horaLocal,
-      ciudad,
-      pais,
-      recinto,
-      imagen,
-      descripcionCorta,
-      estado,
-      "disciplina": disciplina->nombre,
-      "disciplinaSlug": disciplina->slug.current
-    },
-    "luchadores": *[_type == "luchador" && organizacion._ref == ^._id] | order(nombre asc)[0...24]{
-      _id,
-      nombre,
-      apodo,
-      imagen,
-      "slug": slug.current,
-      "disciplina": disciplina->nombre,
-      "disciplinaSlug": disciplina->slug.current,
-      "categoriaPeso": categoriaPeso->nombre,
-      "categoriaPesoSlug": categoriaPeso->slug.current
-    },
-    "noticias": *[
+    }, []),
+    "noticias": coalesce(*[
       _type == "noticia" &&
-      (
-        organizacionRelacionada._ref == ^._id ||
-        eventoRelacionado->organizacion._ref == ^._id
-      )
-    ] | order(coalesce(fechaPublicacion, _createdAt) desc)[0...12]{
+      organizacionRelacionada._ref == ^._id
+    ] | order(coalesce(fechaPublicacion, _createdAt) desc)[0...5]{
       _id,
       titulo,
       "slug": slug.current,
@@ -967,35 +640,67 @@ export const organizacionPorSlugQuery = groq`
       fechaPublicacion,
       "disciplina": disciplina->nombre,
       "disciplinaSlug": disciplina->slug.current
-    },
-    "combates": *[_type == "combate" && evento->organizacion._ref == ^._id] | order(coalesce(evento->fecha, _createdAt) desc)[0...12]{
+    }, []),
+    "eventos": coalesce(*[
+      _type == "evento" &&
+      organizacion._ref == ^._id
+    ] | order(fecha desc)[0...5]{
       _id,
-      estado,
+      nombre,
+      "slug": slug.current,
+      fecha,
+      ciudad,
+      pais,
+      recinto,
+      imagen,
+      "disciplina": disciplina->nombre,
+      "disciplinaSlug": disciplina->slug.current
+    }, []),
+    "luchadores": coalesce(*[
+      _type == "luchador" &&
+      organizacion._ref == ^._id
+    ] | order(nombre asc)[0...10]{
+      _id,
+      nombre,
+      "slug": slug.current,
+      apodo,
+      imagen,
+      nacionalidad,
+      record,
+      activo,
+      "disciplina": disciplina->nombre,
+      "disciplinaSlug": disciplina->slug.current,
+      "categoriaPeso": categoriaPeso->nombre,
+      "categoriaPesoSlug": categoriaPeso->slug.current
+    }, []),
+    "combates": coalesce(*[
+      _type == "combate" &&
+      evento->organizacion._ref == ^._id
+    ] | order(_createdAt desc)[0...6]{
+      _id,
       metodo,
       asalto,
       tiempo,
-      cartelera,
-      tituloEnJuego,
-      resumen,
+      estado,
       "evento": evento->nombre,
       "eventoSlug": evento->slug.current,
+      "luchadorRojo": luchadorRojo->{
+        _id,
+        nombre,
+        "slug": slug.current
+      },
+      "luchadorAzul": luchadorAzul->{
+        _id,
+        nombre,
+        "slug": slug.current
+      },
+      "ganador": ganador->{
+        _id,
+        nombre,
+        "slug": slug.current
+      },
       "categoriaPeso": categoriaPeso->nombre,
-      "categoriaPesoSlug": categoriaPeso->slug.current,
-      luchadorRojo->{
-        _id,
-        nombre,
-        "slug": slug.current
-      },
-      luchadorAzul->{
-        _id,
-        nombre,
-        "slug": slug.current
-      },
-      ganador->{
-        _id,
-        nombre,
-        "slug": slug.current
-      }
-    }
+      "categoriaPesoSlug": categoriaPeso->slug.current
+    }, [])
   }
 `

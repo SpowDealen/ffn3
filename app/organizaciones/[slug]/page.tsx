@@ -70,11 +70,9 @@ type CombateItem = {
   _id?: string;
   evento?: string;
   eventoSlug?: string;
-  luchadorRojo?: string;
-  luchadorRojoSlug?: string;
-  luchadorAzul?: string;
-  luchadorAzulSlug?: string;
-  ganador?: string;
+  luchadorRojo?: SimpleItem;
+  luchadorAzul?: SimpleItem;
+  ganador?: SimpleItem;
   categoriaPeso?: string;
   categoriaPesoSlug?: string;
   metodo?: string;
@@ -147,17 +145,9 @@ function buildImageUrl(
   if (isSanityImage(image)) {
     let chain = builder.image(image);
 
-    if (options?.width) {
-      chain = chain.width(options.width);
-    }
-
-    if (options?.height) {
-      chain = chain.height(options.height);
-    }
-
-    if (options?.fit) {
-      chain = chain.fit(options.fit);
-    }
+    if (options?.width) chain = chain.width(options.width);
+    if (options?.height) chain = chain.height(options.height);
+    if (options?.fit) chain = chain.fit(options.fit);
 
     return chain.url();
   }
@@ -176,6 +166,47 @@ function formatFecha(fecha?: string) {
     year: "numeric",
   }).format(d);
 }
+
+function formatEstado(value?: string) {
+  if (!value) return "";
+  if (value === "proximo") return "Próximo";
+  if (value === "celebrado") return "Celebrado";
+  if (value === "cancelado") return "Cancelado";
+  if (value === "programado") return "Programado";
+  if (value === "finalizado") return "Finalizado";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function getItemName(value?: SimpleItem | null, fallback = ""): string {
+  return getSafeText(value?.nombre, fallback);
+}
+
+function getItemSlug(value?: SimpleItem | null): string {
+  return getSafeText(value?.slug);
+}
+
+function getCompactLocation(ciudad?: string, pais?: string) {
+  return [ciudad, pais].filter(Boolean).join(", ");
+}
+
+const blockStyle: React.CSSProperties = {
+  border: "1px solid var(--ffn-border)",
+  borderRadius: "22px",
+  background: "var(--ffn-surface)",
+  padding: "20px",
+  display: "grid",
+  gap: "14px",
+  alignContent: "start",
+};
+
+const itemCardStyle: React.CSSProperties = {
+  border: "1px solid rgba(255,255,255,0.06)",
+  borderRadius: "16px",
+  padding: "14px 15px",
+  background: "rgba(255,255,255,0.025)",
+  display: "grid",
+  gap: "8px",
+};
 
 export default async function OrganizacionDetailPage({ params }: PageProps) {
   const resolvedParams = await Promise.resolve(params);
@@ -233,7 +264,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
     <main
       style={{
         minHeight: "100vh",
-        padding: "40px 20px",
+        padding: "34px 18px 56px",
         background: "var(--ffn-bg)",
         color: "var(--ffn-text)",
       }}
@@ -241,10 +272,10 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
       <div
         style={{
           width: "100%",
-          maxWidth: "1280px",
+          maxWidth: "1240px",
           margin: "0 auto",
           display: "grid",
-          gap: "24px",
+          gap: "20px",
         }}
       >
         <Link
@@ -256,7 +287,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
             width: "fit-content",
             color: "var(--ffn-text-soft)",
             textDecoration: "none",
-            fontSize: "0.95rem",
+            fontSize: "0.94rem",
           }}
         >
           ← Volver a organizaciones
@@ -267,7 +298,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
             position: "relative",
             overflow: "hidden",
             border: "1px solid var(--ffn-border)",
-            borderRadius: "28px",
+            borderRadius: "26px",
             background:
               "linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
             boxShadow: "0 18px 40px rgba(0,0,0,0.18)",
@@ -278,7 +309,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
               style={{
                 position: "relative",
                 width: "100%",
-                height: "320px",
+                height: "280px",
                 borderBottom: "1px solid var(--ffn-border)",
                 background: "rgba(255,255,255,0.03)",
               }}
@@ -303,7 +334,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
           ) : (
             <div
               style={{
-                height: "120px",
+                height: "100px",
                 borderBottom: "1px solid var(--ffn-border)",
                 background:
                   "linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))",
@@ -313,15 +344,15 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
 
           <div
             style={{
-              padding: "28px",
+              padding: "24px",
               display: "grid",
-              gap: "20px",
+              gap: "18px",
             }}
           >
             <div
               style={{
                 display: "flex",
-                gap: "20px",
+                gap: "18px",
                 alignItems: "flex-start",
                 flexWrap: "wrap",
               }}
@@ -330,9 +361,9 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                 <div
                   style={{
                     position: "relative",
-                    width: "110px",
-                    height: "110px",
-                    borderRadius: "22px",
+                    width: "96px",
+                    height: "96px",
+                    borderRadius: "20px",
                     overflow: "hidden",
                     border: "1px solid rgba(255,255,255,0.08)",
                     background: "rgba(255,255,255,0.05)",
@@ -344,7 +375,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                     src={logoUrl}
                     alt={organizacion.nombre || "Logo"}
                     fill
-                    sizes="110px"
+                    sizes="96px"
                     style={{ objectFit: "contain", padding: "10px" }}
                   />
                 </div>
@@ -353,7 +384,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
               <div
                 style={{
                   display: "grid",
-                  gap: "12px",
+                  gap: "10px",
                   flex: 1,
                   minWidth: 0,
                 }}
@@ -382,9 +413,9 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
-                      padding: "6px 12px",
+                      padding: "6px 11px",
                       borderRadius: "999px",
-                      fontSize: "0.82rem",
+                      fontSize: "0.8rem",
                       border: "1px solid var(--ffn-border)",
                       background: "rgba(255,255,255,0.04)",
                       color: organizacion.activa
@@ -399,7 +430,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                 <h1
                   style={{
                     margin: 0,
-                    fontSize: "clamp(2.2rem, 4vw, 3.4rem)",
+                    fontSize: "clamp(2rem, 4vw, 3.2rem)",
                     lineHeight: 1.02,
                   }}
                 >
@@ -411,9 +442,9 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                     style={{
                       margin: 0,
                       color: "var(--ffn-text-soft)",
-                      fontSize: "1.06rem",
-                      lineHeight: 1.75,
-                      maxWidth: "920px",
+                      fontSize: "1rem",
+                      lineHeight: 1.7,
+                      maxWidth: "900px",
                     }}
                   >
                     {organizacion.descripcionCorta}
@@ -424,7 +455,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                   style={{
                     display: "flex",
                     flexWrap: "wrap",
-                    gap: "10px",
+                    gap: "9px",
                   }}
                 >
                   {organizacion.paisOrigen ? (
@@ -432,11 +463,11 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
-                        padding: "8px 12px",
+                        padding: "7px 11px",
                         borderRadius: "999px",
                         border: "1px solid var(--ffn-border)",
                         background: "rgba(255,255,255,0.04)",
-                        fontSize: "0.9rem",
+                        fontSize: "0.88rem",
                       }}
                     >
                       País: {organizacion.paisOrigen}
@@ -448,11 +479,11 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
-                        padding: "8px 12px",
+                        padding: "7px 11px",
                         borderRadius: "999px",
                         border: "1px solid var(--ffn-border)",
                         background: "rgba(255,255,255,0.04)",
-                        fontSize: "0.9rem",
+                        fontSize: "0.88rem",
                       }}
                     >
                       Sede: {organizacion.sede}
@@ -464,11 +495,11 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
-                        padding: "8px 12px",
+                        padding: "7px 11px",
                         borderRadius: "999px",
                         border: "1px solid var(--ffn-border)",
                         background: "rgba(255,255,255,0.04)",
-                        fontSize: "0.9rem",
+                        fontSize: "0.88rem",
                       }}
                     >
                       Fundación: {organizacion.anioFundacion}
@@ -483,11 +514,11 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
-                        padding: "8px 12px",
+                        padding: "7px 11px",
                         borderRadius: "999px",
                         border: "1px solid var(--ffn-border)",
                         background: "rgba(255,255,255,0.04)",
-                        fontSize: "0.9rem",
+                        fontSize: "0.88rem",
                         color: "var(--ffn-text)",
                         textDecoration: "none",
                       }}
@@ -504,21 +535,12 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
         <section
           style={{
             display: "grid",
-            gridTemplateColumns: "1.3fr 0.9fr",
-            gap: "24px",
+            gridTemplateColumns: "1.22fr 0.88fr",
+            gap: "20px",
           }}
         >
-          <article
-            style={{
-              border: "1px solid var(--ffn-border)",
-              borderRadius: "24px",
-              background: "var(--ffn-surface)",
-              padding: "24px",
-              display: "grid",
-              gap: "16px",
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: "1.35rem" }}>Perfil editorial</h2>
+          <article style={blockStyle}>
+            <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Perfil editorial</h2>
 
             {organizacion.descripcion ? (
               <p
@@ -540,16 +562,16 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
               <div
                 style={{
                   display: "grid",
-                  gap: "6px",
-                  padding: "16px",
-                  borderRadius: "18px",
+                  gap: "5px",
+                  padding: "14px",
+                  borderRadius: "16px",
                   border: "1px solid rgba(255,255,255,0.06)",
                   background: "rgba(255,255,255,0.025)",
                 }}
               >
                 <span
                   style={{
-                    fontSize: "0.78rem",
+                    fontSize: "0.76rem",
                     textTransform: "uppercase",
                     letterSpacing: "0.12em",
                     color: "var(--ffn-text-muted)",
@@ -563,7 +585,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                   style={{
                     margin: 0,
                     color: "var(--ffn-text-soft)",
-                    lineHeight: 1.8,
+                    lineHeight: 1.75,
                   }}
                 >
                   {organizacion.identidad}
@@ -572,25 +594,15 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
             ) : null}
           </article>
 
-          <aside
-            style={{
-              border: "1px solid var(--ffn-border)",
-              borderRadius: "24px",
-              background: "var(--ffn-surface)",
-              padding: "24px",
-              display: "grid",
-              gap: "16px",
-              alignContent: "start",
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: "1.35rem" }}>Disciplinas</h2>
+          <aside style={blockStyle}>
+            <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Disciplinas</h2>
 
             {organizacion.disciplinas && organizacion.disciplinas.length > 0 ? (
               <div
                 style={{
                   display: "flex",
                   flexWrap: "wrap",
-                  gap: "10px",
+                  gap: "9px",
                 }}
               >
                 {organizacion.disciplinas.map((disciplina, index) => {
@@ -602,11 +614,11 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                       <span
                         key={`${nombre}-${index}`}
                         style={{
-                          padding: "8px 12px",
+                          padding: "7px 11px",
                           borderRadius: "999px",
                           border: "1px solid var(--ffn-border)",
                           background: "rgba(255,255,255,0.04)",
-                          fontSize: "0.9rem",
+                          fontSize: "0.88rem",
                         }}
                       >
                         {nombre}
@@ -619,11 +631,11 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                       key={disciplina._id || `${nombre}-${index}`}
                       href={`/disciplinas/${disciplinaSlug}`}
                       style={{
-                        padding: "8px 12px",
+                        padding: "7px 11px",
                         borderRadius: "999px",
                         border: "1px solid var(--ffn-border)",
                         background: "rgba(255,255,255,0.04)",
-                        fontSize: "0.9rem",
+                        fontSize: "0.88rem",
                         textDecoration: "none",
                         color: "var(--ffn-text)",
                       }}
@@ -641,13 +653,13 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
 
             {organizacion.datosCuriosos && organizacion.datosCuriosos.length > 0 ? (
               <>
-                <h3 style={{ margin: 0, fontSize: "1.05rem" }}>Datos curiosos</h3>
+                <h3 style={{ margin: 0, fontSize: "1rem" }}>Datos curiosos</h3>
                 <ul
                   style={{
                     margin: 0,
                     paddingLeft: "18px",
                     color: "var(--ffn-text-soft)",
-                    lineHeight: 1.8,
+                    lineHeight: 1.75,
                   }}
                 >
                   {organizacion.datosCuriosos.map((dato, index) => (
@@ -663,64 +675,54 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-            gap: "24px",
+            gap: "20px",
           }}
         >
-          <article
-            style={{
-              border: "1px solid var(--ffn-border)",
-              borderRadius: "24px",
-              background: "var(--ffn-surface)",
-              padding: "24px",
-              display: "grid",
-              gap: "16px",
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: "1.35rem" }}>Eventos relacionados</h2>
+          <article style={blockStyle}>
+            <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Noticias relacionadas</h2>
 
-            {organizacion.eventos && organizacion.eventos.length > 0 ? (
-              <div style={{ display: "grid", gap: "14px" }}>
-                {organizacion.eventos.map((evento, index) => {
-                  const nombre = getSafeText(evento?.nombre, "Evento");
-                  const eventoSlug = getSafeText(evento?.slug);
-                  const fecha = formatFecha(evento?.fecha);
-                  const lugar = [evento?.ciudad, evento?.pais].filter(Boolean).join(", ");
+            {organizacion.noticias && organizacion.noticias.length > 0 ? (
+              <div style={{ display: "grid", gap: "10px" }}>
+                {organizacion.noticias.map((noticia, index) => {
+                  const titulo = getSafeText(noticia?.titulo, "Noticia");
+                  const noticiaSlug = getSafeText(noticia?.slug);
+                  const fecha = formatFecha(noticia?.fechaPublicacion);
+                  const extracto = getSafeText(noticia?.extracto);
 
                   return (
                     <div
-                      key={evento._id || `${nombre}-${index}`}
-                      style={{
-                        border: "1px solid var(--ffn-border)",
-                        borderRadius: "18px",
-                        padding: "16px",
-                        background: "rgba(255,255,255,0.03)",
-                      }}
+                      key={noticia._id || `${titulo}-${index}`}
+                      style={itemCardStyle}
                     >
-                      {eventoSlug ? (
+                      {noticiaSlug ? (
                         <Link
-                          href={`/eventos/${eventoSlug}`}
+                          href={`/noticias/${noticiaSlug}`}
                           style={{
                             textDecoration: "none",
                             color: "var(--ffn-text)",
                             fontWeight: 700,
-                            fontSize: "1rem",
+                            fontSize: "0.98rem",
+                            lineHeight: 1.4,
                           }}
                         >
-                          {nombre}
+                          {titulo}
                         </Link>
                       ) : (
-                        <strong>{nombre}</strong>
+                        <strong style={{ fontSize: "0.98rem", lineHeight: 1.4 }}>
+                          {titulo}
+                        </strong>
                       )}
 
-                      {(fecha || lugar) && (
+                      {(fecha || extracto) && (
                         <p
                           style={{
-                            margin: "8px 0 0",
+                            margin: 0,
                             color: "var(--ffn-text-soft)",
-                            lineHeight: 1.6,
+                            lineHeight: 1.55,
+                            fontSize: "0.92rem",
                           }}
                         >
-                          {[fecha, lugar].filter(Boolean).join(" · ")}
+                          {[fecha, extracto].filter(Boolean).join(" · ")}
                         </p>
                       )}
                     </div>
@@ -729,27 +731,16 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
               </div>
             ) : (
               <p style={{ margin: 0, color: "var(--ffn-text-soft)" }}>
-                Sin eventos vinculados por ahora.
+                Sin noticias vinculadas por ahora.
               </p>
             )}
           </article>
 
-          <article
-            style={{
-              border: "1px solid var(--ffn-border)",
-              borderRadius: "24px",
-              background: "var(--ffn-surface)",
-              padding: "24px",
-              display: "grid",
-              gap: "16px",
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: "1.35rem" }}>
-              Luchadores relacionados
-            </h2>
+          <article style={blockStyle}>
+            <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Luchadores relacionados</h2>
 
             {organizacion.luchadores && organizacion.luchadores.length > 0 ? (
-              <div style={{ display: "grid", gap: "14px" }}>
+              <div style={{ display: "grid", gap: "10px" }}>
                 {organizacion.luchadores.map((luchador, index) => {
                   const nombre = getSafeText(luchador?.nombre, "Luchador");
                   const luchadorSlug = getSafeText(luchador?.slug);
@@ -760,12 +751,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                   return (
                     <div
                       key={luchador._id || `${nombre}-${index}`}
-                      style={{
-                        border: "1px solid var(--ffn-border)",
-                        borderRadius: "18px",
-                        padding: "16px",
-                        background: "rgba(255,255,255,0.03)",
-                      }}
+                      style={itemCardStyle}
                     >
                       {luchadorSlug ? (
                         <Link
@@ -774,21 +760,25 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                             textDecoration: "none",
                             color: "var(--ffn-text)",
                             fontWeight: 700,
-                            fontSize: "1rem",
+                            fontSize: "0.98rem",
+                            lineHeight: 1.4,
                           }}
                         >
                           {nombre}
                         </Link>
                       ) : (
-                        <strong>{nombre}</strong>
+                        <strong style={{ fontSize: "0.98rem", lineHeight: 1.4 }}>
+                          {nombre}
+                        </strong>
                       )}
 
                       {(apodo || record || categoria) && (
                         <p
                           style={{
-                            margin: "8px 0 0",
+                            margin: 0,
                             color: "var(--ffn-text-soft)",
-                            lineHeight: 1.6,
+                            lineHeight: 1.55,
+                            fontSize: "0.92rem",
                           }}
                         >
                           {[apodo, record, categoria].filter(Boolean).join(" · ")}
@@ -810,64 +800,54 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-            gap: "24px",
+            gap: "20px",
           }}
         >
-          <article
-            style={{
-              border: "1px solid var(--ffn-border)",
-              borderRadius: "24px",
-              background: "var(--ffn-surface)",
-              padding: "24px",
-              display: "grid",
-              gap: "16px",
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: "1.35rem" }}>Noticias relacionadas</h2>
+          <article style={blockStyle}>
+            <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Eventos relacionados</h2>
 
-            {organizacion.noticias && organizacion.noticias.length > 0 ? (
-              <div style={{ display: "grid", gap: "14px" }}>
-                {organizacion.noticias.map((noticia, index) => {
-                  const titulo = getSafeText(noticia?.titulo, "Noticia");
-                  const noticiaSlug = getSafeText(noticia?.slug);
-                  const fecha = formatFecha(noticia?.fechaPublicacion);
-                  const extracto = getSafeText(noticia?.extracto);
+            {organizacion.eventos && organizacion.eventos.length > 0 ? (
+              <div style={{ display: "grid", gap: "10px" }}>
+                {organizacion.eventos.map((evento, index) => {
+                  const nombre = getSafeText(evento?.nombre, "Evento");
+                  const eventoSlug = getSafeText(evento?.slug);
+                  const fecha = formatFecha(evento?.fecha);
+                  const lugar = getCompactLocation(evento?.ciudad, evento?.pais);
 
                   return (
                     <div
-                      key={noticia._id || `${titulo}-${index}`}
-                      style={{
-                        border: "1px solid var(--ffn-border)",
-                        borderRadius: "18px",
-                        padding: "16px",
-                        background: "rgba(255,255,255,0.03)",
-                      }}
+                      key={evento._id || `${nombre}-${index}`}
+                      style={itemCardStyle}
                     >
-                      {noticiaSlug ? (
+                      {eventoSlug ? (
                         <Link
-                          href={`/noticias/${noticiaSlug}`}
+                          href={`/eventos/${eventoSlug}`}
                           style={{
                             textDecoration: "none",
                             color: "var(--ffn-text)",
                             fontWeight: 700,
-                            fontSize: "1rem",
+                            fontSize: "0.98rem",
+                            lineHeight: 1.4,
                           }}
                         >
-                          {titulo}
+                          {nombre}
                         </Link>
                       ) : (
-                        <strong>{titulo}</strong>
+                        <strong style={{ fontSize: "0.98rem", lineHeight: 1.4 }}>
+                          {nombre}
+                        </strong>
                       )}
 
-                      {(fecha || extracto) && (
+                      {(fecha || lugar) && (
                         <p
                           style={{
-                            margin: "8px 0 0",
+                            margin: 0,
                             color: "var(--ffn-text-soft)",
-                            lineHeight: 1.6,
+                            lineHeight: 1.55,
+                            fontSize: "0.92rem",
                           }}
                         >
-                          {[fecha, extracto].filter(Boolean).join(" · ")}
+                          {[fecha, lugar].filter(Boolean).join(" · ")}
                         </p>
                       )}
                     </div>
@@ -876,63 +856,138 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
               </div>
             ) : (
               <p style={{ margin: 0, color: "var(--ffn-text-soft)" }}>
-                Sin noticias vinculadas por ahora.
+                Sin eventos vinculados por ahora.
               </p>
             )}
           </article>
 
-          <article
-            style={{
-              border: "1px solid var(--ffn-border)",
-              borderRadius: "24px",
-              background: "var(--ffn-surface)",
-              padding: "24px",
-              display: "grid",
-              gap: "16px",
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: "1.35rem" }}>Combates recientes</h2>
+          <article style={blockStyle}>
+            <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Combates recientes</h2>
 
             {organizacion.combates && organizacion.combates.length > 0 ? (
-              <div style={{ display: "grid", gap: "14px" }}>
+              <div style={{ display: "grid", gap: "10px" }}>
                 {organizacion.combates.map((combate, index) => {
-                  const rojo = getSafeText(combate?.luchadorRojo, "Luchador rojo");
-                  const azul = getSafeText(combate?.luchadorAzul, "Luchador azul");
+                  const rojoNombre = getItemName(combate?.luchadorRojo, "Luchador rojo");
+                  const rojoSlug = getItemSlug(combate?.luchadorRojo);
+                  const azulNombre = getItemName(combate?.luchadorAzul, "Luchador azul");
+                  const azulSlug = getItemSlug(combate?.luchadorAzul);
+                  const ganadorNombre = getItemName(combate?.ganador);
+                  const ganadorSlug = getItemSlug(combate?.ganador);
                   const evento = getSafeText(combate?.evento);
+                  const eventoSlug = getSafeText(combate?.eventoSlug);
                   const metodo = getSafeText(combate?.metodo);
                   const categoria = getSafeText(combate?.categoriaPeso);
+                  const estado = formatEstado(combate?.estado);
 
                   return (
                     <div
-                      key={combate._id || `${rojo}-${azul}-${index}`}
-                      style={{
-                        border: "1px solid var(--ffn-border)",
-                        borderRadius: "18px",
-                        padding: "16px",
-                        background: "rgba(255,255,255,0.03)",
-                      }}
+                      key={combate._id || `${rojoNombre}-${azulNombre}-${index}`}
+                      style={itemCardStyle}
                     >
                       <p
                         style={{
                           margin: 0,
                           fontWeight: 700,
-                          lineHeight: 1.5,
+                          lineHeight: 1.45,
+                          fontSize: "0.98rem",
                         }}
                       >
-                        {rojo} vs {azul}
+                        {rojoSlug ? (
+                          <Link
+                            href={`/luchadores/${rojoSlug}`}
+                            style={{
+                              textDecoration: "none",
+                              color: "var(--ffn-text)",
+                            }}
+                          >
+                            {rojoNombre}
+                          </Link>
+                        ) : (
+                          rojoNombre
+                        )}{" "}
+                        vs{" "}
+                        {azulSlug ? (
+                          <Link
+                            href={`/luchadores/${azulSlug}`}
+                            style={{
+                              textDecoration: "none",
+                              color: "var(--ffn-text)",
+                            }}
+                          >
+                            {azulNombre}
+                          </Link>
+                        ) : (
+                          azulNombre
+                        )}
                       </p>
 
-                      {(evento || metodo || categoria) && (
+                      {(evento || metodo || categoria || estado) && (
                         <p
                           style={{
-                            margin: "8px 0 0",
+                            margin: 0,
                             color: "var(--ffn-text-soft)",
-                            lineHeight: 1.6,
+                            lineHeight: 1.55,
+                            fontSize: "0.92rem",
                           }}
                         >
-                          {[evento, categoria, metodo].filter(Boolean).join(" · ")}
+                          {eventoSlug ? (
+                            <Link
+                              href={`/eventos/${eventoSlug}`}
+                              style={{
+                                color: "var(--ffn-text-soft)",
+                                textDecoration: "none",
+                              }}
+                            >
+                              {evento || "Evento"}
+                            </Link>
+                          ) : (
+                            evento
+                          )}
+                          {categoria ? ` · ${categoria}` : ""}
+                          {metodo ? ` · ${metodo}` : ""}
+                          {estado ? ` · ${estado}` : ""}
                         </p>
                       )}
+
+                      {ganadorNombre && (
+                        <p
+                          style={{
+                            margin: 0,
+                            color: "var(--ffn-text-soft)",
+                            lineHeight: 1.55,
+                            fontSize: "0.92rem",
+                          }}
+                        >
+                          Ganador:{" "}
+                          {ganadorSlug ? (
+                            <Link
+                              href={`/luchadores/${ganadorSlug}`}
+                              style={{
+                                color: "var(--ffn-accent)",
+                                textDecoration: "none",
+                              }}
+                            >
+                              {ganadorNombre}
+                            </Link>
+                          ) : (
+                            ganadorNombre
+                          )}
+                        </p>
+                      )}
+
+                      {combate._id ? (
+                        <Link
+                          href={`/resultados/${combate._id}`}
+                          style={{
+                            textDecoration: "none",
+                            color: "var(--ffn-accent)",
+                            fontSize: "0.92rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Ver resultado completo
+                        </Link>
+                      ) : null}
                     </div>
                   );
                 })}

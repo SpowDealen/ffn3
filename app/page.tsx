@@ -1,9 +1,9 @@
 import Link from "next/link";
-import {client} from "../sanity/lib/client";
+import { client } from "../sanity/lib/client";
 import {
   noticiaDestacadaQuery,
   ultimasNoticiasQuery,
-  proximoEventoQuery,
+  proximosEventosQuery,
   luchadoresDestacadosQuery,
   disciplinasHomeQuery,
   categoriasPesoHomeQuery,
@@ -12,11 +12,8 @@ import {
 type RelacionBasica = {
   _id?: string;
   nombre?: string;
-  titulo?: string;
   slug?: string;
 };
-
-type TextoOReferencia = string | RelacionBasica | null | undefined;
 
 type Noticia = {
   _id: string;
@@ -24,10 +21,14 @@ type Noticia = {
   slug: string;
   extracto?: string;
   fechaPublicacion?: string;
-  disciplina?: TextoOReferencia;
+  destacada?: boolean;
+  disciplina?: string;
   disciplinaSlug?: string;
-  eventoRelacionado?: TextoOReferencia;
+  eventoRelacionado?: string;
   eventoRelacionadoSlug?: string;
+  organizacionRelacionada?: string;
+  organizacionRelacionadaSlug?: string;
+  luchadoresRelacionados?: RelacionBasica[];
 };
 
 type Evento = {
@@ -35,12 +36,16 @@ type Evento = {
   nombre: string;
   slug: string;
   fecha?: string;
+  horaLocal?: string;
   ciudad?: string;
   pais?: string;
-  disciplina?: TextoOReferencia;
-  disciplinaSlug?: string;
-  organizacion?: TextoOReferencia;
+  recinto?: string;
+  estado?: string;
+  descripcionCorta?: string;
+  organizacion?: string;
   organizacionSlug?: string;
+  disciplina?: string;
+  disciplinaSlug?: string;
 };
 
 type Luchador = {
@@ -48,681 +53,621 @@ type Luchador = {
   nombre: string;
   slug: string;
   apodo?: string;
+  record?: string;
   nacionalidad?: string;
-  disciplina?: TextoOReferencia;
+  activo?: boolean;
+  disciplina?: string;
   disciplinaSlug?: string;
-  categoriaPeso?: TextoOReferencia;
+  organizacion?: string;
+  organizacionSlug?: string;
+  categoriaPeso?: string;
   categoriaPesoSlug?: string;
 };
 
-type Disciplina = {
+type DisciplinaHome = {
   _id: string;
   nombre: string;
   slug: string;
   descripcion?: string;
 };
 
-type CategoriaPeso = {
+type CategoriaPesoHome = {
   _id: string;
   nombre: string;
   slug: string;
   limitePeso?: number;
   unidad?: string;
-  disciplina?: TextoOReferencia;
+  disciplina?: string;
   disciplinaSlug?: string;
 };
 
-function formatDate(value?: string) {
-  if (!value) return "Fecha por confirmar";
+function formatFecha(fecha?: string) {
+  if (!fecha) return "Fecha por confirmar";
 
-  try {
-    return new Date(value).toLocaleDateString("es-ES", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    });
-  } catch {
-    return value;
-  }
+  const parsed = new Date(fecha);
+
+  if (Number.isNaN(parsed.getTime())) return fecha;
+
+  return parsed.toLocaleDateString("es-ES", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 }
 
-function getDisplayText(value: TextoOReferencia) {
-  if (!value) return "";
-  if (typeof value === "string") return value;
-  return value.nombre ?? value.titulo ?? "";
+function getUbicacion(evento: Evento) {
+  const parts = [evento.ciudad, evento.pais].filter(Boolean);
+  return parts.length ? parts.join(", ") : "Ubicación por confirmar";
 }
 
 export default async function HomePage() {
   const [
     noticiaDestacada,
     ultimasNoticias,
-    proximoEvento,
+    proximosEventos,
     luchadoresDestacados,
     disciplinas,
     categoriasPeso,
   ] = await Promise.all([
     client.fetch<Noticia | null>(noticiaDestacadaQuery),
     client.fetch<Noticia[]>(ultimasNoticiasQuery),
-    client.fetch<Evento | null>(proximoEventoQuery),
+    client.fetch<Evento[]>(proximosEventosQuery),
     client.fetch<Luchador[]>(luchadoresDestacadosQuery),
-    client.fetch<Disciplina[]>(disciplinasHomeQuery),
-    client.fetch<CategoriaPeso[]>(categoriasPesoHomeQuery),
+    client.fetch<DisciplinaHome[]>(disciplinasHomeQuery),
+    client.fetch<CategoriaPesoHome[]>(categoriasPesoHomeQuery),
   ]);
 
   return (
     <main
       style={{
         minHeight: "100vh",
-        padding: "40px 20px",
+        padding: "40px 20px 0",
         background: "var(--ffn-bg)",
         color: "var(--ffn-text)",
       }}
     >
       <div
         style={{
-          maxWidth: "1200px",
+          maxWidth: "1440px",
           margin: "0 auto",
           display: "grid",
-          gap: "24px",
+          gap: "28px",
         }}
       >
+        {noticiaDestacada ? (
+          <section
+            style={{
+              border: "1px solid var(--ffn-border)",
+              background: "var(--ffn-surface)",
+              borderRadius: "24px",
+              padding: "28px",
+              display: "grid",
+              gap: "16px",
+              boxShadow: "var(--ffn-shadow-soft)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "10px",
+                alignItems: "center",
+              }}
+            >
+              <span className="ffn-pill">Noticia destacada</span>
+              {noticiaDestacada.disciplina ? (
+                <span className="ffn-pill-muted">{noticiaDestacada.disciplina}</span>
+              ) : null}
+              {noticiaDestacada.fechaPublicacion ? (
+                <span className="ffn-pill-muted">
+                  {formatFecha(noticiaDestacada.fechaPublicacion)}
+                </span>
+              ) : null}
+            </div>
+
+            <div style={{ display: "grid", gap: "12px" }}>
+              <h1
+                style={{
+                  margin: 0,
+                  fontSize: "clamp(2rem, 4vw, 3.4rem)",
+                  lineHeight: 1.05,
+                }}
+              >
+                {noticiaDestacada.titulo}
+              </h1>
+
+              {noticiaDestacada.extracto ? (
+                <p
+                  style={{
+                    margin: 0,
+                    color: "var(--ffn-text-soft)",
+                    fontSize: "1.05rem",
+                    lineHeight: 1.7,
+                    maxWidth: "900px",
+                  }}
+                >
+                  {noticiaDestacada.extracto}
+                </p>
+              ) : null}
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
+              <Link href={`/noticias/${noticiaDestacada.slug}`} className="ffn-button-primary">
+                Leer noticia
+              </Link>
+
+              {noticiaDestacada.eventoRelacionadoSlug ? (
+                <Link
+                  href={`/eventos/${noticiaDestacada.eventoRelacionadoSlug}`}
+                  className="ffn-button-secondary"
+                >
+                  Ver evento relacionado
+                </Link>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
         <section
           style={{
             display: "grid",
-            gap: "14px",
-            padding: "28px",
-            borderRadius: "28px",
-            border: "1px solid var(--ffn-border)",
-            background:
-              "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
+            gridTemplateColumns: "minmax(0, 1.5fr) minmax(320px, 0.9fr)",
+            gap: "24px",
           }}
         >
-          <span
-            style={{
-              fontSize: "12px",
-              letterSpacing: "0.16em",
-              textTransform: "uppercase",
-              color: "var(--ffn-accent)",
-              fontWeight: 700,
-            }}
-          >
-            Full Fight News
-          </span>
-
-          <h1
-            style={{
-              margin: 0,
-              fontSize: "clamp(2.2rem, 5vw, 4.4rem)",
-              lineHeight: 0.98,
-              maxWidth: "900px",
-            }}
-          >
-            Actualidad, eventos y protagonistas del mundo de los deportes de combate
-          </h1>
-
-          <p
-            style={{
-              margin: 0,
-              maxWidth: "860px",
-              color: "var(--ffn-text-soft)",
-              lineHeight: 1.75,
-              fontSize: "1.02rem",
-            }}
-          >
-            Una base editorial conectada para seguir UFC, boxeo, MMA, bare-knuckle y
-            más, enlazando noticias, resultados, eventos, luchadores, disciplinas y
-            organizaciones.
-          </p>
-
           <div
             style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "12px",
-              marginTop: "6px",
+              border: "1px solid var(--ffn-border)",
+              background: "var(--ffn-surface)",
+              borderRadius: "24px",
+              padding: "24px",
+              display: "grid",
+              gap: "18px",
+              boxShadow: "var(--ffn-shadow-soft)",
             }}
           >
-            <Link
-              href="/noticias"
+            <div
               style={{
-                display: "inline-flex",
+                display: "flex",
+                justifyContent: "space-between",
                 alignItems: "center",
-                justifyContent: "center",
-                padding: "12px 16px",
-                borderRadius: "14px",
-                background: "var(--ffn-accent)",
-                color: "#0a0a0f",
-                fontWeight: 700,
-                textDecoration: "none",
+                gap: "12px",
+                flexWrap: "wrap",
               }}
             >
-              Ver noticias
-            </Link>
+              <div style={{ display: "grid", gap: "6px" }}>
+                <span className="ffn-section-kicker">Cobertura</span>
+                <h2 style={{ margin: 0, fontSize: "1.6rem" }}>Últimas noticias</h2>
+              </div>
 
-            <Link
-              href="/eventos"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "12px 16px",
-                borderRadius: "14px",
-                border: "1px solid var(--ffn-border)",
-                color: "var(--ffn-text)",
-                textDecoration: "none",
-              }}
-            >
-              Explorar eventos
-            </Link>
+              <Link href="/noticias" className="ffn-inline-link">
+                Ver todas
+              </Link>
+            </div>
 
-            <Link
-              href="/organizaciones"
+            <div style={{ display: "grid", gap: "16px" }}>
+              {ultimasNoticias.length ? (
+                ultimasNoticias.map((noticia) => (
+                  <Link
+                    key={noticia._id}
+                    href={`/noticias/${noticia.slug}`}
+                    style={{
+                      textDecoration: "none",
+                      color: "inherit",
+                      border: "1px solid var(--ffn-border)",
+                      background: "rgba(255,255,255,0.025)",
+                      borderRadius: "18px",
+                      padding: "18px",
+                      display: "grid",
+                      gap: "10px",
+                      transition: "transform 0.18s ease, border-color 0.18s ease",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                        alignItems: "center",
+                      }}
+                    >
+                      {noticia.disciplina ? (
+                        <span className="ffn-pill-muted">{noticia.disciplina}</span>
+                      ) : null}
+                      {noticia.fechaPublicacion ? (
+                        <span className="ffn-pill-muted">
+                          {formatFecha(noticia.fechaPublicacion)}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <h3 style={{ margin: 0, fontSize: "1.15rem", lineHeight: 1.35 }}>
+                      {noticia.titulo}
+                    </h3>
+
+                    {noticia.extracto ? (
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "var(--ffn-text-soft)",
+                          lineHeight: 1.65,
+                        }}
+                      >
+                        {noticia.extracto}
+                      </p>
+                    ) : null}
+                  </Link>
+                ))
+              ) : (
+                <div className="ffn-empty-state">Todavía no hay noticias publicadas.</div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: "24px", gridTemplateRows: "1fr 1fr" }}>
+            <section
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "12px 16px",
-                borderRadius: "14px",
                 border: "1px solid var(--ffn-border)",
-                color: "var(--ffn-text)",
-                textDecoration: "none",
+                background: "var(--ffn-surface)",
+                borderRadius: "24px",
+                padding: "24px",
+                display: "grid",
+                gap: "18px",
+                boxShadow: "var(--ffn-shadow-soft)",
               }}
             >
-              Ver organizaciones
-            </Link>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "12px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ display: "grid", gap: "6px" }}>
+                  <span className="ffn-section-kicker">Calendario</span>
+                  <h2 style={{ margin: 0, fontSize: "1.35rem" }}>Próximos eventos</h2>
+                </div>
+
+                <Link href="/eventos" className="ffn-inline-link">
+                  Ver todos
+                </Link>
+              </div>
+
+              <div style={{ display: "grid", gap: "12px" }}>
+                {proximosEventos.length ? (
+                  proximosEventos.map((evento) => (
+                    <Link
+                      key={evento._id}
+                      href={`/eventos/${evento.slug}`}
+                      style={{
+                        textDecoration: "none",
+                        color: "inherit",
+                        border: "1px solid var(--ffn-border)",
+                        background: "rgba(255,255,255,0.025)",
+                        borderRadius: "18px",
+                        padding: "16px",
+                        display: "grid",
+                        gap: "8px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: "8px",
+                          alignItems: "center",
+                        }}
+                      >
+                        {evento.organizacion ? (
+                          <span className="ffn-pill">{evento.organizacion}</span>
+                        ) : null}
+                        {evento.fecha ? (
+                          <span className="ffn-pill-muted">{formatFecha(evento.fecha)}</span>
+                        ) : null}
+                      </div>
+
+                      <h3 style={{ margin: 0, fontSize: "1rem", lineHeight: 1.35 }}>
+                        {evento.nombre}
+                      </h3>
+
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "var(--ffn-text-soft)",
+                          fontSize: "0.96rem",
+                          lineHeight: 1.55,
+                        }}
+                      >
+                        {getUbicacion(evento)}
+                        {evento.horaLocal ? ` · ${evento.horaLocal}` : ""}
+                      </p>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="ffn-empty-state">
+                    No hay próximos eventos cargados por ahora.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section
+              style={{
+                border: "1px solid var(--ffn-border)",
+                background: "var(--ffn-surface)",
+                borderRadius: "24px",
+                padding: "24px",
+                display: "grid",
+                gap: "18px",
+                boxShadow: "var(--ffn-shadow-soft)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "12px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ display: "grid", gap: "6px" }}>
+                  <span className="ffn-section-kicker">Enfoque editorial</span>
+                  <h2 style={{ margin: 0, fontSize: "1.35rem" }}>Luchadores destacados</h2>
+                </div>
+
+                <Link href="/luchadores" className="ffn-inline-link">
+                  Ver todos
+                </Link>
+              </div>
+
+              <div style={{ display: "grid", gap: "12px" }}>
+                {luchadoresDestacados.length ? (
+                  luchadoresDestacados.map((luchador) => (
+                    <Link
+                      key={luchador._id}
+                      href={`/luchadores/${luchador.slug}`}
+                      style={{
+                        textDecoration: "none",
+                        color: "inherit",
+                        border: "1px solid var(--ffn-border)",
+                        background: "rgba(255,255,255,0.025)",
+                        borderRadius: "18px",
+                        padding: "16px",
+                        display: "grid",
+                        gap: "8px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: "8px",
+                          alignItems: "center",
+                        }}
+                      >
+                        {luchador.organizacion ? (
+                          <span className="ffn-pill">{luchador.organizacion}</span>
+                        ) : null}
+                        {luchador.categoriaPeso ? (
+                          <span className="ffn-pill-muted">{luchador.categoriaPeso}</span>
+                        ) : null}
+                      </div>
+
+                      <h3 style={{ margin: 0, fontSize: "1rem", lineHeight: 1.35 }}>
+                        {luchador.nombre}
+                        {luchador.apodo ? ` “${luchador.apodo}”` : ""}
+                      </h3>
+
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "var(--ffn-text-soft)",
+                          fontSize: "0.96rem",
+                          lineHeight: 1.55,
+                        }}
+                      >
+                        {luchador.record || "Récord por actualizar"}
+                        {luchador.nacionalidad ? ` · ${luchador.nacionalidad}` : ""}
+                      </p>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="ffn-empty-state">
+                    Marca luchadores en Sanity con “Destacado en inicio” para que aparezcan aquí.
+                  </div>
+                )}
+              </div>
+            </section>
           </div>
         </section>
 
         <section
           style={{
             display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
             gap: "24px",
-            gridTemplateColumns: "1.2fr 0.8fr",
           }}
-          className="ffn-home-top-grid"
         >
-          <article
+          <div
             style={{
-              display: "grid",
-              gap: "14px",
-              padding: "24px",
-              borderRadius: "24px",
               border: "1px solid var(--ffn-border)",
               background: "var(--ffn-surface)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-              }}
-            >
-              <h2 style={{margin: 0, fontSize: "1.35rem"}}>Noticia destacada</h2>
-
-              <Link
-                href="/noticias"
-                style={{
-                  color: "var(--ffn-text-soft)",
-                  textDecoration: "none",
-                  fontSize: "0.95rem",
-                }}
-              >
-                Ver todas
-              </Link>
-            </div>
-
-            {noticiaDestacada ? (
-              <Link
-                href={`/noticias/${noticiaDestacada.slug}`}
-                style={{
-                  display: "grid",
-                  gap: "10px",
-                  color: "inherit",
-                  textDecoration: "none",
-                }}
-              >
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: "clamp(1.4rem, 3vw, 2rem)",
-                    lineHeight: 1.1,
-                  }}
-                >
-                  {noticiaDestacada.titulo}
-                </h3>
-
-                {noticiaDestacada.extracto && (
-                  <p
-                    style={{
-                      margin: 0,
-                      color: "var(--ffn-text-soft)",
-                      lineHeight: 1.7,
-                    }}
-                  >
-                    {noticiaDestacada.extracto}
-                  </p>
-                )}
-
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "10px",
-                    color: "var(--ffn-text-muted)",
-                    fontSize: "0.92rem",
-                  }}
-                >
-                  <span>{formatDate(noticiaDestacada.fechaPublicacion)}</span>
-                  {getDisplayText(noticiaDestacada.disciplina) && (
-                    <span>{getDisplayText(noticiaDestacada.disciplina)}</span>
-                  )}
-                  {getDisplayText(noticiaDestacada.eventoRelacionado) && (
-                    <span>{getDisplayText(noticiaDestacada.eventoRelacionado)}</span>
-                  )}
-                </div>
-              </Link>
-            ) : (
-              <p style={{margin: 0, color: "var(--ffn-text-soft)"}}>
-                Aún no hay noticia destacada cargada.
-              </p>
-            )}
-          </article>
-
-          <article
-            style={{
-              display: "grid",
-              gap: "14px",
-              padding: "24px",
               borderRadius: "24px",
-              border: "1px solid var(--ffn-border)",
-              background: "var(--ffn-surface)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-              }}
-            >
-              <h2 style={{margin: 0, fontSize: "1.35rem"}}>Próximo evento</h2>
-
-              <Link
-                href="/eventos"
-                style={{
-                  color: "var(--ffn-text-soft)",
-                  textDecoration: "none",
-                  fontSize: "0.95rem",
-                }}
-              >
-                Calendario
-              </Link>
-            </div>
-
-            {proximoEvento ? (
-              <Link
-                href={`/eventos/${proximoEvento.slug}`}
-                style={{
-                  display: "grid",
-                  gap: "10px",
-                  color: "inherit",
-                  textDecoration: "none",
-                }}
-              >
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: "1.35rem",
-                    lineHeight: 1.15,
-                  }}
-                >
-                  {proximoEvento.nombre}
-                </h3>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gap: "6px",
-                    color: "var(--ffn-text-soft)",
-                    lineHeight: 1.6,
-                  }}
-                >
-                  <span>{formatDate(proximoEvento.fecha)}</span>
-                  <span>
-                    {[proximoEvento.ciudad, proximoEvento.pais].filter(Boolean).join(", ") ||
-                      "Ubicación por confirmar"}
-                  </span>
-                  <span>
-                    {[
-                      getDisplayText(proximoEvento.organizacion),
-                      getDisplayText(proximoEvento.disciplina),
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </span>
-                </div>
-              </Link>
-            ) : (
-              <p style={{margin: 0, color: "var(--ffn-text-soft)"}}>
-                Aún no hay próximo evento cargado.
-              </p>
-            )}
-          </article>
-        </section>
-
-        <section
-          style={{
-            display: "grid",
-            gap: "24px",
-            gridTemplateColumns: "1fr 1fr",
-          }}
-          className="ffn-home-mid-grid"
-        >
-          <article
-            style={{
-              display: "grid",
-              gap: "14px",
               padding: "24px",
-              borderRadius: "24px",
-              border: "1px solid var(--ffn-border)",
-              background: "var(--ffn-surface)",
-              alignContent: "start",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-              }}
-            >
-              <h2 style={{margin: 0, fontSize: "1.35rem"}}>Últimas noticias</h2>
-
-              <Link
-                href="/noticias"
-                style={{
-                  color: "var(--ffn-text-soft)",
-                  textDecoration: "none",
-                  fontSize: "0.95rem",
-                }}
-              >
-                Ir a noticias
-              </Link>
-            </div>
-
-            <div style={{display: "grid", gap: "12px"}}>
-              {ultimasNoticias.length > 0 ? (
-                ultimasNoticias.map((noticia) => (
-                  <Link
-                    key={noticia._id}
-                    href={`/noticias/${noticia.slug}`}
-                    style={{
-                      display: "grid",
-                      gap: "6px",
-                      padding: "14px",
-                      borderRadius: "18px",
-                      border: "1px solid var(--ffn-border)",
-                      background: "rgba(255,255,255,0.03)",
-                      color: "inherit",
-                      textDecoration: "none",
-                    }}
-                  >
-                    <strong>{noticia.titulo}</strong>
-
-                    {noticia.extracto && (
-                      <span style={{color: "var(--ffn-text-soft)", lineHeight: 1.5}}>
-                        {noticia.extracto}
-                      </span>
-                    )}
-
-                    <span style={{color: "var(--ffn-text-muted)", fontSize: "0.9rem"}}>
-                      {[formatDate(noticia.fechaPublicacion), getDisplayText(noticia.disciplina)]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
-                  </Link>
-                ))
-              ) : (
-                <p style={{margin: 0, color: "var(--ffn-text-soft)"}}>
-                  Aún no hay noticias cargadas.
-                </p>
-              )}
-            </div>
-          </article>
-
-          <article
-            style={{
               display: "grid",
-              gap: "14px",
-              padding: "24px",
-              borderRadius: "24px",
-              border: "1px solid var(--ffn-border)",
-              background: "var(--ffn-surface)",
-              alignContent: "start",
+              gap: "18px",
+              boxShadow: "var(--ffn-shadow-soft)",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-              }}
-            >
-              <h2 style={{margin: 0, fontSize: "1.35rem"}}>Luchadores destacados</h2>
-
-              <Link
-                href="/luchadores"
-                style={{
-                  color: "var(--ffn-text-soft)",
-                  textDecoration: "none",
-                  fontSize: "0.95rem",
-                }}
-              >
-                Ver roster
-              </Link>
+            <div style={{ display: "grid", gap: "6px" }}>
+              <span className="ffn-section-kicker">Cobertura por deporte</span>
+              <h2 style={{ margin: 0, fontSize: "1.45rem" }}>Disciplinas</h2>
             </div>
 
-            <div style={{display: "grid", gap: "12px"}}>
-              {luchadoresDestacados.length > 0 ? (
-                luchadoresDestacados.map((luchador) => (
-                  <Link
-                    key={luchador._id}
-                    href={`/luchadores/${luchador.slug}`}
-                    style={{
-                      display: "grid",
-                      gap: "6px",
-                      padding: "14px",
-                      borderRadius: "18px",
-                      border: "1px solid var(--ffn-border)",
-                      background: "rgba(255,255,255,0.03)",
-                      color: "inherit",
-                      textDecoration: "none",
-                    }}
-                  >
-                    <strong>{luchador.nombre}</strong>
-
-                    {luchador.apodo && (
-                      <span style={{color: "var(--ffn-text-soft)"}}>
-                        {luchador.apodo}
-                      </span>
-                    )}
-
-                    <span style={{color: "var(--ffn-text-muted)", fontSize: "0.9rem"}}>
-                      {[
-                        getDisplayText(luchador.disciplina),
-                        getDisplayText(luchador.categoriaPeso),
-                        luchador.nacionalidad,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
-                  </Link>
-                ))
-              ) : (
-                <p style={{margin: 0, color: "var(--ffn-text-soft)"}}>
-                  Aún no hay luchadores destacados cargados.
-                </p>
-              )}
-            </div>
-          </article>
-        </section>
-
-        <section
-          style={{
-            display: "grid",
-            gap: "24px",
-            gridTemplateColumns: "1fr 1fr",
-          }}
-          className="ffn-home-bottom-grid"
-        >
-          <article
-            style={{
-              display: "grid",
-              gap: "14px",
-              padding: "24px",
-              borderRadius: "24px",
-              border: "1px solid var(--ffn-border)",
-              background: "var(--ffn-surface)",
-              alignContent: "start",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-              }}
-            >
-              <h2 style={{margin: 0, fontSize: "1.35rem"}}>Disciplinas</h2>
-
-              <Link
-                href="/disciplinas"
-                style={{
-                  color: "var(--ffn-text-soft)",
-                  textDecoration: "none",
-                  fontSize: "0.95rem",
-                }}
-              >
-                Ver todas
-              </Link>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gap: "12px",
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              }}
-            >
-              {disciplinas.length > 0 ? (
+            <div style={{ display: "grid", gap: "12px" }}>
+              {disciplinas.length ? (
                 disciplinas.map((disciplina) => (
                   <Link
                     key={disciplina._id}
                     href={`/disciplinas/${disciplina.slug}`}
                     style={{
-                      display: "grid",
-                      gap: "6px",
-                      padding: "14px",
-                      borderRadius: "18px",
-                      border: "1px solid var(--ffn-border)",
-                      background: "rgba(255,255,255,0.03)",
-                      color: "inherit",
                       textDecoration: "none",
+                      color: "inherit",
+                      border: "1px solid var(--ffn-border)",
+                      background: "rgba(255,255,255,0.025)",
+                      borderRadius: "18px",
+                      padding: "16px",
+                      display: "grid",
+                      gap: "8px",
                     }}
                   >
-                    <strong>{disciplina.nombre}</strong>
-                    {disciplina.descripcion && (
-                      <span style={{color: "var(--ffn-text-soft)", lineHeight: 1.5}}>
+                    <h3 style={{ margin: 0, fontSize: "1rem" }}>{disciplina.nombre}</h3>
+                    {disciplina.descripcion ? (
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "var(--ffn-text-soft)",
+                          lineHeight: 1.6,
+                        }}
+                      >
                         {disciplina.descripcion}
-                      </span>
-                    )}
+                      </p>
+                    ) : null}
                   </Link>
                 ))
               ) : (
-                <p style={{margin: 0, color: "var(--ffn-text-soft)"}}>
-                  Aún no hay disciplinas cargadas.
-                </p>
+                <div className="ffn-empty-state">No hay disciplinas cargadas todavía.</div>
               )}
             </div>
-          </article>
+          </div>
 
-          <article
+          <div
             style={{
-              display: "grid",
-              gap: "14px",
-              padding: "24px",
-              borderRadius: "24px",
               border: "1px solid var(--ffn-border)",
               background: "var(--ffn-surface)",
-              alignContent: "start",
+              borderRadius: "24px",
+              padding: "24px",
+              display: "grid",
+              gap: "18px",
+              boxShadow: "var(--ffn-shadow-soft)",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-              }}
-            >
-              <h2 style={{margin: 0, fontSize: "1.35rem"}}>Categorías de peso</h2>
-
-              <Link
-                href="/categorias-peso"
-                style={{
-                  color: "var(--ffn-text-soft)",
-                  textDecoration: "none",
-                  fontSize: "0.95rem",
-                }}
-              >
-                Ver todas
-              </Link>
+            <div style={{ display: "grid", gap: "6px" }}>
+              <span className="ffn-section-kicker">Mapa competitivo</span>
+              <h2 style={{ margin: 0, fontSize: "1.45rem" }}>Categorías de peso</h2>
             </div>
 
-            <div style={{display: "grid", gap: "12px"}}>
-              {categoriasPeso.length > 0 ? (
+            <div style={{ display: "grid", gap: "12px" }}>
+              {categoriasPeso.length ? (
                 categoriasPeso.map((categoria) => (
                   <Link
                     key={categoria._id}
                     href={`/categorias-peso/${categoria.slug}`}
                     style={{
-                      display: "grid",
-                      gap: "6px",
-                      padding: "14px",
-                      borderRadius: "18px",
-                      border: "1px solid var(--ffn-border)",
-                      background: "rgba(255,255,255,0.03)",
-                      color: "inherit",
                       textDecoration: "none",
+                      color: "inherit",
+                      border: "1px solid var(--ffn-border)",
+                      background: "rgba(255,255,255,0.025)",
+                      borderRadius: "18px",
+                      padding: "16px",
+                      display: "grid",
+                      gap: "8px",
                     }}
                   >
-                    <strong>{categoria.nombre}</strong>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                        alignItems: "center",
+                      }}
+                    >
+                      <h3 style={{ margin: 0, fontSize: "1rem" }}>{categoria.nombre}</h3>
+                      {categoria.limitePeso ? (
+                        <span className="ffn-pill-muted">
+                          {categoria.limitePeso} {categoria.unidad || "lb"}
+                        </span>
+                      ) : null}
+                    </div>
 
-                    <span style={{color: "var(--ffn-text-soft)"}}>
-                      {[categoria.limitePeso, categoria.unidad].filter(Boolean).join(" ")}
-                    </span>
-
-                    {getDisplayText(categoria.disciplina) && (
-                      <span style={{color: "var(--ffn-text-muted)", fontSize: "0.9rem"}}>
-                        {getDisplayText(categoria.disciplina)}
-                      </span>
-                    )}
+                    {categoria.disciplina ? (
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "var(--ffn-text-soft)",
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {categoria.disciplina}
+                      </p>
+                    ) : null}
                   </Link>
                 ))
               ) : (
-                <p style={{margin: 0, color: "var(--ffn-text-soft)"}}>
-                  Aún no hay categorías de peso cargadas.
-                </p>
+                <div className="ffn-empty-state">
+                  No hay categorías de peso cargadas todavía.
+                </div>
               )}
             </div>
-          </article>
+          </div>
         </section>
+
+        <footer
+          style={{
+            marginTop: "8px",
+            borderTop: "1px solid var(--ffn-border)",
+            padding: "32px 0 40px",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gap: "16px",
+              maxWidth: "1440px",
+              margin: "0 auto",
+            }}
+          >
+            <div style={{ display: "grid", gap: "6px" }}>
+              <span className="ffn-section-kicker">Full Fight News</span>
+              <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Contacto y presencia</h2>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: "16px",
+              }}
+            >
+              <div className="ffn-footer-card">
+                <h3 style={{ margin: 0, fontSize: "1rem" }}>Redacción</h3>
+                <p style={{ margin: 0, color: "var(--ffn-text-soft)", lineHeight: 1.65 }}>
+                  Espacio reservado para correo editorial, contacto profesional y consultas de
+                  prensa.
+                </p>
+              </div>
+
+              <div className="ffn-footer-card">
+                <h3 style={{ margin: 0, fontSize: "1rem" }}>Redes y comunidad</h3>
+                <p style={{ margin: 0, color: "var(--ffn-text-soft)", lineHeight: 1.65 }}>
+                  Espacio reservado para Instagram, futuras redes oficiales y vías de difusión del
+                  proyecto.
+                </p>
+              </div>
+
+              <div className="ffn-footer-card">
+                <h3 style={{ margin: 0, fontSize: "1rem" }}>Colaboraciones</h3>
+                <p style={{ margin: 0, color: "var(--ffn-text-soft)", lineHeight: 1.65 }}>
+                  Espacio reservado para patrocinio, colaboraciones editoriales y oportunidades
+                  comerciales.
+                </p>
+              </div>
+            </div>
+          </div>
+        </footer>
       </div>
     </main>
   );

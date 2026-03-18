@@ -1,31 +1,33 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { client } from "../../../sanity/lib/client";
-import {
-  combatesPorLuchadorQuery,
-  luchadorPorSlugQuery,
-  noticiasPorLuchadorQuery,
-} from "../../../sanity/lib/queries";
+import { luchadorPorSlugQuery } from "../../../sanity/lib/queries";
 
-type SluggedEntity = {
+type CombateRelacionado = {
   _id?: string;
-  nombre?: string;
-  slug?: string;
-};
+  metodo?: string;
+  asalto?: number;
+  tiempo?: string;
+  estado?: string;
+  evento?: string;
+  eventoSlug?: string | null;
+  luchadorRojo?: string;
+  luchadorRojoSlug?: string | null;
+  luchadorAzul?: string;
+  luchadorAzulSlug?: string | null;
+  ganador?: string;
+  ganadorSlug?: string | null;
+  categoriaPeso?: string;
+  categoriaPesoSlug?: string | null;
+} | null;
 
-type CategoriaPesoEntity = {
+type NoticiaRelacionada = {
   _id?: string;
-  nombre?: string;
-  slug?: string;
-  limitePeso?: number;
-  unidad?: string;
-};
-
-type OrganizacionEntity = {
-  _id?: string;
-  nombre?: string;
-  slug?: string;
-};
+  titulo?: string;
+  slug?: string | null;
+  extracto?: string;
+  fechaPublicacion?: string;
+} | null;
 
 type Luchador = {
   _id: string;
@@ -36,41 +38,14 @@ type Luchador = {
   record?: string;
   activo?: boolean;
   descripcion?: string;
-  biografia?: string;
   disciplina?: string;
-  organizacion?: string | OrganizacionEntity;
-  categoriaPeso?: string | CategoriaPesoEntity;
-};
-
-type Combate = {
-  _id: string;
-  _createdAt?: string;
-  metodo?: string;
-  asaltosProgramados?: number;
-  asaltoFinal?: number;
-  tiempoFinal?: string;
-  tituloEnJuego?: boolean;
-  cartelera?: string;
-  orden?: number;
-  estado?: string;
-  evento?: string;
-  eventoSlug?: string;
-  luchadorRojo?: SluggedEntity | string;
-  luchadorAzul?: SluggedEntity | string;
-  ganador?: SluggedEntity | string;
+  disciplinaSlug?: string | null;
+  organizacion?: string;
+  organizacionSlug?: string | null;
   categoriaPeso?: string;
-};
-
-type Noticia = {
-  _id: string;
-  titulo: string;
-  slug: string;
-  extracto?: string;
-  fechaPublicacion?: string;
-  destacada?: boolean;
-  disciplina?: string;
-  eventoRelacionado?: string;
-  luchadoresRelacionados?: string[];
+  categoriaPesoSlug?: string | null;
+  combatesRelacionados?: CombateRelacionado[] | null;
+  noticiasRelacionadas?: NoticiaRelacionada[] | null;
 };
 
 type PageProps = {
@@ -79,28 +54,6 @@ type PageProps = {
   }>;
 };
 
-function getEntityName(value?: SluggedEntity | string | null): string {
-  if (!value) return "";
-  if (typeof value === "string") return value;
-  return value.nombre || "";
-}
-
-function getCategoryName(value?: string | CategoriaPesoEntity | null): string {
-  if (!value) return "";
-  if (typeof value === "string") return value;
-  return value.nombre || "";
-}
-
-function getOrganizationName(value?: string | OrganizacionEntity | null): string {
-  if (!value) return "";
-  if (typeof value === "string") return value;
-  return value.nombre || "";
-}
-
-function getDescription(luchador: Luchador): string {
-  return luchador.descripcion || luchador.biografia || "";
-}
-
 function formatDate(value?: string): string {
   if (!value) return "";
   const date = new Date(value);
@@ -108,20 +61,34 @@ function formatDate(value?: string): string {
   return date.toLocaleDateString("es-ES");
 }
 
+function hasText(value?: string | null): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 export default async function LuchadorDetallePage({ params }: PageProps) {
   const { slug } = await params;
 
   const luchador: Luchador | null = await client.fetch(luchadorPorSlugQuery, { slug });
-  const combates: Combate[] = await client.fetch(combatesPorLuchadorQuery, { slug });
-  const noticias: Noticia[] = await client.fetch(noticiasPorLuchadorQuery, { slug });
 
   if (!luchador) {
     notFound();
   }
 
-  const descripcion = getDescription(luchador);
-  const organizacionNombre = getOrganizationName(luchador.organizacion);
-  const categoriaPesoNombre = getCategoryName(luchador.categoriaPeso);
+  const combates = Array.isArray(luchador.combatesRelacionados)
+    ? luchador.combatesRelacionados.filter(
+        (combate): combate is NonNullable<CombateRelacionado> =>
+          Boolean(combate && hasText(combate._id))
+      )
+    : [];
+
+  const noticias = Array.isArray(luchador.noticiasRelacionadas)
+    ? luchador.noticiasRelacionadas.filter(
+        (noticia): noticia is NonNullable<NoticiaRelacionada> =>
+          Boolean(noticia && hasText(noticia._id) && hasText(noticia.titulo))
+      )
+    : [];
+
+  const descripcion = hasText(luchador.descripcion) ? luchador.descripcion : "";
 
   return (
     <main className="luchador-detalle-shell">
@@ -190,6 +157,11 @@ export default async function LuchadorDetallePage({ params }: PageProps) {
           color: #888;
           font-size: 13px;
           line-height: 1.4;
+        }
+
+        .luchador-detalle-meta-link {
+          color: inherit;
+          text-decoration: none;
         }
 
         .luchador-detalle-section {
@@ -426,36 +398,66 @@ export default async function LuchadorDetallePage({ params }: PageProps) {
 
         <h1 className="luchador-detalle-title">{luchador.nombre}</h1>
 
-        {luchador.apodo && <p className="luchador-detalle-apodo">{luchador.apodo}</p>}
+        {hasText(luchador.apodo) && <p className="luchador-detalle-apodo">{luchador.apodo}</p>}
 
         {descripcion && <p className="luchador-detalle-descripcion">{descripcion}</p>}
 
         <div className="luchador-detalle-meta">
-          {luchador.nacionalidad && (
+          {hasText(luchador.nacionalidad) && (
             <span className="luchador-detalle-meta-pill">
               Nacionalidad: {luchador.nacionalidad}
             </span>
           )}
 
-          {luchador.record && (
+          {hasText(luchador.record) && (
             <span className="luchador-detalle-meta-pill">Récord: {luchador.record}</span>
           )}
 
-          {luchador.disciplina && (
+          {hasText(luchador.disciplina) && (
             <span className="luchador-detalle-meta-pill">
-              Disciplina: {luchador.disciplina}
+              Disciplina:{" "}
+              {hasText(luchador.disciplinaSlug) ? (
+                <Link
+                  href={`/disciplinas/${luchador.disciplinaSlug}`}
+                  className="luchador-detalle-meta-link"
+                >
+                  {luchador.disciplina}
+                </Link>
+              ) : (
+                luchador.disciplina
+              )}
             </span>
           )}
 
-          {organizacionNombre && (
+          {hasText(luchador.organizacion) && (
             <span className="luchador-detalle-meta-pill">
-              Organización: {organizacionNombre}
+              Organización:{" "}
+              {hasText(luchador.organizacionSlug) ? (
+                <Link
+                  href={`/organizaciones/${luchador.organizacionSlug}`}
+                  className="luchador-detalle-meta-link"
+                >
+                  {luchador.organizacion}
+                </Link>
+              ) : (
+                luchador.organizacion
+              )}
             </span>
           )}
 
-          {categoriaPesoNombre && (
+          {hasText(luchador.categoriaPeso) && (
             <span className="luchador-detalle-meta-pill">
-              Categoría: {categoriaPesoNombre}
+              Categoría:{" "}
+              {hasText(luchador.categoriaPesoSlug) ? (
+                <Link
+                  href={`/categorias-peso/${luchador.categoriaPesoSlug}`}
+                  className="luchador-detalle-meta-link"
+                >
+                  {luchador.categoriaPeso}
+                </Link>
+              ) : (
+                luchador.categoriaPeso
+              )}
             </span>
           )}
 
@@ -474,44 +476,38 @@ export default async function LuchadorDetallePage({ params }: PageProps) {
           ) : (
             <div className="luchador-detalle-grid-combates">
               {combates.map((combate) => {
-                const luchadorRojoNombre = getEntityName(combate.luchadorRojo);
-                const luchadorRojoSlug =
-                  typeof combate.luchadorRojo === "object" && combate.luchadorRojo
-                    ? combate.luchadorRojo.slug
-                    : undefined;
-
-                const luchadorAzulNombre = getEntityName(combate.luchadorAzul);
-                const luchadorAzulSlug =
-                  typeof combate.luchadorAzul === "object" && combate.luchadorAzul
-                    ? combate.luchadorAzul.slug
-                    : undefined;
-
-                const ganadorNombre = getEntityName(combate.ganador);
+                const luchadorRojoNombre = hasText(combate.luchadorRojo)
+                  ? combate.luchadorRojo
+                  : "Luchador rojo";
+                const luchadorAzulNombre = hasText(combate.luchadorAzul)
+                  ? combate.luchadorAzul
+                  : "Luchador azul";
+                const ganadorNombre = hasText(combate.ganador) ? combate.ganador : "";
 
                 return (
                   <article key={combate._id} className="luchador-detalle-card">
                     <div className="luchador-detalle-card-header">
                       <h3 className="luchador-detalle-card-title">
-                        {luchadorRojoSlug ? (
+                        {hasText(combate.luchadorRojoSlug) ? (
                           <Link
-                            href={`/luchadores/${luchadorRojoSlug}`}
+                            href={`/luchadores/${combate.luchadorRojoSlug}`}
                             className="luchador-detalle-card-title-link"
                           >
                             {luchadorRojoNombre}
                           </Link>
                         ) : (
-                          luchadorRojoNombre || "Luchador rojo"
+                          luchadorRojoNombre
                         )}{" "}
                         vs{" "}
-                        {luchadorAzulSlug ? (
+                        {hasText(combate.luchadorAzulSlug) ? (
                           <Link
-                            href={`/luchadores/${luchadorAzulSlug}`}
+                            href={`/luchadores/${combate.luchadorAzulSlug}`}
                             className="luchador-detalle-card-title-link"
                           >
                             {luchadorAzulNombre}
                           </Link>
                         ) : (
-                          luchadorAzulNombre || "Luchador azul"
+                          luchadorAzulNombre
                         )}
                       </h3>
 
@@ -530,7 +526,7 @@ export default async function LuchadorDetallePage({ params }: PageProps) {
                     )}
 
                     <div className="luchador-detalle-card-data">
-                      {combate.evento && combate.eventoSlug ? (
+                      {hasText(combate.evento) && hasText(combate.eventoSlug) ? (
                         <p>
                           Evento:{" "}
                           <Link
@@ -540,18 +536,28 @@ export default async function LuchadorDetallePage({ params }: PageProps) {
                             {combate.evento}
                           </Link>
                         </p>
-                      ) : (
-                        combate.evento && <p>Evento: {combate.evento}</p>
-                      )}
-                      {combate.categoriaPeso && <p>Categoría: {combate.categoriaPeso}</p>}
-                      {combate.estado && <p>Estado: {combate.estado}</p>}
-                      {combate.metodo && <p>Método: {combate.metodo}</p>}
-                      {typeof combate.asaltoFinal === "number" && (
-                        <p>Asalto final: {combate.asaltoFinal}</p>
-                      )}
-                      {combate.tiempoFinal && <p>Tiempo final: {combate.tiempoFinal}</p>}
-                      {combate.cartelera && <p>Cartelera: {combate.cartelera}</p>}
-                      {combate.tituloEnJuego && <p>Pelea con título en juego</p>}
+                      ) : hasText(combate.evento) ? (
+                        <p>Evento: {combate.evento}</p>
+                      ) : null}
+
+                      {hasText(combate.categoriaPeso) && hasText(combate.categoriaPesoSlug) ? (
+                        <p>
+                          Categoría:{" "}
+                          <Link
+                            href={`/categorias-peso/${combate.categoriaPesoSlug}`}
+                            className="luchador-detalle-subtle-link"
+                          >
+                            {combate.categoriaPeso}
+                          </Link>
+                        </p>
+                      ) : hasText(combate.categoriaPeso) ? (
+                        <p>Categoría: {combate.categoriaPeso}</p>
+                      ) : null}
+
+                      {hasText(combate.estado) && <p>Estado: {combate.estado}</p>}
+                      {hasText(combate.metodo) && <p>Método: {combate.metodo}</p>}
+                      {typeof combate.asalto === "number" && <p>Asalto final: {combate.asalto}</p>}
+                      {hasText(combate.tiempo) && <p>Tiempo final: {combate.tiempo}</p>}
                     </div>
                   </article>
                 );
@@ -569,43 +575,41 @@ export default async function LuchadorDetallePage({ params }: PageProps) {
             </p>
           ) : (
             <div className="luchador-detalle-grid-noticias">
-              {noticias.map((noticia) => (
-                <Link
-                  key={noticia._id}
-                  href={`/noticias/${noticia.slug}`}
-                  className="luchador-detalle-link"
-                >
-                  <article className="luchador-detalle-card">
-                    {noticia.destacada && (
-                      <p className="luchador-detalle-card-badge">Destacada</p>
-                    )}
+              {noticias.map((noticia) => {
+                const hasSlug = hasText(noticia.slug);
 
+                const card = (
+                  <article className="luchador-detalle-card">
                     <h3 className="luchador-detalle-card-title">{noticia.titulo}</h3>
 
-                    {noticia.extracto && (
+                    {hasText(noticia.extracto) && (
                       <p className="luchador-detalle-card-text">{noticia.extracto}</p>
                     )}
 
                     <div className="luchador-detalle-card-data luchador-detalle-card-data--muted">
-                      {noticia.fechaPublicacion && (
+                      {hasText(noticia.fechaPublicacion) && (
                         <p>Publicada el {formatDate(noticia.fechaPublicacion)}</p>
                       )}
-                      {noticia.disciplina && <p>Disciplina: {noticia.disciplina}</p>}
-                      {noticia.eventoRelacionado && (
-                        <p>Evento relacionado: {noticia.eventoRelacionado}</p>
-                      )}
-                      {noticia.luchadoresRelacionados &&
-                        noticia.luchadoresRelacionados.length > 0 && (
-                          <p>
-                            Luchadores: {noticia.luchadoresRelacionados.join(", ")}
-                          </p>
-                        )}
                     </div>
 
                     <p className="luchador-detalle-cta">Leer noticia</p>
                   </article>
-                </Link>
-              ))}
+                );
+
+                return hasSlug ? (
+                  <Link
+                    key={noticia._id}
+                    href={`/noticias/${noticia.slug}`}
+                    className="luchador-detalle-link"
+                  >
+                    {card}
+                  </Link>
+                ) : (
+                  <div key={noticia._id} className="luchador-detalle-link">
+                    {card}
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>

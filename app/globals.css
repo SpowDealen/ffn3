@@ -1,33 +1,43 @@
 /* =========================
-   Full Fight News · Base global refinada
+   Full Fight News · Sistema global refinado
    ========================= */
 
 :root {
   --ffn-bg: #0a0a0f;
   --ffn-bg-elevated: #11141b;
+
   --ffn-surface: rgba(255, 255, 255, 0.04);
   --ffn-surface-strong: rgba(255, 255, 255, 0.07);
   --ffn-surface-hover: rgba(255, 255, 255, 0.055);
+  --ffn-surface-soft: rgba(255, 255, 255, 0.025);
+
   --ffn-border: rgba(255, 255, 255, 0.1);
   --ffn-border-strong: rgba(255, 255, 255, 0.16);
+  --ffn-border-soft: rgba(255, 255, 255, 0.06);
+
   --ffn-text: #f5f7fb;
   --ffn-text-soft: rgba(245, 247, 251, 0.72);
   --ffn-text-muted: rgba(245, 247, 251, 0.52);
+
   --ffn-accent: #f5c542;
   --ffn-accent-strong: #ffd76a;
   --ffn-accent-soft: rgba(245, 197, 66, 0.14);
   --ffn-accent-border: rgba(245, 197, 66, 0.22);
+
   --ffn-radius-xs: 8px;
   --ffn-radius-sm: 10px;
   --ffn-radius-md: 18px;
   --ffn-radius-lg: 22px;
   --ffn-radius-xl: 28px;
+
   --ffn-shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.18);
   --ffn-shadow-card: 0 14px 34px rgba(0, 0, 0, 0.22);
   --ffn-shadow-card-hover: 0 18px 40px rgba(0, 0, 0, 0.26);
+  --ffn-shadow-panel: 0 16px 36px rgba(0, 0, 0, 0.2);
   --ffn-shadow-accent:
     0 0 0 1px rgba(245, 197, 66, 0.18),
     0 10px 30px rgba(245, 197, 66, 0.08);
+
   --ffn-container: 1240px;
   --ffn-reading: 760px;
   --ffn-navbar-height: 110px;
@@ -136,6 +146,11 @@ p {
   text-wrap: pretty;
 }
 
+ul,
+ol {
+  min-width: 0;
+}
+
 ::selection {
   background: rgba(245, 197, 66, 0.28);
   color: #ffffff;
@@ -145,6 +160,10 @@ p {
   outline: 2px solid rgba(245, 197, 66, 0.72);
   outline-offset: 2px;
 }
+
+/* =========================
+   ESTRUCTURA BASE
+   ========================= */
 
 .container,
 .ffn-container {
@@ -160,7 +179,7 @@ p {
   background: var(--ffn-surface);
   border: 1px solid var(--ffn-border);
   border-radius: var(--ffn-radius-lg);
-  box-shadow: var(--ffn-shadow-soft);
+  box-shadow: var(--ffn-shadow-panel);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
@@ -228,6 +247,7 @@ p {
   line-height: 1.05;
   letter-spacing: -0.03em;
   text-wrap: balance;
+  color: var(--ffn-accent);
 }
 
 .ffn-title--hero {
@@ -236,6 +256,12 @@ p {
 
 .ffn-title--section {
   font-size: clamp(1.5rem, 3vw, 2.4rem);
+}
+
+.ffn-title--card {
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
 .ffn-text-soft {
@@ -266,6 +292,90 @@ p {
 .ffn-link:hover {
   color: var(--ffn-accent);
 }
+
+.ffn-link-soft {
+  color: var(--ffn-text-soft);
+}
+
+.ffn-link-soft:hover {
+  color: var(--ffn-accent);
+}
+
+.ffn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--ffn-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ffn-text);
+  font-size: 0.88rem;
+  line-height: 1;
+}
+
+.ffn-pill-muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--ffn-border-soft);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ffn-text-soft);
+  font-size: 0.84rem;
+  line-height: 1;
+}
+
+.ffn-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ffn-section-kicker {
+  display: inline-block;
+  color: var(--ffn-text-muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ffn-inline-link {
+  color: var(--ffn-accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.ffn-inline-link:hover {
+  color: var(--ffn-accent-strong);
+}
+
+.ffn-empty-state {
+  border: 1px dashed var(--ffn-border);
+  border-radius: var(--ffn-radius-md);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--ffn-text-soft);
+  padding: 18px;
+  line-height: 1.65;
+}
+
+.ffn-footer-card {
+  border: 1px solid var(--ffn-border);
+  border-radius: var(--ffn-radius-md);
+  background: rgba(255, 255, 255, 0.025);
+  padding: 18px;
+  display: grid;
+  gap: 10px;
+  box-shadow: var(--ffn-shadow-soft);
+}
+
+/* =========================
+   BOTONES / FORMULARIOS
+   ========================= */
 
 .ffn-button {
   display: inline-flex;
@@ -298,25 +408,56 @@ p {
   transform: translateY(0);
 }
 
-.ffn-button--primary {
+.ffn-button--primary,
+.ffn-button-primary {
   background: var(--ffn-accent);
   color: #111111;
 }
 
-.ffn-button--primary:hover {
+.ffn-button--primary:hover,
+.ffn-button-primary:hover {
   background: var(--ffn-accent-strong);
   box-shadow: 0 16px 30px rgba(245, 197, 66, 0.2);
 }
 
-.ffn-button--ghost {
+.ffn-button--ghost,
+.ffn-button-secondary {
   background: rgba(255, 255, 255, 0.03);
   color: #ffffff;
   border-color: var(--ffn-border);
 }
 
-.ffn-button--ghost:hover {
+.ffn-button--ghost:hover,
+.ffn-button-secondary:hover {
   border-color: var(--ffn-border-strong);
   background: rgba(255, 255, 255, 0.06);
+}
+
+.ffn-button-primary,
+.ffn-button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    transform 0.22s ease,
+    box-shadow 0.22s ease,
+    opacity 0.22s ease,
+    background 0.22s ease,
+    border-color 0.22s ease,
+    color 0.22s ease;
+}
+
+.ffn-button-primary:hover,
+.ffn-button-secondary:hover {
+  transform: translateY(-1px);
 }
 
 .ffn-input,
@@ -353,6 +494,10 @@ textarea:focus {
   box-shadow: 0 0 0 4px rgba(245, 197, 66, 0.12);
   background: rgba(255, 255, 255, 0.06);
 }
+
+/* =========================
+   LAYOUT UTILITIES
+   ========================= */
 
 .ffn-grid-auto {
   display: grid;
@@ -414,6 +559,10 @@ textarea:focus {
 .ffn-ring-accent {
   box-shadow: 0 0 0 1px rgba(245, 197, 66, 0.22);
 }
+
+/* =========================
+   TABLAS
+   ========================= */
 
 .ffn-table {
   width: 100%;
@@ -537,7 +686,9 @@ textarea:focus {
     white-space: normal;
   }
 
-  .ffn-button {
+  .ffn-button,
+  .ffn-button-primary,
+  .ffn-button-secondary {
     min-height: 44px;
     padding: 0 16px;
   }
@@ -560,6 +711,13 @@ textarea:focus {
 
   .ffn-panel {
     border-radius: 18px;
+  }
+
+  .ffn-pill,
+  .ffn-pill-muted {
+    min-height: 32px;
+    padding: 0 11px;
+    font-size: 0.84rem;
   }
 }
 

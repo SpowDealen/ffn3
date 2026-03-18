@@ -1,11 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { client } from "../../../sanity/lib/client";
-import {
-  combatesPorEventoQuery,
-  eventoPorSlugQuery,
-  noticiasPorEventoQuery,
-} from "../../../sanity/lib/queries";
+import { eventoPorSlugQuery } from "../../../sanity/lib/queries";
 
 type SluggedEntity = {
   _id?: string;
@@ -29,6 +25,41 @@ type EventoDisciplina = {
   slug?: string;
 };
 
+type Combate = {
+  _id: string;
+  metodo?: string;
+  asalto?: number;
+  tiempo?: string;
+  tituloEnJuego?: boolean;
+  cartelera?: string;
+  orden?: number;
+  estado?: string;
+  resumen?: string;
+  desarrollo?: string;
+  momentoClave?: string;
+  consecuencia?: string;
+  luchadorRojo?: SluggedEntity | string;
+  luchadorRojoSlug?: string;
+  luchadorAzul?: SluggedEntity | string;
+  luchadorAzulSlug?: string;
+  ganador?: SluggedEntity | string;
+  ganadorSlug?: string;
+  categoriaPeso?: string;
+  categoriaPesoSlug?: string;
+};
+
+type Noticia = {
+  _id: string;
+  titulo: string;
+  slug: string;
+  extracto?: string;
+  fechaPublicacion?: string;
+  destacada?: boolean;
+  disciplina?: string;
+  eventoRelacionado?: string;
+  luchadoresRelacionados?: string[];
+};
+
 type Evento = {
   _id: string;
   nombre: string;
@@ -45,38 +76,11 @@ type Evento = {
   dondeVer?: string;
   notas?: string;
   organizacion?: EventoOrganizacion | string;
+  organizacionSlug?: string;
   disciplina?: EventoDisciplina | string;
-};
-
-type Combate = {
-  _id: string;
-  metodo?: string;
-  asalto?: number;
-  tiempo?: string;
-  tituloEnJuego?: boolean;
-  cartelera?: string;
-  orden?: number;
-  estado?: string;
-  resumen?: string;
-  desarrollo?: string;
-  momentoClave?: string;
-  consecuencia?: string;
-  luchadorRojo?: SluggedEntity | string;
-  luchadorAzul?: SluggedEntity | string;
-  ganador?: SluggedEntity | string;
-  categoriaPeso?: string;
-};
-
-type Noticia = {
-  _id: string;
-  titulo: string;
-  slug: string;
-  extracto?: string;
-  fechaPublicacion?: string;
-  destacada?: boolean;
-  disciplina?: string;
-  eventoRelacionado?: string;
-  luchadoresRelacionados?: string[];
+  disciplinaSlug?: string;
+  combates?: Combate[];
+  noticiasRelacionadas?: Noticia[];
 };
 
 type Protagonista = {
@@ -90,13 +94,17 @@ type PageProps = {
   }>;
 };
 
-function getEntityName(value?: SluggedEntity | EventoOrganizacion | EventoDisciplina | string | null): string {
+function getEntityName(
+  value?: SluggedEntity | EventoOrganizacion | EventoDisciplina | string | null
+): string {
   if (!value) return "";
   if (typeof value === "string") return value;
   return value.nombre || "";
 }
 
-function getEntitySlug(value?: SluggedEntity | EventoOrganizacion | EventoDisciplina | string | null): string | undefined {
+function getEntitySlug(
+  value?: SluggedEntity | EventoOrganizacion | EventoDisciplina | string | null
+): string | undefined {
   if (!value || typeof value === "string") return undefined;
   return value.slug || undefined;
 }
@@ -133,24 +141,30 @@ export default async function EventoDetallePage({ params }: PageProps) {
   const { slug } = await params;
 
   const evento: Evento | null = await client.fetch(eventoPorSlugQuery, { slug });
-  const combates: Combate[] = await client.fetch(combatesPorEventoQuery, { slug });
-  const noticias: Noticia[] = await client.fetch(noticiasPorEventoQuery, { slug });
 
   if (!evento) {
     notFound();
   }
 
+  const combates = Array.isArray(evento.combates) ? evento.combates : [];
+  const noticias = Array.isArray(evento.noticiasRelacionadas)
+    ? evento.noticiasRelacionadas
+    : [];
+
   const organizacionNombre = getEntityName(evento.organizacion);
-  const organizacionSlug = getEntitySlug(evento.organizacion);
+  const organizacionSlug =
+    getEntitySlug(evento.organizacion) || evento.organizacionSlug;
 
   const disciplinaNombre = getEntityName(evento.disciplina);
-  const disciplinaSlug = getEntitySlug(evento.disciplina);
+  const disciplinaSlug =
+    getEntitySlug(evento.disciplina) || evento.disciplinaSlug;
 
   const protagonistasMap = new Map<string, Protagonista>();
 
   for (const combate of combates) {
     const luchadorRojoNombre = getEntityName(combate.luchadorRojo);
-    const luchadorRojoSlug = getEntitySlug(combate.luchadorRojo);
+    const luchadorRojoSlug =
+      getEntitySlug(combate.luchadorRojo) || combate.luchadorRojoSlug;
 
     if (luchadorRojoNombre) {
       protagonistasMap.set(luchadorRojoNombre, {
@@ -160,7 +174,8 @@ export default async function EventoDetallePage({ params }: PageProps) {
     }
 
     const luchadorAzulNombre = getEntityName(combate.luchadorAzul);
-    const luchadorAzulSlug = getEntitySlug(combate.luchadorAzul);
+    const luchadorAzulSlug =
+      getEntitySlug(combate.luchadorAzul) || combate.luchadorAzulSlug;
 
     if (luchadorAzulNombre) {
       protagonistasMap.set(luchadorAzulNombre, {
@@ -340,6 +355,7 @@ export default async function EventoDetallePage({ params }: PageProps) {
           text-decoration: none;
           color: inherit;
           min-width: 0;
+          display: block;
         }
 
         .evento-detalle-card {
@@ -357,7 +373,8 @@ export default async function EventoDetallePage({ params }: PageProps) {
           min-width: 0;
         }
 
-        .evento-detalle-link:hover .evento-detalle-card {
+        .evento-detalle-link:hover .evento-detalle-card,
+        .evento-detalle-card:hover {
           transform: translateY(-2px);
           border-color: rgba(255,255,255,0.14);
           box-shadow: 0 14px 34px rgba(0,0,0,0.26);
@@ -421,6 +438,44 @@ export default async function EventoDetallePage({ params }: PageProps) {
         .evento-detalle-card-data--muted {
           color: #888;
           font-size: 14px;
+        }
+
+        .evento-detalle-fighter-links {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 18px;
+        }
+
+        .evento-detalle-fighter-link,
+        .evento-detalle-result-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 40px;
+          padding: 0 14px;
+          border-radius: 999px;
+          text-decoration: none;
+          font-size: 13px;
+          line-height: 1;
+          transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+        }
+
+        .evento-detalle-fighter-link {
+          color: white;
+          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(255,255,255,0.04);
+        }
+
+        .evento-detalle-result-link {
+          color: var(--ffn-accent, #f5c542);
+          border: 1px solid rgba(245,197,66,0.22);
+          background: rgba(245,197,66,0.06);
+        }
+
+        .evento-detalle-fighter-link:hover,
+        .evento-detalle-result-link:hover {
+          transform: translateY(-1px);
         }
 
         .evento-detalle-cta {
@@ -508,6 +563,15 @@ export default async function EventoDetallePage({ params }: PageProps) {
             font-size: 13px;
           }
 
+          .evento-detalle-fighter-links {
+            flex-direction: column;
+          }
+
+          .evento-detalle-fighter-link,
+          .evento-detalle-result-link {
+            width: 100%;
+          }
+
           .evento-detalle-cta {
             padding-top: 16px;
           }
@@ -549,7 +613,9 @@ export default async function EventoDetallePage({ params }: PageProps) {
             <span className="evento-detalle-meta-pill">
               Disciplina:{" "}
               {disciplinaSlug ? (
-                <Link href={`/disciplinas/${disciplinaSlug}`}>{disciplinaNombre}</Link>
+                <Link href={`/disciplinas/${disciplinaSlug}`}>
+                  {disciplinaNombre}
+                </Link>
               ) : (
                 disciplinaNombre
               )}
@@ -710,56 +776,90 @@ export default async function EventoDetallePage({ params }: PageProps) {
           ) : (
             <div className="evento-detalle-grid-combates">
               {combates.map((combate) => {
-                const luchadorRojoNombre = getEntityName(combate.luchadorRojo) || "Luchador rojo";
-                const luchadorAzulNombre = getEntityName(combate.luchadorAzul) || "Luchador azul";
+                const luchadorRojoNombre =
+                  getEntityName(combate.luchadorRojo) || "Luchador rojo";
+                const luchadorRojoSlug =
+                  getEntitySlug(combate.luchadorRojo) || combate.luchadorRojoSlug;
+
+                const luchadorAzulNombre =
+                  getEntityName(combate.luchadorAzul) || "Luchador azul";
+                const luchadorAzulSlug =
+                  getEntitySlug(combate.luchadorAzul) || combate.luchadorAzulSlug;
+
                 const ganadorNombre = getEntityName(combate.ganador);
+                const ganadorSlug =
+                  getEntitySlug(combate.ganador) || combate.ganadorSlug;
 
                 return (
-                  <Link
-                    key={combate._id}
-                    href={`/resultados/${combate._id}`}
-                    className="evento-detalle-link"
-                  >
-                    <article className="evento-detalle-card">
-                      <p className="evento-detalle-card-label">
-                        {formatCartelera(combate.cartelera)}
-                        {typeof combate.orden === "number" ? ` · Orden ${combate.orden}` : ""}
+                  <article key={combate._id} className="evento-detalle-card">
+                    <p className="evento-detalle-card-label">
+                      {formatCartelera(combate.cartelera)}
+                      {typeof combate.orden === "number" ? ` · Orden ${combate.orden}` : ""}
+                    </p>
+
+                    <h3 className="evento-detalle-card-title">
+                      {luchadorRojoNombre} vs {luchadorAzulNombre}
+                    </h3>
+
+                    {ganadorNombre && (
+                      <p className="evento-detalle-card-subtitle">
+                        Ganador: {ganadorNombre}
                       </p>
+                    )}
 
-                      <h3 className="evento-detalle-card-title">
-                        {luchadorRojoNombre} vs {luchadorAzulNombre}
-                      </h3>
+                    {combate.resumen && (
+                      <p className="evento-detalle-card-text">{combate.resumen}</p>
+                    )}
 
-                      {ganadorNombre && (
-                        <p className="evento-detalle-card-subtitle">
-                          Ganador: {ganadorNombre}
-                        </p>
+                    <div className="evento-detalle-card-data">
+                      {combate.categoriaPeso && <p>Categoría: {combate.categoriaPeso}</p>}
+                      {combate.estado && <p>Estado: {formatEstado(combate.estado)}</p>}
+                      {combate.metodo && <p>Método: {combate.metodo}</p>}
+                      {typeof combate.asalto === "number" && (
+                        <p>Asalto final: {combate.asalto}</p>
+                      )}
+                      {combate.tiempo && <p>Tiempo final: {combate.tiempo}</p>}
+                      {combate.tituloEnJuego && <p>Título en juego</p>}
+                      {combate.momentoClave && <p>Momento clave: {combate.momentoClave}</p>}
+                      {combate.consecuencia && <p>Consecuencia: {combate.consecuencia}</p>}
+                    </div>
+
+                    <div className="evento-detalle-fighter-links">
+                      {luchadorRojoSlug && (
+                        <Link
+                          href={`/luchadores/${luchadorRojoSlug}`}
+                          className="evento-detalle-fighter-link"
+                        >
+                          Ver {luchadorRojoNombre}
+                        </Link>
                       )}
 
-                      {combate.resumen && (
-                        <p className="evento-detalle-card-text">{combate.resumen}</p>
+                      {luchadorAzulSlug && (
+                        <Link
+                          href={`/luchadores/${luchadorAzulSlug}`}
+                          className="evento-detalle-fighter-link"
+                        >
+                          Ver {luchadorAzulNombre}
+                        </Link>
                       )}
 
-                      <div className="evento-detalle-card-data">
-                        {combate.categoriaPeso && <p>Categoría: {combate.categoriaPeso}</p>}
-                        {combate.estado && <p>Estado: {formatEstado(combate.estado)}</p>}
-                        {combate.metodo && <p>Método: {combate.metodo}</p>}
-                        {typeof combate.asalto === "number" && (
-                          <p>Asalto final: {combate.asalto}</p>
-                        )}
-                        {combate.tiempo && <p>Tiempo final: {combate.tiempo}</p>}
-                        {combate.tituloEnJuego && <p>Título en juego</p>}
-                        {combate.momentoClave && (
-                          <p>Momento clave: {combate.momentoClave}</p>
-                        )}
-                        {combate.consecuencia && (
-                          <p>Consecuencia: {combate.consecuencia}</p>
-                        )}
-                      </div>
+                      {ganadorSlug && ganadorSlug !== luchadorRojoSlug && ganadorSlug !== luchadorAzulSlug && (
+                        <Link
+                          href={`/luchadores/${ganadorSlug}`}
+                          className="evento-detalle-fighter-link"
+                        >
+                          Ver ganador
+                        </Link>
+                      )}
 
-                      <p className="evento-detalle-cta">Ver resultado completo</p>
-                    </article>
-                  </Link>
+                      <Link
+                        href={`/resultados/${combate._id}`}
+                        className="evento-detalle-result-link"
+                      >
+                        Ver resultado completo
+                      </Link>
+                    </div>
+                  </article>
                 );
               })}
             </div>

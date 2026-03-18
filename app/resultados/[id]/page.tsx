@@ -71,13 +71,17 @@ type PageProps = {
   }>;
 };
 
-function getEntityName(value?: SluggedEntity | OrganizacionEntity | string | null): string {
+function getEntityName(
+  value?: SluggedEntity | OrganizacionEntity | string | null
+): string {
   if (!value) return "";
   if (typeof value === "string") return value;
   return value.nombre || "";
 }
 
-function getEntitySlug(value?: SluggedEntity | OrganizacionEntity | string | null): string | undefined {
+function getEntitySlug(
+  value?: SluggedEntity | OrganizacionEntity | string | null
+): string | undefined {
   if (!value || typeof value === "string") return undefined;
   return value.slug || undefined;
 }
@@ -99,7 +103,9 @@ function getCategoryName(value?: CategoriaPesoEntity | string | null): string {
   return value.nombre || "";
 }
 
-function getCategorySlug(value?: CategoriaPesoEntity | string | null): string | undefined {
+function getCategorySlug(
+  value?: CategoriaPesoEntity | string | null
+): string | undefined {
   if (!value || typeof value === "string") return undefined;
   return value.slug || undefined;
 }
@@ -157,11 +163,15 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
   const luchadorAzulSlug = getEntitySlug(combate.luchadorAzul);
 
   const ganadorNombre = getEntityName(combate.ganador);
+  const ganadorSlug = getEntitySlug(combate.ganador);
+
   const eventoNombre = getEventName(combate.evento);
   const eventoSlug = getEventSlug(combate.evento);
+
   const categoriaPesoNombre = getCategoryName(combate.categoriaPeso);
   const categoriaPesoSlug = getCategorySlug(combate.categoriaPeso);
   const categoriaPesoDetalle = formatPeso(combate.categoriaPeso);
+
   const organizacionNombre = getEntityName(combate.organizacion);
   const organizacionSlug = getEntitySlug(combate.organizacion);
 
@@ -481,7 +491,17 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
 
           {ganadorNombre && (
             <span className="resultado-detalle-meta-pill">
-              Ganador: {ganadorNombre}
+              Ganador:{" "}
+              {ganadorSlug ? (
+                <Link
+                  href={`/luchadores/${ganadorSlug}`}
+                  className="resultado-detalle-pill-link"
+                >
+                  {ganadorNombre}
+                </Link>
+              ) : (
+                ganadorNombre
+              )}
             </span>
           )}
 
@@ -515,7 +535,17 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
 
               {categoriaPesoNombre && (
                 <p>
-                  <strong>Categoría:</strong> {categoriaPesoNombre}
+                  <strong>Categoría:</strong>{" "}
+                  {categoriaPesoSlug ? (
+                    <Link
+                      href={`/categorias-peso/${categoriaPesoSlug}`}
+                      className="resultado-detalle-pill-link"
+                    >
+                      {categoriaPesoNombre}
+                    </Link>
+                  ) : (
+                    categoriaPesoNombre
+                  )}
                   {categoriaPesoDetalle ? ` (${categoriaPesoDetalle})` : ""}
                 </p>
               )}
@@ -612,6 +642,15 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
                   className="resultado-detalle-action"
                 >
                   Ver {luchadorAzulNombre}
+                </Link>
+              )}
+
+              {ganadorSlug && (
+                <Link
+                  href={`/luchadores/${ganadorSlug}`}
+                  className="resultado-detalle-action"
+                >
+                  Ver ganador
                 </Link>
               )}
             </div>

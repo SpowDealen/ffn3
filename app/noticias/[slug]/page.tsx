@@ -9,14 +9,14 @@ type RelacionBasica = {
   _id?: string;
   nombre?: string;
   titulo?: string;
-  slug?: string;
+  slug?: string | null;
 };
 
 type TextoOReferencia = string | RelacionBasica | null | undefined;
 
 type LuchadorRelacionado = {
-  nombre: string;
-  slug?: string;
+  nombre?: string;
+  slug?: string | null;
 };
 
 type Noticia = {
@@ -28,12 +28,13 @@ type Noticia = {
   fechaPublicacion?: string;
   destacada?: boolean;
   disciplina?: TextoOReferencia;
+  disciplinaSlug?: string | null;
   eventoRelacionado?: TextoOReferencia;
-  eventoRelacionadoSlug?: string;
+  eventoRelacionadoSlug?: string | null;
   organizacionRelacionada?: TextoOReferencia;
-  organizacionRelacionadaSlug?: string;
-  luchadoresRelacionados?: Array<string | RelacionBasica>;
-  luchadoresRelacionadosData?: LuchadorRelacionado[];
+  organizacionRelacionadaSlug?: string | null;
+  luchadoresRelacionados?: Array<string | RelacionBasica> | null;
+  luchadoresRelacionadosData?: LuchadorRelacionado[] | null;
 };
 
 type PageProps = {
@@ -50,7 +51,7 @@ function getDisplayText(value: TextoOReferencia) {
 
 function getSlug(value: TextoOReferencia) {
   if (!value || typeof value === "string") return undefined;
-  return value.slug;
+  return value.slug ?? undefined;
 }
 
 function formatDate(value?: string) {
@@ -143,16 +144,33 @@ export default async function NoticiaDetallePage({ params }: PageProps) {
     notFound();
   }
 
-  const luchadoresConSlug =
-    noticia.luchadoresRelacionadosData?.filter((luchador) => Boolean(luchador.slug)) ?? [];
+  const luchadoresRelacionadosBase = Array.isArray(noticia.luchadoresRelacionadosData)
+    ? noticia.luchadoresRelacionadosData
+    : [];
+
+  const luchadoresRelacionados = luchadoresRelacionadosBase.filter(
+    (luchador) => typeof luchador?.nombre === "string" && luchador.nombre.trim().length > 0
+  );
+
+  const luchadoresConSlug = luchadoresRelacionados.filter(
+    (luchador) => typeof luchador.slug === "string" && luchador.slug.trim().length > 0
+  );
 
   const disciplinaTexto = getDisplayText(noticia.disciplina);
+  const disciplinaSlug = noticia.disciplinaSlug || getSlug(noticia.disciplina);
+
   const eventoRelacionadoTexto = getDisplayText(noticia.eventoRelacionado);
   const organizacionRelacionadaTexto = getDisplayText(noticia.organizacionRelacionada);
 
   const eventoSlug = noticia.eventoRelacionadoSlug || getSlug(noticia.eventoRelacionado);
   const organizacionSlug =
     noticia.organizacionRelacionadaSlug || getSlug(noticia.organizacionRelacionada);
+
+  const hayContextoRelacionado =
+    Boolean(disciplinaTexto) ||
+    Boolean(eventoRelacionadoTexto) ||
+    Boolean(organizacionRelacionadaTexto) ||
+    luchadoresRelacionados.length > 0;
 
   return (
     <main className="noticia-shell">
@@ -215,6 +233,11 @@ export default async function NoticiaDetallePage({ params }: PageProps) {
           border: 1px solid rgba(255,255,255,0.08);
           background: rgba(255,255,255,0.03);
           line-height: 1.4;
+        }
+
+        .noticia-meta-link {
+          color: inherit;
+          text-decoration: none;
         }
 
         .noticia-grid {
@@ -545,7 +568,16 @@ export default async function NoticiaDetallePage({ params }: PageProps) {
             )}
 
             {disciplinaTexto && (
-              <span className="noticia-meta-pill">Disciplina: {disciplinaTexto}</span>
+              <span className="noticia-meta-pill">
+                Disciplina:{" "}
+                {disciplinaSlug ? (
+                  <Link href={`/disciplinas/${disciplinaSlug}`} className="noticia-meta-link">
+                    {disciplinaTexto}
+                  </Link>
+                ) : (
+                  disciplinaTexto
+                )}
+              </span>
             )}
 
             {noticia.destacada && <span className="noticia-meta-pill">Destacada</span>}
@@ -559,13 +591,28 @@ export default async function NoticiaDetallePage({ params }: PageProps) {
             <hr className="noticia-divider" />
 
             <section className="noticia-footer-links">
+              {disciplinaSlug && disciplinaTexto && (
+                <Link href={`/disciplinas/${disciplinaSlug}`} className="noticia-accent-link">
+                  Ir a {disciplinaTexto}
+                </Link>
+              )}
+
               {eventoSlug && eventoRelacionadoTexto && (
                 <Link href={`/eventos/${eventoSlug}`} className="noticia-accent-link">
                   Ir al evento relacionado
                 </Link>
               )}
 
-              {luchadoresConSlug.slice(0, 2).map((luchador) => (
+              {organizacionSlug && organizacionRelacionadaTexto && (
+                <Link
+                  href={`/organizaciones/${organizacionSlug}`}
+                  className="noticia-accent-link"
+                >
+                  Ver organización relacionada
+                </Link>
+              )}
+
+              {luchadoresConSlug.slice(0, 3).map((luchador) => (
                 <Link
                   key={`${luchador.nombre}-${luchador.slug}-footer`}
                   href={`/luchadores/${luchador.slug}`}
@@ -578,12 +625,23 @@ export default async function NoticiaDetallePage({ params }: PageProps) {
           </article>
 
           <aside className="noticia-aside-wrap">
-            {(eventoRelacionadoTexto ||
-              organizacionRelacionadaTexto ||
-              (noticia.luchadoresRelacionadosData &&
-                noticia.luchadoresRelacionadosData.length > 0)) && (
+            {hayContextoRelacionado && (
               <section className="noticia-aside-card">
                 <h2 className="noticia-section-title">Contexto relacionado</h2>
+
+                {disciplinaTexto && (
+                  <div className="noticia-evento-bloque">
+                    <p className="noticia-section-label">Disciplina</p>
+
+                    {disciplinaSlug ? (
+                      <Link href={`/disciplinas/${disciplinaSlug}`} className="noticia-evento-link">
+                        {disciplinaTexto}
+                      </Link>
+                    ) : (
+                      <p className="noticia-evento-texto">{disciplinaTexto}</p>
+                    )}
+                  </div>
+                )}
 
                 {eventoRelacionadoTexto && (
                   <div className="noticia-evento-bloque">
@@ -601,11 +659,7 @@ export default async function NoticiaDetallePage({ params }: PageProps) {
 
                 {organizacionRelacionadaTexto && (
                   <div
-                    className={
-                      noticia.luchadoresRelacionadosData?.length
-                        ? "noticia-evento-bloque"
-                        : undefined
-                    }
+                    className={luchadoresRelacionados.length > 0 ? "noticia-evento-bloque" : undefined}
                   >
                     <p className="noticia-section-label">Organización</p>
 
@@ -622,30 +676,29 @@ export default async function NoticiaDetallePage({ params }: PageProps) {
                   </div>
                 )}
 
-                {noticia.luchadoresRelacionadosData &&
-                  noticia.luchadoresRelacionadosData.length > 0 && (
-                    <div>
-                      <p className="noticia-section-label">Luchadores relacionados</p>
+                {luchadoresRelacionados.length > 0 && (
+                  <div>
+                    <p className="noticia-section-label">Luchadores relacionados</p>
 
-                      <div className="noticia-chips">
-                        {noticia.luchadoresRelacionadosData.map((luchador) =>
-                          luchador.slug ? (
-                            <Link
-                              key={`${luchador.nombre}-${luchador.slug}`}
-                              href={`/luchadores/${luchador.slug}`}
-                              className="noticia-chip-link"
-                            >
-                              {luchador.nombre}
-                            </Link>
-                          ) : (
-                            <span key={luchador.nombre} className="noticia-chip-texto">
-                              {luchador.nombre}
-                            </span>
-                          ),
-                        )}
-                      </div>
+                    <div className="noticia-chips">
+                      {luchadoresRelacionados.map((luchador) =>
+                        luchador.slug ? (
+                          <Link
+                            key={`${luchador.nombre}-${luchador.slug}`}
+                            href={`/luchadores/${luchador.slug}`}
+                            className="noticia-chip-link"
+                          >
+                            {luchador.nombre}
+                          </Link>
+                        ) : (
+                          <span key={luchador.nombre} className="noticia-chip-texto">
+                            {luchador.nombre}
+                          </span>
+                        )
+                      )}
                     </div>
-                  )}
+                  </div>
+                )}
               </section>
             )}
 
