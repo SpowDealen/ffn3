@@ -548,9 +548,12 @@ export const categoriaPesoPorSlugQuery = groq`
     descripcion,
     "disciplina": disciplina->nombre,
     "disciplinaSlug": disciplina->slug.current,
-    "luchadores": coalesce(*[
+    "luchadoresRelacionados": coalesce(*[
       _type == "luchador" &&
-      categoriaPeso._ref == ^._id
+      (
+        categoriaPeso._ref == ^._id ||
+        categoriaPeso == ^.nombre
+      )
     ] | order(nombre asc){
       _id,
       nombre,
@@ -562,13 +565,21 @@ export const categoriaPesoPorSlugQuery = groq`
     }, []),
     "combatesRelacionados": coalesce(*[
       _type == "combate" &&
-      categoriaPeso._ref == ^._id
-    ] | order(_createdAt desc)[0...10]{
+      defined(categoriaPeso) &&
+      (
+        categoriaPeso._ref == ^._id ||
+        categoriaPeso == ^.nombre ||
+        categoriaPeso->nombre == ^.nombre
+      )
+    ] | order(coalesce(evento->fecha, _createdAt) desc)[0...10]{
       _id,
       metodo,
       asalto,
       tiempo,
       estado,
+      cartelera,
+      tituloEnJuego,
+      resumen,
       "evento": evento->nombre,
       "eventoSlug": evento->slug.current,
       "luchadorRojo": luchadorRojo->nombre,

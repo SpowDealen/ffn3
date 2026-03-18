@@ -3,56 +3,34 @@ import { notFound } from "next/navigation";
 import { client } from "../../../sanity/lib/client";
 import { categoriaPesoPorSlugQuery } from "../../../sanity/lib/queries";
 
+type RouteParams = {
+  slug: string;
+};
+
 type PageProps = {
-  params: Promise<{
-    slug: string;
-  }>;
+  params: Promise<RouteParams> | RouteParams;
 };
 
-type SluggedEntity = {
+type LuchadorRelacionado = {
   _id?: string;
   nombre?: string;
-  slug?: string;
-};
-
-type CategoriaPesoData = {
-  _id?: string;
-  nombre?: string;
-  slug?: string;
-  limitePeso?: number;
-  unidad?: string;
-  descripcion?: string;
-  activa?: boolean;
-  disciplina?: string | SluggedEntity | null;
-  disciplinaSlug?: string;
-
-  luchadores?: unknown[];
-  luchadoresRelacionados?: unknown[];
-  combates?: unknown[];
-  combatesRelacionados?: unknown[];
-};
-
-type LuchadorNormalizado = {
-  _id: string;
-  nombre: string;
   slug?: string;
   apodo?: string;
-  nacionalidad?: string;
   record?: string;
-  activo?: boolean;
-  disciplina?: string;
   organizacion?: string;
+  organizacionSlug?: string;
 };
 
-type CombateNormalizado = {
-  _id: string;
-  metodo?: string;
-  asaltoFinal?: number;
-  tiempoFinal?: string;
-  tituloEnJuego?: boolean;
-  cartelera?: string;
-  orden?: number;
+type CombateRelacionado = {
+  _id?: string;
+  id?: string;
   estado?: string;
+  metodo?: string;
+  asalto?: number;
+  tiempo?: string;
+  cartelera?: string;
+  tituloEnJuego?: boolean;
+  resumen?: string;
   evento?: string;
   eventoSlug?: string;
   luchadorRojo?: string;
@@ -63,608 +41,436 @@ type CombateNormalizado = {
   ganadorSlug?: string;
 };
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
+type CategoriaPeso = {
+  _id?: string;
+  nombre?: string;
+  slug?: string;
+  descripcion?: string;
+  limitePeso?: number;
+  unidad?: string;
+  disciplina?: string;
+  disciplinaSlug?: string;
+  organizacion?: string;
+  organizacionSlug?: string;
+  luchadoresRelacionados?: LuchadorRelacionado[] | null;
+  combatesRelacionados?: CombateRelacionado[] | null;
+};
 
-function hasText(value: unknown): value is string {
+function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function getString(value: unknown): string | undefined {
-  return hasText(value) ? value.trim() : undefined;
+function safeText(value: unknown, fallback = ""): string {
+  return isNonEmptyString(value) ? value.trim() : fallback;
 }
 
-function getNumber(value: unknown): number | undefined {
-  return typeof value === "number" && !Number.isNaN(value) ? value : undefined;
-}
-
-function getBoolean(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined;
-}
-
-function getSlug(value: unknown): string | undefined {
-  if (hasText(value)) return value.trim();
-
-  if (isObject(value)) {
-    const directSlug = getString(value.slug);
-    if (directSlug) return directSlug;
-
-    if (isObject(value.slug)) {
-      return getString(value.slug.current);
-    }
-  }
-
-  return undefined;
-}
-
-function getEntityName(value: unknown): string {
-  if (!value) return "";
-  if (typeof value === "string") return value.trim();
-  if (isObject(value)) return getString(value.nombre) || "";
-  return "";
-}
-
-function getArray(value: unknown): unknown[] {
+function safeArray<T>(value: T[] | null | undefined): T[] {
   return Array.isArray(value) ? value : [];
 }
 
-function normalizeLuchador(item: unknown): LuchadorNormalizado | null {
-  if (!isObject(item)) return null;
-
-  const _id = getString(item._id);
-  const nombre = getString(item.nombre);
-
-  if (!_id || !nombre) return null;
-
-  return {
-    _id,
-    nombre,
-    slug: getSlug(item.slug),
-    apodo: getString(item.apodo),
-    nacionalidad: getString(item.nacionalidad),
-    record: getString(item.record),
-    activo: getBoolean(item.activo),
-    disciplina: getEntityName(item.disciplina),
-    organizacion: getEntityName(item.organizacion),
-  };
+function getCombateId(combate: CombateRelacionado) {
+  return safeText(combate._id) || safeText(combate.id);
 }
 
-function normalizeCombate(item: unknown): CombateNormalizado | null {
-  if (!isObject(item)) return null;
+function getResultadoLabel(combate: CombateRelacionado) {
+  const estado = safeText(combate.estado).toLowerCase();
 
-  const _id = getString(item._id);
-  if (!_id) return null;
+  if (estado === "cancelado" || estado === "cancelada") return "Cancelado";
+  if (estado === "programado") return "Programado";
+  if (isNonEmptyString(combate.ganador)) return `Ganador: ${combate.ganador}`;
+  return "Resultado por confirmar";
+}
 
-  const luchadorRojo = item.luchadorRojo;
-  const luchadorAzul = item.luchadorAzul;
-  const ganador = item.ganador;
-  const evento = item.evento;
+function getMetodoLabel(combate: CombateRelacionado) {
+  const metodo = safeText(combate.metodo);
+  const asalto = typeof combate.asalto === "number" ? ` · Asalto ${combate.asalto}` : "";
+  const tiempo = isNonEmptyString(combate.tiempo) ? ` · ${combate.tiempo}` : "";
 
-  const normalizado: CombateNormalizado = {
-    _id,
-    metodo: getString(item.metodo),
-    asaltoFinal: getNumber(item.asaltoFinal ?? item.asalto),
-    tiempoFinal: getString(item.tiempoFinal ?? item.tiempo),
-    tituloEnJuego: getBoolean(item.tituloEnJuego),
-    cartelera: getString(item.cartelera),
-    orden: getNumber(item.orden),
-    estado: getString(item.estado),
-    evento: getEntityName(evento),
-    eventoSlug: getString(item.eventoSlug) || getSlug(evento),
-    luchadorRojo: getEntityName(luchadorRojo),
-    luchadorRojoSlug: getString(item.luchadorRojoSlug) || getSlug(luchadorRojo),
-    luchadorAzul: getEntityName(luchadorAzul),
-    luchadorAzulSlug: getString(item.luchadorAzulSlug) || getSlug(luchadorAzul),
-    ganador: getEntityName(ganador),
-    ganadorSlug: getString(item.ganadorSlug) || getSlug(ganador),
-  };
-
-  const tieneAlgoUtil =
-    hasText(normalizado.luchadorRojo) ||
-    hasText(normalizado.luchadorAzul) ||
-    hasText(normalizado.evento) ||
-    hasText(normalizado.metodo);
-
-  return tieneAlgoUtil ? normalizado : null;
+  if (metodo) return `${metodo}${asalto}${tiempo}`;
+  if (asalto || tiempo) return `${asalto}${tiempo}`.replace(/^ · /, "");
+  return "Método por confirmar";
 }
 
 export default async function CategoriaPesoDetallePage({ params }: PageProps) {
-  const { slug } = await params;
+  const resolvedParams = await Promise.resolve(params);
+  const slug = safeText(resolvedParams?.slug);
 
-  if (!hasText(slug)) {
+  if (!slug) notFound();
+
+  const categoria = await client.fetch<CategoriaPeso | null>(categoriaPesoPorSlugQuery, { slug });
+
+  if (!categoria?._id || !isNonEmptyString(categoria?.nombre)) {
     notFound();
   }
 
-  const categoriaRaw = await client.fetch<CategoriaPesoData | null>(
-    categoriaPesoPorSlugQuery,
-    { slug: slug.trim() }
+  const nombre = safeText(categoria.nombre);
+  const descripcion = safeText(categoria.descripcion);
+  const disciplina = safeText(categoria.disciplina);
+  const disciplinaSlug = safeText(categoria.disciplinaSlug);
+  const organizacion = safeText(categoria.organizacion);
+  const organizacionSlug = safeText(categoria.organizacionSlug);
+  const unidad = safeText(categoria.unidad, "lb");
+
+  const luchadoresRelacionados = safeArray(categoria.luchadoresRelacionados).filter(
+    (luchador) => isNonEmptyString(luchador?.nombre)
   );
 
-  if (!categoriaRaw || !hasText(categoriaRaw.nombre)) {
-    notFound();
-  }
-
-  const categoria = {
-    _id: getString(categoriaRaw._id) || "",
-    nombre: getString(categoriaRaw.nombre) || "Categoría sin nombre",
-    slug: getString(categoriaRaw.slug) || slug.trim(),
-    limitePeso: getNumber(categoriaRaw.limitePeso),
-    unidad: getString(categoriaRaw.unidad),
-    descripcion: getString(categoriaRaw.descripcion),
-    activa: getBoolean(categoriaRaw.activa),
-    disciplina: getEntityName(categoriaRaw.disciplina),
-    disciplinaSlug: getString(categoriaRaw.disciplinaSlug) || getSlug(categoriaRaw.disciplina),
-  };
-
-  const luchadoresFuente =
-    getArray(categoriaRaw.luchadores).length > 0
-      ? getArray(categoriaRaw.luchadores)
-      : getArray(categoriaRaw.luchadoresRelacionados);
-
-  const combatesFuente =
-    getArray(categoriaRaw.combates).length > 0
-      ? getArray(categoriaRaw.combates)
-      : getArray(categoriaRaw.combatesRelacionados);
-
-  const luchadores = luchadoresFuente
-    .map(normalizeLuchador)
-    .filter((item): item is LuchadorNormalizado => item !== null);
-
-  const combates = combatesFuente
-    .map(normalizeCombate)
-    .filter((item): item is CombateNormalizado => item !== null);
-
-  const mostrarEstadoCategoria = typeof categoria.activa === "boolean";
+  const combatesRelacionados = safeArray(categoria.combatesRelacionados).filter((combate) => {
+    return (
+      isNonEmptyString(combate?.luchadorRojo) ||
+      isNonEmptyString(combate?.luchadorAzul) ||
+      isNonEmptyString(combate?.evento) ||
+      isNonEmptyString(combate?._id) ||
+      isNonEmptyString(combate?.id)
+    );
+  });
 
   return (
-    <main className="categoria-detalle-shell">
-      <style>{`
-        .categoria-detalle-shell {
-          min-height: 100vh;
-          color: white;
-          padding: 48px 28px 70px;
-          box-sizing: border-box;
-        }
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "var(--ffn-bg)",
+        color: "var(--ffn-text)",
+        padding: "40px 20px",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: "1280px",
+          margin: "0 auto",
+          display: "grid",
+          gap: "24px",
+        }}
+      >
+        <section
+          style={{
+            border: "1px solid var(--ffn-border)",
+            background: "var(--ffn-surface)",
+            borderRadius: "24px",
+            padding: "28px",
+            display: "grid",
+            gap: "16px",
+            boxShadow: "var(--ffn-shadow-soft)",
+          }}
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+            <span className="ffn-pill">Categoría de peso</span>
 
-        .categoria-detalle-container {
-          max-width: 1100px;
-          margin: 0 auto;
-        }
-
-        .categoria-detalle-back {
-          display: inline-block;
-          margin-bottom: 22px;
-          color: #9ca3af;
-          text-decoration: none;
-          font-size: 14px;
-          line-height: 1.4;
-        }
-
-        .categoria-detalle-hero {
-          background:
-            linear-gradient(135deg, rgba(20,24,38,0.92) 0%, rgba(10,10,10,0.96) 55%, rgba(6,6,6,0.98) 100%);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 22px;
-          padding: 30px;
-          box-shadow: 0 10px 30px rgba(0,0,0,0.22);
-          margin-bottom: 34px;
-        }
-
-        .categoria-detalle-eyebrow {
-          color: #8f8f8f;
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 1.8px;
-          margin: 0 0 10px 0;
-        }
-
-        .categoria-detalle-title {
-          font-size: clamp(2.2rem, 5.5vw, 3.25rem);
-          line-height: 1.08;
-          margin: 0 0 16px 0;
-          letter-spacing: -1.5px;
-          word-break: break-word;
-        }
-
-        .categoria-detalle-meta {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-          margin-bottom: 22px;
-        }
-
-        .categoria-detalle-meta-pill {
-          display: inline-flex;
-          align-items: center;
-          padding: 10px 14px;
-          border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.08);
-          background: rgba(255,255,255,0.03);
-          color: #888;
-          font-size: 13px;
-          line-height: 1.4;
-        }
-
-        .categoria-detalle-meta-pill a {
-          color: inherit;
-          text-decoration: none;
-        }
-
-        .categoria-detalle-meta-pill--activa {
-          color: #4ade80;
-        }
-
-        .categoria-detalle-meta-pill--inactiva {
-          color: #f87171;
-        }
-
-        .categoria-detalle-descripcion {
-          color: #b9b9b9;
-          font-size: clamp(1rem, 1.9vw, 1.18rem);
-          line-height: 1.85;
-          margin: 0;
-          max-width: 920px;
-        }
-
-        .categoria-detalle-section {
-          margin-bottom: 50px;
-        }
-
-        .categoria-detalle-section:last-child {
-          margin-bottom: 0;
-        }
-
-        .categoria-detalle-section-title {
-          font-size: clamp(1.7rem, 3.4vw, 2.125rem);
-          margin: 0 0 22px 0;
-          letter-spacing: -0.8px;
-          line-height: 1.12;
-        }
-
-        .categoria-detalle-empty {
-          color: #888;
-          margin: 0;
-          line-height: 1.7;
-        }
-
-        .categoria-detalle-grid-luchadores {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 20px;
-        }
-
-        .categoria-detalle-grid-combates {
-          display: grid;
-          gap: 18px;
-        }
-
-        .categoria-detalle-link {
-          text-decoration: none;
-          color: inherit;
-          min-width: 0;
-        }
-
-        .categoria-detalle-card {
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          background:
-            linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 18px;
-          padding: 24px;
-          box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-          transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-          box-sizing: border-box;
-          min-width: 0;
-        }
-
-        .categoria-detalle-link:hover .categoria-detalle-card {
-          transform: translateY(-2px);
-          border-color: rgba(255,255,255,0.14);
-          box-shadow: 0 14px 34px rgba(0,0,0,0.26);
-        }
-
-        .categoria-detalle-card-title {
-          font-size: clamp(1.3rem, 2.4vw, 1.625rem);
-          margin: 0 0 8px 0;
-          letter-spacing: -0.6px;
-          line-height: 1.2;
-          word-break: break-word;
-        }
-
-        .categoria-detalle-card-subtitle {
-          color: #f5c542;
-          margin: 0 0 10px 0;
-          line-height: 1.5;
-          word-break: break-word;
-        }
-
-        .categoria-detalle-card-highlight {
-          color: #f5c542;
-          margin: 0 0 10px 0;
-          font-size: clamp(1rem, 1.8vw, 1.06rem);
-          line-height: 1.5;
-          word-break: break-word;
-        }
-
-        .categoria-detalle-card-data {
-          display: grid;
-          gap: 8px;
-          color: #bbb;
-          font-size: 15px;
-          line-height: 1.65;
-          min-width: 0;
-        }
-
-        .categoria-detalle-card-data p {
-          margin: 0;
-          word-break: break-word;
-        }
-
-        .categoria-detalle-card-inline-link {
-          color: #b9b9b9;
-          text-decoration: none;
-        }
-
-        .categoria-detalle-cta {
-          margin: 18px 0 0 0;
-          color: #f5c542;
-          font-size: 14px;
-          line-height: 1.4;
-          margin-top: auto;
-          padding-top: 18px;
-        }
-
-        @media (max-width: 1100px) {
-          .categoria-detalle-grid-luchadores {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-        }
-
-        @media (max-width: 900px) {
-          .categoria-detalle-shell {
-            padding: 36px 18px 56px;
-          }
-
-          .categoria-detalle-hero {
-            padding: 24px;
-            border-radius: 20px;
-            margin-bottom: 28px;
-          }
-
-          .categoria-detalle-card {
-            padding: 22px;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .categoria-detalle-shell {
-            padding: 24px 14px 40px;
-          }
-
-          .categoria-detalle-back {
-            margin-bottom: 18px;
-          }
-
-          .categoria-detalle-hero {
-            padding: 18px;
-            border-radius: 18px;
-            margin-bottom: 22px;
-          }
-
-          .categoria-detalle-meta {
-            gap: 10px;
-            margin-bottom: 18px;
-          }
-
-          .categoria-detalle-meta-pill {
-            padding: 9px 12px;
-            font-size: 12px;
-          }
-
-          .categoria-detalle-section {
-            margin-bottom: 34px;
-          }
-
-          .categoria-detalle-grid-luchadores {
-            grid-template-columns: minmax(0, 1fr);
-            gap: 16px;
-          }
-
-          .categoria-detalle-grid-combates {
-            gap: 16px;
-          }
-
-          .categoria-detalle-card {
-            padding: 18px;
-            border-radius: 16px;
-          }
-
-          .categoria-detalle-card-data {
-            font-size: 14px;
-          }
-        }
-      `}</style>
-
-      <section className="categoria-detalle-container">
-        <Link href="/categorias-peso" className="categoria-detalle-back">
-          ← Volver a categorías de peso
-        </Link>
-
-        <section className="categoria-detalle-hero">
-          <p className="categoria-detalle-eyebrow">Categoría de peso</p>
-
-          <h1 className="categoria-detalle-title">{categoria.nombre}</h1>
-
-          <div className="categoria-detalle-meta">
-            {categoria.disciplina && (
-              <span className="categoria-detalle-meta-pill">
-                Disciplina:{" "}
-                {categoria.disciplinaSlug ? (
-                  <Link href={`/disciplinas/${categoria.disciplinaSlug}`}>
-                    {categoria.disciplina}
-                  </Link>
-                ) : (
-                  categoria.disciplina
-                )}
+            {typeof categoria.limitePeso === "number" ? (
+              <span className="ffn-pill-muted">
+                {categoria.limitePeso} {unidad}
               </span>
-            )}
+            ) : null}
 
-            {typeof categoria.limitePeso === "number" && (
-              <span className="categoria-detalle-meta-pill">
-                Límite: {categoria.limitePeso}
-                {categoria.unidad ? ` ${categoria.unidad}` : ""}
-              </span>
-            )}
+            {disciplina ? <span className="ffn-pill-muted">{disciplina}</span> : null}
+          </div>
 
-            {mostrarEstadoCategoria && (
-              <span
-                className={`categoria-detalle-meta-pill ${
-                  categoria.activa
-                    ? "categoria-detalle-meta-pill--activa"
-                    : "categoria-detalle-meta-pill--inactiva"
-                }`}
+          <div style={{ display: "grid", gap: "10px" }}>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: "clamp(2rem, 4vw, 3rem)",
+                lineHeight: 1.05,
+              }}
+            >
+              {nombre}
+            </h1>
+
+            {descripcion ? (
+              <p
+                style={{
+                  margin: 0,
+                  color: "var(--ffn-text-soft)",
+                  lineHeight: 1.75,
+                  maxWidth: "920px",
+                }}
               >
-                {categoria.activa ? "Activa" : "Inactiva"}
-              </span>
+                {descripcion}
+              </p>
+            ) : (
+              <p
+                style={{
+                  margin: 0,
+                  color: "var(--ffn-text-soft)",
+                  lineHeight: 1.75,
+                  maxWidth: "920px",
+                }}
+              >
+                Ficha editorial de la categoría, con luchadores y combates relacionados dentro de
+                su contexto competitivo.
+              </p>
             )}
           </div>
 
-          {categoria.descripcion && (
-            <p className="categoria-detalle-descripcion">{categoria.descripcion}</p>
-          )}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
+            {disciplina && disciplinaSlug ? (
+              <Link href={`/disciplinas/${disciplinaSlug}`} className="ffn-button-primary">
+                Ver disciplina
+              </Link>
+            ) : null}
+
+            {organizacion && organizacionSlug ? (
+              <Link href={`/organizaciones/${organizacionSlug}`} className="ffn-button-secondary">
+                Ver organización relacionada
+              </Link>
+            ) : null}
+          </div>
         </section>
 
-        <section className="categoria-detalle-section">
-          <h2 className="categoria-detalle-section-title">Luchadores</h2>
+        <section
+          style={{
+            border: "1px solid var(--ffn-border)",
+            background: "var(--ffn-surface)",
+            borderRadius: "24px",
+            padding: "24px",
+            display: "grid",
+            gap: "18px",
+            boxShadow: "var(--ffn-shadow-soft)",
+          }}
+        >
+          <div style={{ display: "grid", gap: "6px" }}>
+            <span className="ffn-section-kicker">Protagonistas</span>
+            <h2 style={{ margin: 0, fontSize: "1.5rem" }}>Luchadores relacionados</h2>
+          </div>
 
-          {luchadores.length === 0 ? (
-            <p className="categoria-detalle-empty">
-              Todavía no hay luchadores en esta categoría.
-            </p>
-          ) : (
-            <div className="categoria-detalle-grid-luchadores">
-              {luchadores.map((luchador) => {
-                const tieneSlug = hasText(luchador.slug);
+          {luchadoresRelacionados.length ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gap: "16px",
+              }}
+            >
+              {luchadoresRelacionados.map((luchador, index) => {
+                const luchadorSlug = safeText(luchador.slug);
+                const luchadorNombre = safeText(luchador.nombre, "Luchador");
+                const key = safeText(luchador._id) || `${luchadorNombre}-${index}`;
 
-                const contenido = (
-                  <article className="categoria-detalle-card">
-                    <h3 className="categoria-detalle-card-title">{luchador.nombre}</h3>
-
-                    {luchador.apodo && (
-                      <p className="categoria-detalle-card-subtitle">“{luchador.apodo}”</p>
-                    )}
-
-                    <div className="categoria-detalle-card-data">
-                      {luchador.nacionalidad && <p>Nacionalidad: {luchador.nacionalidad}</p>}
-                      {luchador.organizacion && <p>Organización: {luchador.organizacion}</p>}
-                      {luchador.record && <p>Récord: {luchador.record}</p>}
-                      {typeof luchador.activo === "boolean" && (
-                        <p>Estado: {luchador.activo ? "Activo" : "Inactivo"}</p>
-                      )}
+                const content = (
+                  <>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                        alignItems: "center",
+                      }}
+                    >
+                      {isNonEmptyString(luchador.organizacion) ? (
+                        <span className="ffn-pill-muted">{luchador.organizacion}</span>
+                      ) : null}
                     </div>
 
-                    <p className="categoria-detalle-cta">
-                      {tieneSlug ? "Ver perfil del luchador" : "Perfil no disponible"}
-                    </p>
-                  </article>
-                );
-
-                if (!tieneSlug) {
-                  return <div key={luchador._id}>{contenido}</div>;
-                }
-
-                return (
-                  <Link
-                    key={luchador._id}
-                    href={`/luchadores/${luchador.slug}`}
-                    className="categoria-detalle-link"
-                  >
-                    {contenido}
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <section className="categoria-detalle-section">
-          <h2 className="categoria-detalle-section-title">Combates</h2>
-
-          {combates.length === 0 ? (
-            <p className="categoria-detalle-empty">
-              Todavía no hay combates en esta categoría.
-            </p>
-          ) : (
-            <div className="categoria-detalle-grid-combates">
-              {combates.map((combate) => {
-                const luchadorRojoNombre = combate.luchadorRojo || "Luchador rojo";
-                const luchadorAzulNombre = combate.luchadorAzul || "Luchador azul";
-                const tieneResultado = hasText(combate._id);
-
-                const contenido = (
-                  <article className="categoria-detalle-card">
-                    <h3 className="categoria-detalle-card-title">
-                      {luchadorRojoNombre} vs {luchadorAzulNombre}
+                    <h3 style={{ margin: 0, fontSize: "1.05rem", lineHeight: 1.35 }}>
+                      {luchadorNombre}
+                      {isNonEmptyString(luchador.apodo) ? ` “${luchador.apodo}”` : ""}
                     </h3>
 
-                    {combate.ganador && (
-                      <p className="categoria-detalle-card-highlight">
-                        Ganador: {combate.ganador}
-                      </p>
-                    )}
-
-                    <div className="categoria-detalle-card-data">
-                      {combate.evento && combate.eventoSlug ? (
-                        <p>
-                          Evento:{" "}
-                          <Link
-                            href={`/eventos/${combate.eventoSlug}`}
-                            className="categoria-detalle-card-inline-link"
-                          >
-                            {combate.evento}
-                          </Link>
-                        </p>
-                      ) : combate.evento ? (
-                        <p>Evento: {combate.evento}</p>
-                      ) : null}
-
-                      {combate.estado && <p>Estado: {combate.estado}</p>}
-                      {combate.metodo && <p>Método: {combate.metodo}</p>}
-                      {typeof combate.asaltoFinal === "number" && (
-                        <p>Asalto final: {combate.asaltoFinal}</p>
-                      )}
-                      {combate.tiempoFinal && <p>Tiempo final: {combate.tiempoFinal}</p>}
-                      {combate.cartelera && <p>Cartelera: {combate.cartelera}</p>}
-                      {combate.tituloEnJuego && <p>Pelea con título en juego</p>}
-                    </div>
-
-                    <p className="categoria-detalle-cta">
-                      {tieneResultado ? "Ver resultado" : "Resultado no disponible"}
+                    <p
+                      style={{
+                        margin: 0,
+                        color: "var(--ffn-text-soft)",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {safeText(luchador.record, "Récord por actualizar")}
                     </p>
-                  </article>
+                  </>
                 );
 
-                if (!tieneResultado) {
-                  return <div key={combate._id}>{contenido}</div>;
+                if (luchadorSlug) {
+                  return (
+                    <Link
+                      key={key}
+                      href={`/luchadores/${luchadorSlug}`}
+                      style={{
+                        textDecoration: "none",
+                        color: "inherit",
+                        border: "1px solid var(--ffn-border)",
+                        background: "rgba(255,255,255,0.025)",
+                        borderRadius: "18px",
+                        padding: "18px",
+                        display: "grid",
+                        gap: "10px",
+                      }}
+                    >
+                      {content}
+                    </Link>
+                  );
                 }
 
                 return (
-                  <Link
-                    key={combate._id}
-                    href={`/resultados/${combate._id}`}
-                    className="categoria-detalle-link"
+                  <article
+                    key={key}
+                    style={{
+                      border: "1px solid var(--ffn-border)",
+                      background: "rgba(255,255,255,0.025)",
+                      borderRadius: "18px",
+                      padding: "18px",
+                      display: "grid",
+                      gap: "10px",
+                    }}
                   >
-                    {contenido}
-                  </Link>
+                    {content}
+                  </article>
                 );
               })}
             </div>
+          ) : (
+            <div className="ffn-empty-state">
+              Todavía no hay luchadores relacionados cargados en esta categoría.
+            </div>
           )}
         </section>
-      </section>
+
+        <section
+          style={{
+            border: "1px solid var(--ffn-border)",
+            background: "var(--ffn-surface)",
+            borderRadius: "24px",
+            padding: "24px",
+            display: "grid",
+            gap: "18px",
+            boxShadow: "var(--ffn-shadow-soft)",
+          }}
+        >
+          <div style={{ display: "grid", gap: "6px" }}>
+            <span className="ffn-section-kicker">Competición</span>
+            <h2 style={{ margin: 0, fontSize: "1.5rem" }}>Combates relacionados</h2>
+          </div>
+
+          {combatesRelacionados.length ? (
+            <div style={{ display: "grid", gap: "16px" }}>
+              {combatesRelacionados.map((combate, index) => {
+                const combateId = getCombateId(combate);
+                const key =
+                  combateId ||
+                  `${safeText(combate.luchadorRojo)}-${safeText(combate.luchadorAzul)}-${index}`;
+
+                return (
+                  <article
+                    key={key}
+                    style={{
+                      border: "1px solid var(--ffn-border)",
+                      background: "rgba(255,255,255,0.025)",
+                      borderRadius: "18px",
+                      padding: "18px",
+                      display: "grid",
+                      gap: "12px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "8px",
+                        alignItems: "center",
+                      }}
+                    >
+                      {isNonEmptyString(combate.cartelera) ? (
+                        <span className="ffn-pill-muted">{combate.cartelera}</span>
+                      ) : null}
+                      {combate.tituloEnJuego ? (
+                        <span className="ffn-pill">Título en juego</span>
+                      ) : null}
+                      {isNonEmptyString(combate.estado) ? (
+                        <span className="ffn-pill-muted">{combate.estado}</span>
+                      ) : null}
+                    </div>
+
+                    <div style={{ display: "grid", gap: "8px" }}>
+                      <h3 style={{ margin: 0, fontSize: "1.08rem", lineHeight: 1.35 }}>
+                        {safeText(combate.luchadorRojo, "Luchador rojo por confirmar")} vs{" "}
+                        {safeText(combate.luchadorAzul, "Luchador azul por confirmar")}
+                      </h3>
+
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "var(--ffn-text-soft)",
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {getResultadoLabel(combate)}
+                      </p>
+
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "var(--ffn-text-soft)",
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {getMetodoLabel(combate)}
+                      </p>
+
+                      {isNonEmptyString(combate.resumen) ? (
+                        <p
+                          style={{
+                            margin: 0,
+                            color: "var(--ffn-text-soft)",
+                            lineHeight: 1.7,
+                          }}
+                        >
+                          {combate.resumen}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "10px",
+                        alignItems: "center",
+                      }}
+                    >
+                      {combateId ? (
+                        <Link href={`/resultados/${combateId}`} className="ffn-button-secondary">
+                          Ver resultado
+                        </Link>
+                      ) : null}
+
+                      {isNonEmptyString(combate.evento) && isNonEmptyString(combate.eventoSlug) ? (
+                        <Link
+                          href={`/eventos/${combate.eventoSlug}`}
+                          className="ffn-inline-link"
+                        >
+                          {combate.evento}
+                        </Link>
+                      ) : null}
+
+                      {isNonEmptyString(combate.luchadorRojo) &&
+                      isNonEmptyString(combate.luchadorRojoSlug) ? (
+                        <Link
+                          href={`/luchadores/${combate.luchadorRojoSlug}`}
+                          className="ffn-inline-link"
+                        >
+                          {combate.luchadorRojo}
+                        </Link>
+                      ) : null}
+
+                      {isNonEmptyString(combate.luchadorAzul) &&
+                      isNonEmptyString(combate.luchadorAzulSlug) ? (
+                        <Link
+                          href={`/luchadores/${combate.luchadorAzulSlug}`}
+                          className="ffn-inline-link"
+                        >
+                          {combate.luchadorAzul}
+                        </Link>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="ffn-empty-state">
+              Todavía no hay combates relacionados cargados en esta categoría.
+            </div>
+          )}
+        </section>
+      </div>
     </main>
   );
 }

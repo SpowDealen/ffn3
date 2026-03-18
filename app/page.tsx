@@ -15,7 +15,7 @@ type RelacionBasica = {
   slug?: string;
 };
 
-type Noticia = {
+type NoticiaRaw = {
   _id?: string;
   titulo?: string;
   slug?: string;
@@ -31,7 +31,7 @@ type Noticia = {
   luchadoresRelacionados?: RelacionBasica[] | null;
 };
 
-type Evento = {
+type EventoRaw = {
   _id?: string;
   nombre?: string;
   slug?: string;
@@ -48,7 +48,7 @@ type Evento = {
   disciplinaSlug?: string;
 };
 
-type Luchador = {
+type LuchadorRaw = {
   _id?: string;
   nombre?: string;
   slug?: string;
@@ -64,14 +64,14 @@ type Luchador = {
   categoriaPesoSlug?: string;
 };
 
-type DisciplinaHome = {
+type DisciplinaHomeRaw = {
   _id?: string;
   nombre?: string;
   slug?: string;
   descripcion?: string;
 };
 
-type CategoriaPesoHome = {
+type CategoriaPesoHomeRaw = {
   _id?: string;
   nombre?: string;
   slug?: string;
@@ -79,6 +79,78 @@ type CategoriaPesoHome = {
   unidad?: string;
   disciplina?: string;
   disciplinaSlug?: string;
+};
+
+type RelacionBasicaRender = {
+  _id: string;
+  nombre: string;
+  slug: string;
+};
+
+type NoticiaRender = {
+  _id: string;
+  titulo: string;
+  slug: string;
+  extracto: string;
+  fechaPublicacion: string;
+  destacada: boolean;
+  disciplina: string;
+  disciplinaSlug: string;
+  eventoRelacionado: string;
+  eventoRelacionadoSlug: string;
+  organizacionRelacionada: string;
+  organizacionRelacionadaSlug: string;
+  luchadoresRelacionados: RelacionBasicaRender[];
+};
+
+type EventoRender = {
+  _id: string;
+  nombre: string;
+  slug: string;
+  fecha: string;
+  horaLocal: string;
+  ciudad: string;
+  pais: string;
+  recinto: string;
+  estado: string;
+  descripcionCorta: string;
+  organizacion: string;
+  organizacionSlug: string;
+  disciplina: string;
+  disciplinaSlug: string;
+};
+
+type LuchadorRender = {
+  _id: string;
+  nombre: string;
+  slug: string;
+  apodo: string;
+  record: string;
+  nacionalidad: string;
+  activo: boolean;
+  disciplina: string;
+  disciplinaSlug: string;
+  organizacion: string;
+  organizacionSlug: string;
+  categoriaPeso: string;
+  categoriaPesoSlug: string;
+};
+
+type DisciplinaHomeRender = {
+  _id: string;
+  nombre: string;
+  slug: string;
+  descripcion: string;
+};
+
+type CategoriaPesoHomeRender = {
+  _id: string;
+  nombre: string;
+  slug: string;
+  limitePeso?: number;
+  unidad: string;
+  disciplina: string;
+  disciplinaSlug: string;
 };
 
 function isNonEmptyString(value: unknown): value is string {
@@ -107,10 +179,151 @@ function formatFecha(fecha?: string) {
   });
 }
 
-function getUbicacion(evento: Evento) {
-  const parts = [safeText(evento.ciudad), safeText(evento.pais)].filter(Boolean);
+function getUbicacion(evento: EventoRender) {
+  const parts = [evento.ciudad, evento.pais].filter(Boolean);
   return parts.length ? parts.join(", ") : "Ubicación por confirmar";
 }
+
+function normalizeRelacionBasica(value: RelacionBasica | null | undefined): RelacionBasicaRender | null {
+  const _id = safeText(value?._id);
+  const nombre = safeText(value?.nombre);
+  const slug = safeText(value?.slug);
+
+  if (!_id || !nombre || !slug) return null;
+
+  return { _id, nombre, slug };
+}
+
+function normalizeNoticia(value: NoticiaRaw | null | undefined): NoticiaRender | null {
+  const _id = safeText(value?._id);
+  const titulo = safeText(value?.titulo);
+  const slug = safeText(value?.slug);
+
+  if (!_id || !titulo || !slug) return null;
+
+  return {
+    _id,
+    titulo,
+    slug,
+    extracto: safeText(value?.extracto),
+    fechaPublicacion: safeText(value?.fechaPublicacion),
+    destacada: Boolean(value?.destacada),
+    disciplina: safeText(value?.disciplina),
+    disciplinaSlug: safeText(value?.disciplinaSlug),
+    eventoRelacionado: safeText(value?.eventoRelacionado),
+    eventoRelacionadoSlug: safeText(value?.eventoRelacionadoSlug),
+    organizacionRelacionada: safeText(value?.organizacionRelacionada),
+    organizacionRelacionadaSlug: safeText(value?.organizacionRelacionadaSlug),
+    luchadoresRelacionados: safeArray(value?.luchadoresRelacionados)
+      .map((item) => normalizeRelacionBasica(item))
+      .filter((item): item is RelacionBasicaRender => item !== null),
+  };
+}
+
+function normalizeEvento(value: EventoRaw | null | undefined): EventoRender | null {
+  const _id = safeText(value?._id);
+  const nombre = safeText(value?.nombre);
+  const slug = safeText(value?.slug);
+
+  if (!_id || !nombre || !slug) return null;
+
+  return {
+    _id,
+    nombre,
+    slug,
+    fecha: safeText(value?.fecha),
+    horaLocal: safeText(value?.horaLocal),
+    ciudad: safeText(value?.ciudad),
+    pais: safeText(value?.pais),
+    recinto: safeText(value?.recinto),
+    estado: safeText(value?.estado),
+    descripcionCorta: safeText(value?.descripcionCorta),
+    organizacion: safeText(value?.organizacion),
+    organizacionSlug: safeText(value?.organizacionSlug),
+    disciplina: safeText(value?.disciplina),
+    disciplinaSlug: safeText(value?.disciplinaSlug),
+  };
+}
+
+function normalizeLuchador(value: LuchadorRaw | null | undefined): LuchadorRender | null {
+  const _id = safeText(value?._id);
+  const nombre = safeText(value?.nombre);
+  const slug = safeText(value?.slug);
+
+  if (!_id || !nombre || !slug) return null;
+
+  return {
+    _id,
+    nombre,
+    slug,
+    apodo: safeText(value?.apodo),
+    record: safeText(value?.record),
+    nacionalidad: safeText(value?.nacionalidad),
+    activo: Boolean(value?.activo),
+    disciplina: safeText(value?.disciplina),
+    disciplinaSlug: safeText(value?.disciplinaSlug),
+    organizacion: safeText(value?.organizacion),
+    organizacionSlug: safeText(value?.organizacionSlug),
+    categoriaPeso: safeText(value?.categoriaPeso),
+    categoriaPesoSlug: safeText(value?.categoriaPesoSlug),
+  };
+}
+
+function normalizeDisciplina(value: DisciplinaHomeRaw | null | undefined): DisciplinaHomeRender | null {
+  const _id = safeText(value?._id);
+  const nombre = safeText(value?.nombre);
+  const slug = safeText(value?.slug);
+
+  if (!_id || !nombre || !slug) return null;
+
+  return {
+    _id,
+    nombre,
+    slug,
+    descripcion: safeText(value?.descripcion),
+  };
+}
+
+function normalizeCategoriaPeso(
+  value: CategoriaPesoHomeRaw | null | undefined
+): CategoriaPesoHomeRender | null {
+  const _id = safeText(value?._id);
+  const nombre = safeText(value?.nombre);
+  const slug = safeText(value?.slug);
+
+  if (!_id || !nombre || !slug) return null;
+
+  return {
+    _id,
+    nombre,
+    slug,
+    limitePeso: typeof value?.limitePeso === "number" ? value.limitePeso : undefined,
+    unidad: safeText(value?.unidad, "lb"),
+    disciplina: safeText(value?.disciplina),
+    disciplinaSlug: safeText(value?.disciplinaSlug),
+  };
+}
+
+const sectionCardStyle = {
+  border: "1px solid var(--ffn-border)",
+  background: "var(--ffn-surface)",
+  borderRadius: "24px",
+  padding: "24px",
+  display: "grid",
+  gap: "18px",
+  boxShadow: "var(--ffn-shadow-soft)",
+} as const;
+
+const itemCardStyle = {
+  textDecoration: "none",
+  color: "inherit",
+  border: "1px solid var(--ffn-border)",
+  background: "rgba(255,255,255,0.025)",
+  borderRadius: "18px",
+  padding: "16px",
+  display: "grid",
+  gap: "8px",
+} as const;
 
 export default async function HomePage() {
   const [
@@ -121,66 +334,35 @@ export default async function HomePage() {
     disciplinasRaw,
     categoriasPesoRaw,
   ] = await Promise.all([
-    client.fetch<Noticia | null>(noticiaDestacadaQuery),
-    client.fetch<Noticia[] | null>(ultimasNoticiasQuery),
-    client.fetch<Evento[] | null>(proximosEventosQuery),
-    client.fetch<Luchador[] | null>(luchadoresDestacadosQuery),
-    client.fetch<DisciplinaHome[] | null>(disciplinasHomeQuery),
-    client.fetch<CategoriaPesoHome[] | null>(categoriasPesoHomeQuery),
+    client.fetch<NoticiaRaw | null>(noticiaDestacadaQuery),
+    client.fetch<NoticiaRaw[] | null>(ultimasNoticiasQuery),
+    client.fetch<EventoRaw[] | null>(proximosEventosQuery),
+    client.fetch<LuchadorRaw[] | null>(luchadoresDestacadosQuery),
+    client.fetch<DisciplinaHomeRaw[] | null>(disciplinasHomeQuery),
+    client.fetch<CategoriaPesoHomeRaw[] | null>(categoriasPesoHomeQuery),
   ]);
 
-  const noticiaDestacada =
-    noticiaDestacadaRaw &&
-    isNonEmptyString(noticiaDestacadaRaw.titulo) &&
-    isNonEmptyString(noticiaDestacadaRaw.slug)
-      ? {
-          ...noticiaDestacadaRaw,
-          titulo: safeText(noticiaDestacadaRaw.titulo),
-          slug: safeText(noticiaDestacadaRaw.slug),
-          extracto: safeText(noticiaDestacadaRaw.extracto),
-          disciplina: safeText(noticiaDestacadaRaw.disciplina),
-          eventoRelacionado: safeText(noticiaDestacadaRaw.eventoRelacionado),
-          eventoRelacionadoSlug: safeText(noticiaDestacadaRaw.eventoRelacionadoSlug),
-          organizacionRelacionada: safeText(noticiaDestacadaRaw.organizacionRelacionada),
-          organizacionRelacionadaSlug: safeText(noticiaDestacadaRaw.organizacionRelacionadaSlug),
-          luchadoresRelacionados: safeArray(noticiaDestacadaRaw.luchadoresRelacionados),
-        }
-      : null;
+  const noticiaDestacada = normalizeNoticia(noticiaDestacadaRaw);
 
-  const ultimasNoticias = safeArray(ultimasNoticiasRaw).filter(
-    (noticia): noticia is Noticia =>
-      isNonEmptyString(noticia?._id) &&
-      isNonEmptyString(noticia?.titulo) &&
-      isNonEmptyString(noticia?.slug)
-  );
+  const ultimasNoticias = safeArray(ultimasNoticiasRaw)
+    .map((item) => normalizeNoticia(item))
+    .filter((item): item is NoticiaRender => item !== null);
 
-  const proximosEventos = safeArray(proximosEventosRaw).filter(
-    (evento): evento is Evento =>
-      isNonEmptyString(evento?._id) &&
-      isNonEmptyString(evento?.nombre) &&
-      isNonEmptyString(evento?.slug)
-  );
+  const proximosEventos = safeArray(proximosEventosRaw)
+    .map((item) => normalizeEvento(item))
+    .filter((item): item is EventoRender => item !== null);
 
-  const luchadoresDestacados = safeArray(luchadoresDestacadosRaw).filter(
-    (luchador): luchador is Luchador =>
-      isNonEmptyString(luchador?._id) &&
-      isNonEmptyString(luchador?.nombre) &&
-      isNonEmptyString(luchador?.slug)
-  );
+  const luchadoresDestacados = safeArray(luchadoresDestacadosRaw)
+    .map((item) => normalizeLuchador(item))
+    .filter((item): item is LuchadorRender => item !== null);
 
-  const disciplinas = safeArray(disciplinasRaw).filter(
-    (disciplina): disciplina is DisciplinaHome =>
-      isNonEmptyString(disciplina?._id) &&
-      isNonEmptyString(disciplina?.nombre) &&
-      isNonEmptyString(disciplina?.slug)
-  );
+  const disciplinas = safeArray(disciplinasRaw)
+    .map((item) => normalizeDisciplina(item))
+    .filter((item): item is DisciplinaHomeRender => item !== null);
 
-  const categoriasPeso = safeArray(categoriasPesoRaw).filter(
-    (categoria): categoria is CategoriaPesoHome =>
-      isNonEmptyString(categoria?._id) &&
-      isNonEmptyString(categoria?.nombre) &&
-      isNonEmptyString(categoria?.slug)
-  );
+  const categoriasPeso = safeArray(categoriasPesoRaw)
+    .map((item) => normalizeCategoriaPeso(item))
+    .filter((item): item is CategoriaPesoHomeRender => item !== null);
 
   return (
     <main
@@ -220,10 +402,10 @@ export default async function HomePage() {
               }}
             >
               <span className="ffn-pill">Noticia destacada</span>
-              {isNonEmptyString(noticiaDestacada.disciplina) ? (
+              {noticiaDestacada.disciplina ? (
                 <span className="ffn-pill-muted">{noticiaDestacada.disciplina}</span>
               ) : null}
-              {isNonEmptyString(noticiaDestacada.fechaPublicacion) ? (
+              {noticiaDestacada.fechaPublicacion ? (
                 <span className="ffn-pill-muted">
                   {formatFecha(noticiaDestacada.fechaPublicacion)}
                 </span>
@@ -238,10 +420,10 @@ export default async function HomePage() {
                   lineHeight: 1.05,
                 }}
               >
-                {safeText(noticiaDestacada.titulo)}
+                {noticiaDestacada.titulo}
               </h1>
 
-              {isNonEmptyString(noticiaDestacada.extracto) ? (
+              {noticiaDestacada.extracto ? (
                 <p
                   style={{
                     margin: 0,
@@ -261,7 +443,7 @@ export default async function HomePage() {
                 Leer noticia
               </Link>
 
-              {isNonEmptyString(noticiaDestacada.eventoRelacionadoSlug) ? (
+              {noticiaDestacada.eventoRelacionadoSlug ? (
                 <Link
                   href={`/eventos/${noticiaDestacada.eventoRelacionadoSlug}`}
                   className="ffn-button-secondary"
@@ -276,19 +458,15 @@ export default async function HomePage() {
         <section
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0, 1.5fr) minmax(320px, 0.9fr)",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
             gap: "24px",
+            alignItems: "start",
           }}
         >
           <div
             style={{
-              border: "1px solid var(--ffn-border)",
-              background: "var(--ffn-surface)",
-              borderRadius: "24px",
-              padding: "24px",
-              display: "grid",
-              gap: "18px",
-              boxShadow: "var(--ffn-shadow-soft)",
+              ...sectionCardStyle,
+              minWidth: 0,
             }}
           >
             <div
@@ -317,13 +495,8 @@ export default async function HomePage() {
                     key={noticia._id}
                     href={`/noticias/${noticia.slug}`}
                     style={{
-                      textDecoration: "none",
-                      color: "inherit",
-                      border: "1px solid var(--ffn-border)",
-                      background: "rgba(255,255,255,0.025)",
-                      borderRadius: "18px",
+                      ...itemCardStyle,
                       padding: "18px",
-                      display: "grid",
                       gap: "10px",
                       transition: "transform 0.18s ease, border-color 0.18s ease",
                     }}
@@ -336,10 +509,10 @@ export default async function HomePage() {
                         alignItems: "center",
                       }}
                     >
-                      {isNonEmptyString(noticia.disciplina) ? (
+                      {noticia.disciplina ? (
                         <span className="ffn-pill-muted">{noticia.disciplina}</span>
                       ) : null}
-                      {isNonEmptyString(noticia.fechaPublicacion) ? (
+                      {noticia.fechaPublicacion ? (
                         <span className="ffn-pill-muted">
                           {formatFecha(noticia.fechaPublicacion)}
                         </span>
@@ -347,10 +520,10 @@ export default async function HomePage() {
                     </div>
 
                     <h3 style={{ margin: 0, fontSize: "1.15rem", lineHeight: 1.35 }}>
-                      {safeText(noticia.titulo)}
+                      {noticia.titulo}
                     </h3>
 
-                    {isNonEmptyString(noticia.extracto) ? (
+                    {noticia.extracto ? (
                       <p
                         style={{
                           margin: 0,
@@ -369,18 +542,8 @@ export default async function HomePage() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gap: "24px", gridTemplateRows: "1fr 1fr" }}>
-            <section
-              style={{
-                border: "1px solid var(--ffn-border)",
-                background: "var(--ffn-surface)",
-                borderRadius: "24px",
-                padding: "24px",
-                display: "grid",
-                gap: "18px",
-                boxShadow: "var(--ffn-shadow-soft)",
-              }}
-            >
+          <div style={{ display: "grid", gap: "24px", minWidth: 0 }}>
+            <section style={sectionCardStyle}>
               <div
                 style={{
                   display: "flex",
@@ -406,16 +569,7 @@ export default async function HomePage() {
                     <Link
                       key={evento._id}
                       href={`/eventos/${evento.slug}`}
-                      style={{
-                        textDecoration: "none",
-                        color: "inherit",
-                        border: "1px solid var(--ffn-border)",
-                        background: "rgba(255,255,255,0.025)",
-                        borderRadius: "18px",
-                        padding: "16px",
-                        display: "grid",
-                        gap: "8px",
-                      }}
+                      style={itemCardStyle}
                     >
                       <div
                         style={{
@@ -425,16 +579,16 @@ export default async function HomePage() {
                           alignItems: "center",
                         }}
                       >
-                        {isNonEmptyString(evento.organizacion) ? (
+                        {evento.organizacion ? (
                           <span className="ffn-pill">{evento.organizacion}</span>
                         ) : null}
-                        {isNonEmptyString(evento.fecha) ? (
+                        {evento.fecha ? (
                           <span className="ffn-pill-muted">{formatFecha(evento.fecha)}</span>
                         ) : null}
                       </div>
 
                       <h3 style={{ margin: 0, fontSize: "1rem", lineHeight: 1.35 }}>
-                        {safeText(evento.nombre)}
+                        {evento.nombre}
                       </h3>
 
                       <p
@@ -446,7 +600,7 @@ export default async function HomePage() {
                         }}
                       >
                         {getUbicacion(evento)}
-                        {isNonEmptyString(evento.horaLocal) ? ` · ${evento.horaLocal}` : ""}
+                        {evento.horaLocal ? ` · ${evento.horaLocal}` : ""}
                       </p>
                     </Link>
                   ))
@@ -458,17 +612,7 @@ export default async function HomePage() {
               </div>
             </section>
 
-            <section
-              style={{
-                border: "1px solid var(--ffn-border)",
-                background: "var(--ffn-surface)",
-                borderRadius: "24px",
-                padding: "24px",
-                display: "grid",
-                gap: "18px",
-                boxShadow: "var(--ffn-shadow-soft)",
-              }}
-            >
+            <section style={sectionCardStyle}>
               <div
                 style={{
                   display: "flex",
@@ -494,16 +638,7 @@ export default async function HomePage() {
                     <Link
                       key={luchador._id}
                       href={`/luchadores/${luchador.slug}`}
-                      style={{
-                        textDecoration: "none",
-                        color: "inherit",
-                        border: "1px solid var(--ffn-border)",
-                        background: "rgba(255,255,255,0.025)",
-                        borderRadius: "18px",
-                        padding: "16px",
-                        display: "grid",
-                        gap: "8px",
-                      }}
+                      style={itemCardStyle}
                     >
                       <div
                         style={{
@@ -513,17 +648,17 @@ export default async function HomePage() {
                           alignItems: "center",
                         }}
                       >
-                        {isNonEmptyString(luchador.organizacion) ? (
+                        {luchador.organizacion ? (
                           <span className="ffn-pill">{luchador.organizacion}</span>
                         ) : null}
-                        {isNonEmptyString(luchador.categoriaPeso) ? (
+                        {luchador.categoriaPeso ? (
                           <span className="ffn-pill-muted">{luchador.categoriaPeso}</span>
                         ) : null}
                       </div>
 
                       <h3 style={{ margin: 0, fontSize: "1rem", lineHeight: 1.35 }}>
-                        {safeText(luchador.nombre)}
-                        {isNonEmptyString(luchador.apodo) ? ` “${luchador.apodo}”` : ""}
+                        {luchador.nombre}
+                        {luchador.apodo ? ` “${luchador.apodo}”` : ""}
                       </h3>
 
                       <p
@@ -534,10 +669,8 @@ export default async function HomePage() {
                           lineHeight: 1.55,
                         }}
                       >
-                        {safeText(luchador.record, "Récord por actualizar")}
-                        {isNonEmptyString(luchador.nacionalidad)
-                          ? ` · ${luchador.nacionalidad}`
-                          : ""}
+                        {luchador.record || "Récord por actualizar"}
+                        {luchador.nacionalidad ? ` · ${luchador.nacionalidad}` : ""}
                       </p>
                     </Link>
                   ))
@@ -554,21 +687,12 @@ export default async function HomePage() {
         <section
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
             gap: "24px",
+            alignItems: "start",
           }}
         >
-          <div
-            style={{
-              border: "1px solid var(--ffn-border)",
-              background: "var(--ffn-surface)",
-              borderRadius: "24px",
-              padding: "24px",
-              display: "grid",
-              gap: "18px",
-              boxShadow: "var(--ffn-shadow-soft)",
-            }}
-          >
+          <div style={sectionCardStyle}>
             <div style={{ display: "grid", gap: "6px" }}>
               <span className="ffn-section-kicker">Cobertura por deporte</span>
               <h2 style={{ margin: 0, fontSize: "1.45rem" }}>Disciplinas</h2>
@@ -580,19 +704,10 @@ export default async function HomePage() {
                   <Link
                     key={disciplina._id}
                     href={`/disciplinas/${disciplina.slug}`}
-                    style={{
-                      textDecoration: "none",
-                      color: "inherit",
-                      border: "1px solid var(--ffn-border)",
-                      background: "rgba(255,255,255,0.025)",
-                      borderRadius: "18px",
-                      padding: "16px",
-                      display: "grid",
-                      gap: "8px",
-                    }}
+                    style={itemCardStyle}
                   >
-                    <h3 style={{ margin: 0, fontSize: "1rem" }}>{safeText(disciplina.nombre)}</h3>
-                    {isNonEmptyString(disciplina.descripcion) ? (
+                    <h3 style={{ margin: 0, fontSize: "1rem" }}>{disciplina.nombre}</h3>
+                    {disciplina.descripcion ? (
                       <p
                         style={{
                           margin: 0,
@@ -611,17 +726,7 @@ export default async function HomePage() {
             </div>
           </div>
 
-          <div
-            style={{
-              border: "1px solid var(--ffn-border)",
-              background: "var(--ffn-surface)",
-              borderRadius: "24px",
-              padding: "24px",
-              display: "grid",
-              gap: "18px",
-              boxShadow: "var(--ffn-shadow-soft)",
-            }}
-          >
+          <div style={sectionCardStyle}>
             <div style={{ display: "grid", gap: "6px" }}>
               <span className="ffn-section-kicker">Mapa competitivo</span>
               <h2 style={{ margin: 0, fontSize: "1.45rem" }}>Categorías de peso</h2>
@@ -633,16 +738,7 @@ export default async function HomePage() {
                   <Link
                     key={categoria._id}
                     href={`/categorias-peso/${categoria.slug}`}
-                    style={{
-                      textDecoration: "none",
-                      color: "inherit",
-                      border: "1px solid var(--ffn-border)",
-                      background: "rgba(255,255,255,0.025)",
-                      borderRadius: "18px",
-                      padding: "16px",
-                      display: "grid",
-                      gap: "8px",
-                    }}
+                    style={itemCardStyle}
                   >
                     <div
                       style={{
@@ -652,15 +748,15 @@ export default async function HomePage() {
                         alignItems: "center",
                       }}
                     >
-                      <h3 style={{ margin: 0, fontSize: "1rem" }}>{safeText(categoria.nombre)}</h3>
+                      <h3 style={{ margin: 0, fontSize: "1rem" }}>{categoria.nombre}</h3>
                       {typeof categoria.limitePeso === "number" ? (
                         <span className="ffn-pill-muted">
-                          {categoria.limitePeso} {safeText(categoria.unidad, "lb")}
+                          {categoria.limitePeso} {categoria.unidad}
                         </span>
                       ) : null}
                     </div>
 
-                    {isNonEmptyString(categoria.disciplina) ? (
+                    {categoria.disciplina ? (
                       <p
                         style={{
                           margin: 0,
