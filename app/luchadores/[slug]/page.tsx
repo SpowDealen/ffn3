@@ -30,9 +30,9 @@ type NoticiaRelacionada = {
 } | null;
 
 type Luchador = {
-  _id: string;
-  nombre: string;
-  slug: string;
+  _id?: string;
+  nombre?: string;
+  slug?: string;
   apodo?: string;
   nacionalidad?: string;
   record?: string;
@@ -54,41 +54,116 @@ type PageProps = {
   }>;
 };
 
+function hasText(value?: string | null): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function safeText(value?: string | null, fallback = ""): string {
+  return hasText(value) ? value.trim() : fallback;
+}
+
+function safeArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
 function formatDate(value?: string): string {
-  if (!value) return "";
+  if (!hasText(value)) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("es-ES");
 }
 
-function hasText(value?: string | null): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
 export default async function LuchadorDetallePage({ params }: PageProps) {
   const { slug } = await params;
 
-  const luchador: Luchador | null = await client.fetch(luchadorPorSlugQuery, { slug });
-
-  if (!luchador) {
+  if (!hasText(slug)) {
     notFound();
   }
 
-  const combates = Array.isArray(luchador.combatesRelacionados)
-    ? luchador.combatesRelacionados.filter(
-        (combate): combate is NonNullable<CombateRelacionado> =>
-          Boolean(combate && hasText(combate._id))
-      )
-    : [];
+  const luchadorRaw = await client.fetch<Luchador | null>(luchadorPorSlugQuery, {
+    slug: slug.trim(),
+  });
 
-  const noticias = Array.isArray(luchador.noticiasRelacionadas)
-    ? luchador.noticiasRelacionadas.filter(
-        (noticia): noticia is NonNullable<NoticiaRelacionada> =>
-          Boolean(noticia && hasText(noticia._id) && hasText(noticia.titulo))
-      )
-    : [];
+  if (!luchadorRaw || !hasText(luchadorRaw.nombre)) {
+    notFound();
+  }
 
-  const descripcion = hasText(luchador.descripcion) ? luchador.descripcion : "";
+  const luchador: Luchador = {
+    ...luchadorRaw,
+    nombre: safeText(luchadorRaw.nombre),
+    slug: safeText(luchadorRaw.slug),
+    apodo: safeText(luchadorRaw.apodo),
+    nacionalidad: safeText(luchadorRaw.nacionalidad),
+    record: safeText(luchadorRaw.record),
+    descripcion: safeText(luchadorRaw.descripcion),
+    disciplina: safeText(luchadorRaw.disciplina),
+    disciplinaSlug: hasText(luchadorRaw.disciplinaSlug)
+      ? luchadorRaw.disciplinaSlug.trim()
+      : null,
+    organizacion: safeText(luchadorRaw.organizacion),
+    organizacionSlug: hasText(luchadorRaw.organizacionSlug)
+      ? luchadorRaw.organizacionSlug.trim()
+      : null,
+    categoriaPeso: safeText(luchadorRaw.categoriaPeso),
+    categoriaPesoSlug: hasText(luchadorRaw.categoriaPesoSlug)
+      ? luchadorRaw.categoriaPesoSlug.trim()
+      : null,
+    combatesRelacionados: safeArray(luchadorRaw.combatesRelacionados),
+    noticiasRelacionadas: safeArray(luchadorRaw.noticiasRelacionadas),
+  };
+
+  const combates = safeArray(luchador.combatesRelacionados)
+    .filter(
+      (combate): combate is NonNullable<CombateRelacionado> =>
+        Boolean(combate && hasText(combate._id))
+    )
+    .map((combate) => ({
+      ...combate,
+      _id: safeText(combate._id),
+      metodo: safeText(combate.metodo),
+      tiempo: safeText(combate.tiempo),
+      estado: safeText(combate.estado),
+      evento: safeText(combate.evento),
+      eventoSlug: hasText(combate.eventoSlug) ? combate.eventoSlug.trim() : null,
+      luchadorRojo: safeText(combate.luchadorRojo),
+      luchadorRojoSlug: hasText(combate.luchadorRojoSlug)
+        ? combate.luchadorRojoSlug.trim()
+        : null,
+      luchadorAzul: safeText(combate.luchadorAzul),
+      luchadorAzulSlug: hasText(combate.luchadorAzulSlug)
+        ? combate.luchadorAzulSlug.trim()
+        : null,
+      ganador: safeText(combate.ganador),
+      ganadorSlug: hasText(combate.ganadorSlug) ? combate.ganadorSlug.trim() : null,
+      categoriaPeso: safeText(combate.categoriaPeso),
+      categoriaPesoSlug: hasText(combate.categoriaPesoSlug)
+        ? combate.categoriaPesoSlug.trim()
+        : null,
+    }))
+    .filter(
+      (combate) =>
+        hasText(combate._id) &&
+        (hasText(combate.luchadorRojo) ||
+          hasText(combate.luchadorAzul) ||
+          hasText(combate.evento) ||
+          hasText(combate.categoriaPeso))
+    );
+
+  const noticias = safeArray(luchador.noticiasRelacionadas)
+    .filter(
+      (noticia): noticia is NonNullable<NoticiaRelacionada> =>
+        Boolean(noticia && hasText(noticia._id) && hasText(noticia.titulo))
+    )
+    .map((noticia) => ({
+      ...noticia,
+      _id: safeText(noticia._id),
+      titulo: safeText(noticia.titulo),
+      slug: hasText(noticia.slug) ? noticia.slug.trim() : null,
+      extracto: safeText(noticia.extracto),
+      fechaPublicacion: safeText(noticia.fechaPublicacion),
+    }));
+
+  const descripcion = safeText(luchador.descripcion);
 
   return (
     <main className="luchador-detalle-shell">
@@ -396,7 +471,7 @@ export default async function LuchadorDetallePage({ params }: PageProps) {
       <section className="luchador-detalle-container">
         <p className="luchador-detalle-eyebrow">Luchador</p>
 
-        <h1 className="luchador-detalle-title">{luchador.nombre}</h1>
+        <h1 className="luchador-detalle-title">{safeText(luchador.nombre)}</h1>
 
         {hasText(luchador.apodo) && <p className="luchador-detalle-apodo">{luchador.apodo}</p>}
 
@@ -476,6 +551,7 @@ export default async function LuchadorDetallePage({ params }: PageProps) {
           ) : (
             <div className="luchador-detalle-grid-combates">
               {combates.map((combate) => {
+                const combateId = safeText(combate._id);
                 const luchadorRojoNombre = hasText(combate.luchadorRojo)
                   ? combate.luchadorRojo
                   : "Luchador rojo";
@@ -485,7 +561,7 @@ export default async function LuchadorDetallePage({ params }: PageProps) {
                 const ganadorNombre = hasText(combate.ganador) ? combate.ganador : "";
 
                 return (
-                  <article key={combate._id} className="luchador-detalle-card">
+                  <article key={combateId} className="luchador-detalle-card">
                     <div className="luchador-detalle-card-header">
                       <h3 className="luchador-detalle-card-title">
                         {hasText(combate.luchadorRojoSlug) ? (
@@ -511,12 +587,14 @@ export default async function LuchadorDetallePage({ params }: PageProps) {
                         )}
                       </h3>
 
-                      <Link
-                        href={`/resultados/${combate._id}`}
-                        className="luchador-detalle-card-inline-cta"
-                      >
-                        Ver resultado
-                      </Link>
+                      {hasText(combateId) ? (
+                        <Link
+                          href={`/resultados/${combateId}`}
+                          className="luchador-detalle-card-inline-cta"
+                        >
+                          Ver resultado
+                        </Link>
+                      ) : null}
                     </div>
 
                     {ganadorNombre && (
@@ -577,10 +655,11 @@ export default async function LuchadorDetallePage({ params }: PageProps) {
             <div className="luchador-detalle-grid-noticias">
               {noticias.map((noticia) => {
                 const hasSlug = hasText(noticia.slug);
+                const noticiaId = safeText(noticia._id);
 
                 const card = (
                   <article className="luchador-detalle-card">
-                    <h3 className="luchador-detalle-card-title">{noticia.titulo}</h3>
+                    <h3 className="luchador-detalle-card-title">{safeText(noticia.titulo)}</h3>
 
                     {hasText(noticia.extracto) && (
                       <p className="luchador-detalle-card-text">{noticia.extracto}</p>
@@ -598,14 +677,14 @@ export default async function LuchadorDetallePage({ params }: PageProps) {
 
                 return hasSlug ? (
                   <Link
-                    key={noticia._id}
+                    key={noticiaId}
                     href={`/noticias/${noticia.slug}`}
                     className="luchador-detalle-link"
                   >
                     {card}
                   </Link>
                 ) : (
-                  <div key={noticia._id} className="luchador-detalle-link">
+                  <div key={noticiaId} className="luchador-detalle-link">
                     {card}
                   </div>
                 );

@@ -67,8 +67,12 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function hasText(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function getString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value : undefined;
+  return hasText(value) ? value.trim() : undefined;
 }
 
 function getNumber(value: unknown): number | undefined {
@@ -80,7 +84,7 @@ function getBoolean(value: unknown): boolean | undefined {
 }
 
 function getSlug(value: unknown): string | undefined {
-  if (typeof value === "string" && value.trim()) return value;
+  if (hasText(value)) return value.trim();
 
   if (isObject(value)) {
     const directSlug = getString(value.slug);
@@ -96,11 +100,13 @@ function getSlug(value: unknown): string | undefined {
 
 function getEntityName(value: unknown): string {
   if (!value) return "";
-  if (typeof value === "string") return value;
-  if (isObject(value)) {
-    return getString(value.nombre) || "";
-  }
+  if (typeof value === "string") return value.trim();
+  if (isObject(value)) return getString(value.nombre) || "";
   return "";
+}
+
+function getArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 function normalizeLuchador(item: unknown): LuchadorNormalizado | null {
@@ -130,12 +136,12 @@ function normalizeCombate(item: unknown): CombateNormalizado | null {
   const _id = getString(item._id);
   if (!_id) return null;
 
-  const luchadorRojo = isObject(item.luchadorRojo) ? item.luchadorRojo : item.luchadorRojo;
-  const luchadorAzul = isObject(item.luchadorAzul) ? item.luchadorAzul : item.luchadorAzul;
-  const ganador = isObject(item.ganador) ? item.ganador : item.ganador;
-  const evento = isObject(item.evento) ? item.evento : item.evento;
+  const luchadorRojo = item.luchadorRojo;
+  const luchadorAzul = item.luchadorAzul;
+  const ganador = item.ganador;
+  const evento = item.evento;
 
-  return {
+  const normalizado: CombateNormalizado = {
     _id,
     metodo: getString(item.metodo),
     asaltoFinal: getNumber(item.asaltoFinal ?? item.asalto),
@@ -145,49 +151,50 @@ function normalizeCombate(item: unknown): CombateNormalizado | null {
     orden: getNumber(item.orden),
     estado: getString(item.estado),
     evento: getEntityName(evento),
-    eventoSlug:
-      getString(item.eventoSlug) ||
-      (isObject(evento) ? getSlug(evento) : undefined),
+    eventoSlug: getString(item.eventoSlug) || getSlug(evento),
     luchadorRojo: getEntityName(luchadorRojo),
-    luchadorRojoSlug:
-      getString(item.luchadorRojoSlug) ||
-      (isObject(luchadorRojo) ? getSlug(luchadorRojo) : undefined),
+    luchadorRojoSlug: getString(item.luchadorRojoSlug) || getSlug(luchadorRojo),
     luchadorAzul: getEntityName(luchadorAzul),
-    luchadorAzulSlug:
-      getString(item.luchadorAzulSlug) ||
-      (isObject(luchadorAzul) ? getSlug(luchadorAzul) : undefined),
+    luchadorAzulSlug: getString(item.luchadorAzulSlug) || getSlug(luchadorAzul),
     ganador: getEntityName(ganador),
-    ganadorSlug:
-      getString(item.ganadorSlug) ||
-      (isObject(ganador) ? getSlug(ganador) : undefined),
+    ganadorSlug: getString(item.ganadorSlug) || getSlug(ganador),
   };
-}
 
-function getArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
+  const tieneAlgoUtil =
+    hasText(normalizado.luchadorRojo) ||
+    hasText(normalizado.luchadorAzul) ||
+    hasText(normalizado.evento) ||
+    hasText(normalizado.metodo);
+
+  return tieneAlgoUtil ? normalizado : null;
 }
 
 export default async function CategoriaPesoDetallePage({ params }: PageProps) {
   const { slug } = await params;
 
-  const categoriaRaw = await client.fetch<CategoriaPesoData | null>(categoriaPesoPorSlugQuery, { slug });
+  if (!hasText(slug)) {
+    notFound();
+  }
 
-  if (!categoriaRaw) {
+  const categoriaRaw = await client.fetch<CategoriaPesoData | null>(
+    categoriaPesoPorSlugQuery,
+    { slug: slug.trim() }
+  );
+
+  if (!categoriaRaw || !hasText(categoriaRaw.nombre)) {
     notFound();
   }
 
   const categoria = {
-    _id: categoriaRaw._id || "",
-    nombre: categoriaRaw.nombre || "Categoría sin nombre",
-    slug: categoriaRaw.slug || slug,
-    limitePeso: categoriaRaw.limitePeso,
-    unidad: categoriaRaw.unidad,
-    descripcion: categoriaRaw.descripcion,
-    activa: categoriaRaw.activa,
+    _id: getString(categoriaRaw._id) || "",
+    nombre: getString(categoriaRaw.nombre) || "Categoría sin nombre",
+    slug: getString(categoriaRaw.slug) || slug.trim(),
+    limitePeso: getNumber(categoriaRaw.limitePeso),
+    unidad: getString(categoriaRaw.unidad),
+    descripcion: getString(categoriaRaw.descripcion),
+    activa: getBoolean(categoriaRaw.activa),
     disciplina: getEntityName(categoriaRaw.disciplina),
-    disciplinaSlug:
-      categoriaRaw.disciplinaSlug ||
-      (isObject(categoriaRaw.disciplina) ? getSlug(categoriaRaw.disciplina) : undefined),
+    disciplinaSlug: getString(categoriaRaw.disciplinaSlug) || getSlug(categoriaRaw.disciplina),
   };
 
   const luchadoresFuente =
@@ -277,6 +284,11 @@ export default async function CategoriaPesoDetallePage({ params }: PageProps) {
           color: #888;
           font-size: 13px;
           line-height: 1.4;
+        }
+
+        .categoria-detalle-meta-pill a {
+          color: inherit;
+          text-decoration: none;
         }
 
         .categoria-detalle-meta-pill--activa {
@@ -489,13 +501,21 @@ export default async function CategoriaPesoDetallePage({ params }: PageProps) {
           <div className="categoria-detalle-meta">
             {categoria.disciplina && (
               <span className="categoria-detalle-meta-pill">
-                Disciplina: {categoria.disciplina}
+                Disciplina:{" "}
+                {categoria.disciplinaSlug ? (
+                  <Link href={`/disciplinas/${categoria.disciplinaSlug}`}>
+                    {categoria.disciplina}
+                  </Link>
+                ) : (
+                  categoria.disciplina
+                )}
               </span>
             )}
 
             {typeof categoria.limitePeso === "number" && (
               <span className="categoria-detalle-meta-pill">
-                Límite: {categoria.limitePeso} {categoria.unidad || ""}
+                Límite: {categoria.limitePeso}
+                {categoria.unidad ? ` ${categoria.unidad}` : ""}
               </span>
             )}
 
@@ -527,7 +547,7 @@ export default async function CategoriaPesoDetallePage({ params }: PageProps) {
           ) : (
             <div className="categoria-detalle-grid-luchadores">
               {luchadores.map((luchador) => {
-                const tieneSlug = typeof luchador.slug === "string" && luchador.slug.trim().length > 0;
+                const tieneSlug = hasText(luchador.slug);
 
                 const contenido = (
                   <article className="categoria-detalle-card">
@@ -582,6 +602,54 @@ export default async function CategoriaPesoDetallePage({ params }: PageProps) {
               {combates.map((combate) => {
                 const luchadorRojoNombre = combate.luchadorRojo || "Luchador rojo";
                 const luchadorAzulNombre = combate.luchadorAzul || "Luchador azul";
+                const tieneResultado = hasText(combate._id);
+
+                const contenido = (
+                  <article className="categoria-detalle-card">
+                    <h3 className="categoria-detalle-card-title">
+                      {luchadorRojoNombre} vs {luchadorAzulNombre}
+                    </h3>
+
+                    {combate.ganador && (
+                      <p className="categoria-detalle-card-highlight">
+                        Ganador: {combate.ganador}
+                      </p>
+                    )}
+
+                    <div className="categoria-detalle-card-data">
+                      {combate.evento && combate.eventoSlug ? (
+                        <p>
+                          Evento:{" "}
+                          <Link
+                            href={`/eventos/${combate.eventoSlug}`}
+                            className="categoria-detalle-card-inline-link"
+                          >
+                            {combate.evento}
+                          </Link>
+                        </p>
+                      ) : combate.evento ? (
+                        <p>Evento: {combate.evento}</p>
+                      ) : null}
+
+                      {combate.estado && <p>Estado: {combate.estado}</p>}
+                      {combate.metodo && <p>Método: {combate.metodo}</p>}
+                      {typeof combate.asaltoFinal === "number" && (
+                        <p>Asalto final: {combate.asaltoFinal}</p>
+                      )}
+                      {combate.tiempoFinal && <p>Tiempo final: {combate.tiempoFinal}</p>}
+                      {combate.cartelera && <p>Cartelera: {combate.cartelera}</p>}
+                      {combate.tituloEnJuego && <p>Pelea con título en juego</p>}
+                    </div>
+
+                    <p className="categoria-detalle-cta">
+                      {tieneResultado ? "Ver resultado" : "Resultado no disponible"}
+                    </p>
+                  </article>
+                );
+
+                if (!tieneResultado) {
+                  return <div key={combate._id}>{contenido}</div>;
+                }
 
                 return (
                   <Link
@@ -589,31 +657,7 @@ export default async function CategoriaPesoDetallePage({ params }: PageProps) {
                     href={`/resultados/${combate._id}`}
                     className="categoria-detalle-link"
                   >
-                    <article className="categoria-detalle-card">
-                      <h3 className="categoria-detalle-card-title">
-                        {luchadorRojoNombre} vs {luchadorAzulNombre}
-                      </h3>
-
-                      {combate.ganador && (
-                        <p className="categoria-detalle-card-highlight">
-                          Ganador: {combate.ganador}
-                        </p>
-                      )}
-
-                      <div className="categoria-detalle-card-data">
-                        {combate.evento && <p>Evento: {combate.evento}</p>}
-                        {combate.estado && <p>Estado: {combate.estado}</p>}
-                        {combate.metodo && <p>Método: {combate.metodo}</p>}
-                        {typeof combate.asaltoFinal === "number" && (
-                          <p>Asalto final: {combate.asaltoFinal}</p>
-                        )}
-                        {combate.tiempoFinal && <p>Tiempo final: {combate.tiempoFinal}</p>}
-                        {combate.cartelera && <p>Cartelera: {combate.cartelera}</p>}
-                        {combate.tituloEnJuego && <p>Pelea con título en juego</p>}
-                      </div>
-
-                      <p className="categoria-detalle-cta">Ver resultado</p>
-                    </article>
+                    {contenido}
                   </Link>
                 );
               })}

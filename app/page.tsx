@@ -16,9 +16,9 @@ type RelacionBasica = {
 };
 
 type Noticia = {
-  _id: string;
-  titulo: string;
-  slug: string;
+  _id?: string;
+  titulo?: string;
+  slug?: string;
   extracto?: string;
   fechaPublicacion?: string;
   destacada?: boolean;
@@ -28,13 +28,13 @@ type Noticia = {
   eventoRelacionadoSlug?: string;
   organizacionRelacionada?: string;
   organizacionRelacionadaSlug?: string;
-  luchadoresRelacionados?: RelacionBasica[];
+  luchadoresRelacionados?: RelacionBasica[] | null;
 };
 
 type Evento = {
-  _id: string;
-  nombre: string;
-  slug: string;
+  _id?: string;
+  nombre?: string;
+  slug?: string;
   fecha?: string;
   horaLocal?: string;
   ciudad?: string;
@@ -49,9 +49,9 @@ type Evento = {
 };
 
 type Luchador = {
-  _id: string;
-  nombre: string;
-  slug: string;
+  _id?: string;
+  nombre?: string;
+  slug?: string;
   apodo?: string;
   record?: string;
   nacionalidad?: string;
@@ -65,24 +65,36 @@ type Luchador = {
 };
 
 type DisciplinaHome = {
-  _id: string;
-  nombre: string;
-  slug: string;
+  _id?: string;
+  nombre?: string;
+  slug?: string;
   descripcion?: string;
 };
 
 type CategoriaPesoHome = {
-  _id: string;
-  nombre: string;
-  slug: string;
+  _id?: string;
+  nombre?: string;
+  slug?: string;
   limitePeso?: number;
   unidad?: string;
   disciplina?: string;
   disciplinaSlug?: string;
 };
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function safeArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function safeText(value: unknown, fallback = ""): string {
+  return isNonEmptyString(value) ? value.trim() : fallback;
+}
+
 function formatFecha(fecha?: string) {
-  if (!fecha) return "Fecha por confirmar";
+  if (!isNonEmptyString(fecha)) return "Fecha por confirmar";
 
   const parsed = new Date(fecha);
 
@@ -96,26 +108,79 @@ function formatFecha(fecha?: string) {
 }
 
 function getUbicacion(evento: Evento) {
-  const parts = [evento.ciudad, evento.pais].filter(Boolean);
+  const parts = [safeText(evento.ciudad), safeText(evento.pais)].filter(Boolean);
   return parts.length ? parts.join(", ") : "Ubicación por confirmar";
 }
 
 export default async function HomePage() {
   const [
-    noticiaDestacada,
-    ultimasNoticias,
-    proximosEventos,
-    luchadoresDestacados,
-    disciplinas,
-    categoriasPeso,
+    noticiaDestacadaRaw,
+    ultimasNoticiasRaw,
+    proximosEventosRaw,
+    luchadoresDestacadosRaw,
+    disciplinasRaw,
+    categoriasPesoRaw,
   ] = await Promise.all([
     client.fetch<Noticia | null>(noticiaDestacadaQuery),
-    client.fetch<Noticia[]>(ultimasNoticiasQuery),
-    client.fetch<Evento[]>(proximosEventosQuery),
-    client.fetch<Luchador[]>(luchadoresDestacadosQuery),
-    client.fetch<DisciplinaHome[]>(disciplinasHomeQuery),
-    client.fetch<CategoriaPesoHome[]>(categoriasPesoHomeQuery),
+    client.fetch<Noticia[] | null>(ultimasNoticiasQuery),
+    client.fetch<Evento[] | null>(proximosEventosQuery),
+    client.fetch<Luchador[] | null>(luchadoresDestacadosQuery),
+    client.fetch<DisciplinaHome[] | null>(disciplinasHomeQuery),
+    client.fetch<CategoriaPesoHome[] | null>(categoriasPesoHomeQuery),
   ]);
+
+  const noticiaDestacada =
+    noticiaDestacadaRaw &&
+    isNonEmptyString(noticiaDestacadaRaw.titulo) &&
+    isNonEmptyString(noticiaDestacadaRaw.slug)
+      ? {
+          ...noticiaDestacadaRaw,
+          titulo: safeText(noticiaDestacadaRaw.titulo),
+          slug: safeText(noticiaDestacadaRaw.slug),
+          extracto: safeText(noticiaDestacadaRaw.extracto),
+          disciplina: safeText(noticiaDestacadaRaw.disciplina),
+          eventoRelacionado: safeText(noticiaDestacadaRaw.eventoRelacionado),
+          eventoRelacionadoSlug: safeText(noticiaDestacadaRaw.eventoRelacionadoSlug),
+          organizacionRelacionada: safeText(noticiaDestacadaRaw.organizacionRelacionada),
+          organizacionRelacionadaSlug: safeText(noticiaDestacadaRaw.organizacionRelacionadaSlug),
+          luchadoresRelacionados: safeArray(noticiaDestacadaRaw.luchadoresRelacionados),
+        }
+      : null;
+
+  const ultimasNoticias = safeArray(ultimasNoticiasRaw).filter(
+    (noticia): noticia is Noticia =>
+      isNonEmptyString(noticia?._id) &&
+      isNonEmptyString(noticia?.titulo) &&
+      isNonEmptyString(noticia?.slug)
+  );
+
+  const proximosEventos = safeArray(proximosEventosRaw).filter(
+    (evento): evento is Evento =>
+      isNonEmptyString(evento?._id) &&
+      isNonEmptyString(evento?.nombre) &&
+      isNonEmptyString(evento?.slug)
+  );
+
+  const luchadoresDestacados = safeArray(luchadoresDestacadosRaw).filter(
+    (luchador): luchador is Luchador =>
+      isNonEmptyString(luchador?._id) &&
+      isNonEmptyString(luchador?.nombre) &&
+      isNonEmptyString(luchador?.slug)
+  );
+
+  const disciplinas = safeArray(disciplinasRaw).filter(
+    (disciplina): disciplina is DisciplinaHome =>
+      isNonEmptyString(disciplina?._id) &&
+      isNonEmptyString(disciplina?.nombre) &&
+      isNonEmptyString(disciplina?.slug)
+  );
+
+  const categoriasPeso = safeArray(categoriasPesoRaw).filter(
+    (categoria): categoria is CategoriaPesoHome =>
+      isNonEmptyString(categoria?._id) &&
+      isNonEmptyString(categoria?.nombre) &&
+      isNonEmptyString(categoria?.slug)
+  );
 
   return (
     <main
@@ -155,10 +220,10 @@ export default async function HomePage() {
               }}
             >
               <span className="ffn-pill">Noticia destacada</span>
-              {noticiaDestacada.disciplina ? (
+              {isNonEmptyString(noticiaDestacada.disciplina) ? (
                 <span className="ffn-pill-muted">{noticiaDestacada.disciplina}</span>
               ) : null}
-              {noticiaDestacada.fechaPublicacion ? (
+              {isNonEmptyString(noticiaDestacada.fechaPublicacion) ? (
                 <span className="ffn-pill-muted">
                   {formatFecha(noticiaDestacada.fechaPublicacion)}
                 </span>
@@ -173,10 +238,10 @@ export default async function HomePage() {
                   lineHeight: 1.05,
                 }}
               >
-                {noticiaDestacada.titulo}
+                {safeText(noticiaDestacada.titulo)}
               </h1>
 
-              {noticiaDestacada.extracto ? (
+              {isNonEmptyString(noticiaDestacada.extracto) ? (
                 <p
                   style={{
                     margin: 0,
@@ -196,7 +261,7 @@ export default async function HomePage() {
                 Leer noticia
               </Link>
 
-              {noticiaDestacada.eventoRelacionadoSlug ? (
+              {isNonEmptyString(noticiaDestacada.eventoRelacionadoSlug) ? (
                 <Link
                   href={`/eventos/${noticiaDestacada.eventoRelacionadoSlug}`}
                   className="ffn-button-secondary"
@@ -271,10 +336,10 @@ export default async function HomePage() {
                         alignItems: "center",
                       }}
                     >
-                      {noticia.disciplina ? (
+                      {isNonEmptyString(noticia.disciplina) ? (
                         <span className="ffn-pill-muted">{noticia.disciplina}</span>
                       ) : null}
-                      {noticia.fechaPublicacion ? (
+                      {isNonEmptyString(noticia.fechaPublicacion) ? (
                         <span className="ffn-pill-muted">
                           {formatFecha(noticia.fechaPublicacion)}
                         </span>
@@ -282,10 +347,10 @@ export default async function HomePage() {
                     </div>
 
                     <h3 style={{ margin: 0, fontSize: "1.15rem", lineHeight: 1.35 }}>
-                      {noticia.titulo}
+                      {safeText(noticia.titulo)}
                     </h3>
 
-                    {noticia.extracto ? (
+                    {isNonEmptyString(noticia.extracto) ? (
                       <p
                         style={{
                           margin: 0,
@@ -360,16 +425,16 @@ export default async function HomePage() {
                           alignItems: "center",
                         }}
                       >
-                        {evento.organizacion ? (
+                        {isNonEmptyString(evento.organizacion) ? (
                           <span className="ffn-pill">{evento.organizacion}</span>
                         ) : null}
-                        {evento.fecha ? (
+                        {isNonEmptyString(evento.fecha) ? (
                           <span className="ffn-pill-muted">{formatFecha(evento.fecha)}</span>
                         ) : null}
                       </div>
 
                       <h3 style={{ margin: 0, fontSize: "1rem", lineHeight: 1.35 }}>
-                        {evento.nombre}
+                        {safeText(evento.nombre)}
                       </h3>
 
                       <p
@@ -381,7 +446,7 @@ export default async function HomePage() {
                         }}
                       >
                         {getUbicacion(evento)}
-                        {evento.horaLocal ? ` · ${evento.horaLocal}` : ""}
+                        {isNonEmptyString(evento.horaLocal) ? ` · ${evento.horaLocal}` : ""}
                       </p>
                     </Link>
                   ))
@@ -448,17 +513,17 @@ export default async function HomePage() {
                           alignItems: "center",
                         }}
                       >
-                        {luchador.organizacion ? (
+                        {isNonEmptyString(luchador.organizacion) ? (
                           <span className="ffn-pill">{luchador.organizacion}</span>
                         ) : null}
-                        {luchador.categoriaPeso ? (
+                        {isNonEmptyString(luchador.categoriaPeso) ? (
                           <span className="ffn-pill-muted">{luchador.categoriaPeso}</span>
                         ) : null}
                       </div>
 
                       <h3 style={{ margin: 0, fontSize: "1rem", lineHeight: 1.35 }}>
-                        {luchador.nombre}
-                        {luchador.apodo ? ` “${luchador.apodo}”` : ""}
+                        {safeText(luchador.nombre)}
+                        {isNonEmptyString(luchador.apodo) ? ` “${luchador.apodo}”` : ""}
                       </h3>
 
                       <p
@@ -469,8 +534,10 @@ export default async function HomePage() {
                           lineHeight: 1.55,
                         }}
                       >
-                        {luchador.record || "Récord por actualizar"}
-                        {luchador.nacionalidad ? ` · ${luchador.nacionalidad}` : ""}
+                        {safeText(luchador.record, "Récord por actualizar")}
+                        {isNonEmptyString(luchador.nacionalidad)
+                          ? ` · ${luchador.nacionalidad}`
+                          : ""}
                       </p>
                     </Link>
                   ))
@@ -524,8 +591,8 @@ export default async function HomePage() {
                       gap: "8px",
                     }}
                   >
-                    <h3 style={{ margin: 0, fontSize: "1rem" }}>{disciplina.nombre}</h3>
-                    {disciplina.descripcion ? (
+                    <h3 style={{ margin: 0, fontSize: "1rem" }}>{safeText(disciplina.nombre)}</h3>
+                    {isNonEmptyString(disciplina.descripcion) ? (
                       <p
                         style={{
                           margin: 0,
@@ -585,15 +652,15 @@ export default async function HomePage() {
                         alignItems: "center",
                       }}
                     >
-                      <h3 style={{ margin: 0, fontSize: "1rem" }}>{categoria.nombre}</h3>
-                      {categoria.limitePeso ? (
+                      <h3 style={{ margin: 0, fontSize: "1rem" }}>{safeText(categoria.nombre)}</h3>
+                      {typeof categoria.limitePeso === "number" ? (
                         <span className="ffn-pill-muted">
-                          {categoria.limitePeso} {categoria.unidad || "lb"}
+                          {categoria.limitePeso} {safeText(categoria.unidad, "lb")}
                         </span>
                       ) : null}
                     </div>
 
-                    {categoria.disciplina ? (
+                    {isNonEmptyString(categoria.disciplina) ? (
                       <p
                         style={{
                           margin: 0,

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import type { CSSProperties } from "react";
 import imageUrlBuilder from "@sanity/image-url";
 import { notFound } from "next/navigation";
 import { client } from "../../../sanity/lib/client";
@@ -81,7 +82,7 @@ type CombateItem = {
   estado?: string;
 };
 
-type Organizacion = {
+type OrganizacionRaw = {
   _id?: string;
   nombre?: string;
   slug?: string;
@@ -103,15 +104,40 @@ type Organizacion = {
   combates?: CombateItem[];
 };
 
+type Organizacion = {
+  _id: string;
+  nombre: string;
+  slug: string;
+  descripcionCorta: string;
+  descripcion: string;
+  paisOrigen: string;
+  sede: string;
+  anioFundacion?: number;
+  identidad: string;
+  datosCuriosos: string[];
+  sitioWeb: string;
+  activa: boolean;
+  banner?: string | SanityImage;
+  logo?: string | SanityImage;
+  disciplinas: SimpleItem[];
+  eventos: EventoItem[];
+  luchadores: LuchadorItem[];
+  noticias: NoticiaItem[];
+  combates: CombateItem[];
+};
+
+function hasText(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function getSafeText(value: unknown, fallback = ""): string {
-  if (typeof value === "string") return value;
-  if (typeof value === "number") return String(value);
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return fallback;
 }
 
 function getSafeBoolean(value: unknown, fallback = false): boolean {
-  if (typeof value === "boolean") return value;
-  return fallback;
+  return typeof value === "boolean" ? value : fallback;
 }
 
 function getSafeNumber(value: unknown): number | undefined {
@@ -139,7 +165,7 @@ function buildImageUrl(
   if (!image) return null;
 
   if (typeof image === "string" && image.trim()) {
-    return image;
+    return image.trim();
   }
 
   if (isSanityImage(image)) {
@@ -156,7 +182,7 @@ function buildImageUrl(
 }
 
 function formatFecha(fecha?: string) {
-  if (!fecha) return "";
+  if (!hasText(fecha)) return "";
   const d = new Date(fecha);
   if (Number.isNaN(d.getTime())) return fecha;
 
@@ -168,13 +194,14 @@ function formatFecha(fecha?: string) {
 }
 
 function formatEstado(value?: string) {
-  if (!value) return "";
-  if (value === "proximo") return "Próximo";
-  if (value === "celebrado") return "Celebrado";
-  if (value === "cancelado") return "Cancelado";
-  if (value === "programado") return "Programado";
-  if (value === "finalizado") return "Finalizado";
-  return value.charAt(0).toUpperCase() + value.slice(1);
+  const safeValue = getSafeText(value);
+  if (!safeValue) return "";
+  if (safeValue === "proximo") return "Próximo";
+  if (safeValue === "celebrado") return "Celebrado";
+  if (safeValue === "cancelado") return "Cancelado";
+  if (safeValue === "programado") return "Programado";
+  if (safeValue === "finalizado") return "Finalizado";
+  return safeValue.charAt(0).toUpperCase() + safeValue.slice(1);
 }
 
 function getItemName(value?: SimpleItem | null, fallback = ""): string {
@@ -186,10 +213,129 @@ function getItemSlug(value?: SimpleItem | null): string {
 }
 
 function getCompactLocation(ciudad?: string, pais?: string) {
-  return [ciudad, pais].filter(Boolean).join(", ");
+  return [getSafeText(ciudad), getSafeText(pais)].filter(Boolean).join(", ");
 }
 
-const blockStyle: React.CSSProperties = {
+function normalizeSimpleItem(item: unknown): SimpleItem | null {
+  if (!item || typeof item !== "object") return null;
+
+  const candidate = item as SimpleItem;
+  const nombre = getSafeText(candidate.nombre);
+  const slug = getSafeText(candidate.slug);
+  const _id = getSafeText(candidate._id);
+
+  if (!nombre && !_id && !slug) return null;
+
+  return {
+    _id,
+    nombre,
+    slug,
+  };
+}
+
+function normalizeEventoItem(item: unknown): EventoItem | null {
+  if (!item || typeof item !== "object") return null;
+
+  const candidate = item as EventoItem;
+  const _id = getSafeText(candidate._id);
+  const nombre = getSafeText(candidate.nombre);
+  const slug = getSafeText(candidate.slug);
+
+  if (!_id && !nombre && !slug) return null;
+
+  return {
+    _id,
+    nombre,
+    slug,
+    fecha: getSafeText(candidate.fecha),
+    ciudad: getSafeText(candidate.ciudad),
+    pais: getSafeText(candidate.pais),
+    recinto: getSafeText(candidate.recinto),
+    imagen: candidate.imagen,
+    disciplina: getSafeText(candidate.disciplina),
+    disciplinaSlug: getSafeText(candidate.disciplinaSlug),
+  };
+}
+
+function normalizeLuchadorItem(item: unknown): LuchadorItem | null {
+  if (!item || typeof item !== "object") return null;
+
+  const candidate = item as LuchadorItem;
+  const _id = getSafeText(candidate._id);
+  const nombre = getSafeText(candidate.nombre);
+  const slug = getSafeText(candidate.slug);
+
+  if (!_id && !nombre && !slug) return null;
+
+  return {
+    _id,
+    nombre,
+    slug,
+    apodo: getSafeText(candidate.apodo),
+    imagen: candidate.imagen,
+    nacionalidad: getSafeText(candidate.nacionalidad),
+    record: getSafeText(candidate.record),
+    activo: typeof candidate.activo === "boolean" ? candidate.activo : undefined,
+    disciplina: getSafeText(candidate.disciplina),
+    disciplinaSlug: getSafeText(candidate.disciplinaSlug),
+    categoriaPeso: getSafeText(candidate.categoriaPeso),
+    categoriaPesoSlug: getSafeText(candidate.categoriaPesoSlug),
+  };
+}
+
+function normalizeNoticiaItem(item: unknown): NoticiaItem | null {
+  if (!item || typeof item !== "object") return null;
+
+  const candidate = item as NoticiaItem;
+  const _id = getSafeText(candidate._id);
+  const titulo = getSafeText(candidate.titulo);
+  const slug = getSafeText(candidate.slug);
+
+  if (!_id && !titulo && !slug) return null;
+
+  return {
+    _id,
+    titulo,
+    slug,
+    extracto: getSafeText(candidate.extracto),
+    fechaPublicacion: getSafeText(candidate.fechaPublicacion),
+    disciplina: getSafeText(candidate.disciplina),
+    disciplinaSlug: getSafeText(candidate.disciplinaSlug),
+  };
+}
+
+function normalizeCombateItem(item: unknown): CombateItem | null {
+  if (!item || typeof item !== "object") return null;
+
+  const candidate = item as CombateItem;
+  const _id = getSafeText(candidate._id);
+
+  const rojo = normalizeSimpleItem(candidate.luchadorRojo);
+  const azul = normalizeSimpleItem(candidate.luchadorAzul);
+  const ganador = normalizeSimpleItem(candidate.ganador);
+
+  const evento = getSafeText(candidate.evento);
+  const metodo = getSafeText(candidate.metodo);
+
+  if (!_id && !evento && !metodo && !rojo?.nombre && !azul?.nombre) return null;
+
+  return {
+    _id,
+    evento,
+    eventoSlug: getSafeText(candidate.eventoSlug),
+    luchadorRojo: rojo || undefined,
+    luchadorAzul: azul || undefined,
+    ganador: ganador || undefined,
+    categoriaPeso: getSafeText(candidate.categoriaPeso),
+    categoriaPesoSlug: getSafeText(candidate.categoriaPesoSlug),
+    metodo,
+    asalto: getSafeNumber(candidate.asalto),
+    tiempo: getSafeText(candidate.tiempo),
+    estado: getSafeText(candidate.estado),
+  };
+}
+
+const blockStyle: CSSProperties = {
   border: "1px solid var(--ffn-border)",
   borderRadius: "22px",
   background: "var(--ffn-surface)",
@@ -199,7 +345,7 @@ const blockStyle: React.CSSProperties = {
   alignContent: "start",
 };
 
-const itemCardStyle: React.CSSProperties = {
+const itemCardStyle: CSSProperties = {
   border: "1px solid rgba(255,255,255,0.06)",
   borderRadius: "16px",
   padding: "14px 15px",
@@ -216,13 +362,13 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const data = await client.fetch<Organizacion | null>(
+  const data = await client.fetch<OrganizacionRaw | null>(
     organizacionPorSlugQuery,
     { slug },
     { cache: "no-store" }
   );
 
-  if (!data) {
+  if (!data || !hasText(data.nombre)) {
     notFound();
   }
 
@@ -236,16 +382,26 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
     sede: getSafeText(data.sede),
     anioFundacion: getSafeNumber(data.anioFundacion),
     identidad: getSafeText(data.identidad),
-    datosCuriosos: getSafeArray<string>(data.datosCuriosos).filter(Boolean),
+    datosCuriosos: getSafeArray<string>(data.datosCuriosos).filter(hasText),
     sitioWeb: getSafeText(data.sitioWeb),
     activa: getSafeBoolean(data.activa, true),
     banner: data.banner,
     logo: data.logo,
-    disciplinas: getSafeArray<SimpleItem>(data.disciplinas),
-    eventos: getSafeArray<EventoItem>(data.eventos),
-    luchadores: getSafeArray<LuchadorItem>(data.luchadores),
-    noticias: getSafeArray<NoticiaItem>(data.noticias),
-    combates: getSafeArray<CombateItem>(data.combates),
+    disciplinas: getSafeArray(data.disciplinas)
+      .map(normalizeSimpleItem)
+      .filter((item): item is SimpleItem => item !== null),
+    eventos: getSafeArray(data.eventos)
+      .map(normalizeEventoItem)
+      .filter((item): item is EventoItem => item !== null),
+    luchadores: getSafeArray(data.luchadores)
+      .map(normalizeLuchadorItem)
+      .filter((item): item is LuchadorItem => item !== null),
+    noticias: getSafeArray(data.noticias)
+      .map(normalizeNoticiaItem)
+      .filter((item): item is NoticiaItem => item !== null),
+    combates: getSafeArray(data.combates)
+      .map(normalizeCombateItem)
+      .filter((item): item is CombateItem => item !== null),
   };
 
   const bannerUrl = buildImageUrl(organizacion.banner, {
@@ -597,7 +753,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
           <aside style={blockStyle}>
             <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Disciplinas</h2>
 
-            {organizacion.disciplinas && organizacion.disciplinas.length > 0 ? (
+            {organizacion.disciplinas.length > 0 ? (
               <div
                 style={{
                   display: "flex",
@@ -612,7 +768,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                   if (!disciplinaSlug) {
                     return (
                       <span
-                        key={`${nombre}-${index}`}
+                        key={disciplina._id || `${nombre}-${index}`}
                         style={{
                           padding: "7px 11px",
                           borderRadius: "999px",
@@ -651,7 +807,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
               </p>
             )}
 
-            {organizacion.datosCuriosos && organizacion.datosCuriosos.length > 0 ? (
+            {organizacion.datosCuriosos.length > 0 ? (
               <>
                 <h3 style={{ margin: 0, fontSize: "1rem" }}>Datos curiosos</h3>
                 <ul
@@ -681,7 +837,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
           <article style={blockStyle}>
             <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Noticias relacionadas</h2>
 
-            {organizacion.noticias && organizacion.noticias.length > 0 ? (
+            {organizacion.noticias.length > 0 ? (
               <div style={{ display: "grid", gap: "10px" }}>
                 {organizacion.noticias.map((noticia, index) => {
                   const titulo = getSafeText(noticia?.titulo, "Noticia");
@@ -690,10 +846,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                   const extracto = getSafeText(noticia?.extracto);
 
                   return (
-                    <div
-                      key={noticia._id || `${titulo}-${index}`}
-                      style={itemCardStyle}
-                    >
+                    <div key={noticia._id || `${titulo}-${index}`} style={itemCardStyle}>
                       {noticiaSlug ? (
                         <Link
                           href={`/noticias/${noticiaSlug}`}
@@ -739,7 +892,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
           <article style={blockStyle}>
             <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Luchadores relacionados</h2>
 
-            {organizacion.luchadores && organizacion.luchadores.length > 0 ? (
+            {organizacion.luchadores.length > 0 ? (
               <div style={{ display: "grid", gap: "10px" }}>
                 {organizacion.luchadores.map((luchador, index) => {
                   const nombre = getSafeText(luchador?.nombre, "Luchador");
@@ -749,10 +902,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                   const categoria = getSafeText(luchador?.categoriaPeso);
 
                   return (
-                    <div
-                      key={luchador._id || `${nombre}-${index}`}
-                      style={itemCardStyle}
-                    >
+                    <div key={luchador._id || `${nombre}-${index}`} style={itemCardStyle}>
                       {luchadorSlug ? (
                         <Link
                           href={`/luchadores/${luchadorSlug}`}
@@ -806,7 +956,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
           <article style={blockStyle}>
             <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Eventos relacionados</h2>
 
-            {organizacion.eventos && organizacion.eventos.length > 0 ? (
+            {organizacion.eventos.length > 0 ? (
               <div style={{ display: "grid", gap: "10px" }}>
                 {organizacion.eventos.map((evento, index) => {
                   const nombre = getSafeText(evento?.nombre, "Evento");
@@ -815,10 +965,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                   const lugar = getCompactLocation(evento?.ciudad, evento?.pais);
 
                   return (
-                    <div
-                      key={evento._id || `${nombre}-${index}`}
-                      style={itemCardStyle}
-                    >
+                    <div key={evento._id || `${nombre}-${index}`} style={itemCardStyle}>
                       {eventoSlug ? (
                         <Link
                           href={`/eventos/${eventoSlug}`}
@@ -864,7 +1011,7 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
           <article style={blockStyle}>
             <h2 style={{ margin: 0, fontSize: "1.25rem" }}>Combates recientes</h2>
 
-            {organizacion.combates && organizacion.combates.length > 0 ? (
+            {organizacion.combates.length > 0 ? (
               <div style={{ display: "grid", gap: "10px" }}>
                 {organizacion.combates.map((combate, index) => {
                   const rojoNombre = getItemName(combate?.luchadorRojo, "Luchador rojo");
@@ -878,10 +1025,11 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                   const metodo = getSafeText(combate?.metodo);
                   const categoria = getSafeText(combate?.categoriaPeso);
                   const estado = formatEstado(combate?.estado);
+                  const combateId = getSafeText(combate?._id);
 
                   return (
                     <div
-                      key={combate._id || `${rojoNombre}-${azulNombre}-${index}`}
+                      key={combateId || `${rojoNombre}-${azulNombre}-${index}`}
                       style={itemCardStyle}
                     >
                       <p
@@ -975,9 +1123,9 @@ export default async function OrganizacionDetailPage({ params }: PageProps) {
                         </p>
                       )}
 
-                      {combate._id ? (
+                      {combateId ? (
                         <Link
-                          href={`/resultados/${combate._id}`}
+                          href={`/resultados/${combateId}`}
                           style={{
                             textDecoration: "none",
                             color: "var(--ffn-accent)",

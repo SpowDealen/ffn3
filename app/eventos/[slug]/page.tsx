@@ -26,7 +26,7 @@ type EventoDisciplina = {
 };
 
 type Combate = {
-  _id: string;
+  _id?: string;
   metodo?: string;
   asalto?: number;
   tiempo?: string;
@@ -38,32 +38,32 @@ type Combate = {
   desarrollo?: string;
   momentoClave?: string;
   consecuencia?: string;
-  luchadorRojo?: SluggedEntity | string;
+  luchadorRojo?: SluggedEntity | string | null;
   luchadorRojoSlug?: string;
-  luchadorAzul?: SluggedEntity | string;
+  luchadorAzul?: SluggedEntity | string | null;
   luchadorAzulSlug?: string;
-  ganador?: SluggedEntity | string;
+  ganador?: SluggedEntity | string | null;
   ganadorSlug?: string;
   categoriaPeso?: string;
   categoriaPesoSlug?: string;
 };
 
 type Noticia = {
-  _id: string;
-  titulo: string;
-  slug: string;
+  _id?: string;
+  titulo?: string;
+  slug?: string;
   extracto?: string;
   fechaPublicacion?: string;
   destacada?: boolean;
   disciplina?: string;
   eventoRelacionado?: string;
-  luchadoresRelacionados?: string[];
+  luchadoresRelacionados?: string[] | null;
 };
 
 type Evento = {
-  _id: string;
-  nombre: string;
-  slug: string;
+  _id?: string;
+  nombre?: string;
+  slug?: string;
   fecha?: string;
   horaLocal?: string;
   ciudad?: string;
@@ -75,12 +75,12 @@ type Evento = {
   descripcion?: string;
   dondeVer?: string;
   notas?: string;
-  organizacion?: EventoOrganizacion | string;
+  organizacion?: EventoOrganizacion | string | null;
   organizacionSlug?: string;
-  disciplina?: EventoDisciplina | string;
+  disciplina?: EventoDisciplina | string | null;
   disciplinaSlug?: string;
-  combates?: Combate[];
-  noticiasRelacionadas?: Noticia[];
+  combates?: Combate[] | null;
+  noticiasRelacionadas?: Noticia[] | null;
 };
 
 type Protagonista = {
@@ -94,23 +94,35 @@ type PageProps = {
   }>;
 };
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function safeText(value: unknown, fallback = ""): string {
+  return isNonEmptyString(value) ? value.trim() : fallback;
+}
+
+function safeArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
 function getEntityName(
   value?: SluggedEntity | EventoOrganizacion | EventoDisciplina | string | null
 ): string {
   if (!value) return "";
-  if (typeof value === "string") return value;
-  return value.nombre || "";
+  if (typeof value === "string") return safeText(value);
+  return safeText(value.nombre);
 }
 
 function getEntitySlug(
   value?: SluggedEntity | EventoOrganizacion | EventoDisciplina | string | null
 ): string | undefined {
   if (!value || typeof value === "string") return undefined;
-  return value.slug || undefined;
+  return isNonEmptyString(value.slug) ? value.slug.trim() : undefined;
 }
 
 function formatDate(value?: string): string {
-  if (!value) return "";
+  if (!isNonEmptyString(value)) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("es-ES", {
@@ -121,71 +133,115 @@ function formatDate(value?: string): string {
 }
 
 function formatEstado(value?: string): string {
-  if (!value) return "";
-  if (value === "proximo") return "Próximo";
-  if (value === "celebrado") return "Celebrado";
-  if (value === "cancelado") return "Cancelado";
-  if (value === "programado") return "Programado";
-  if (value === "finalizado") return "Finalizado";
-  return value.charAt(0).toUpperCase() + value.slice(1);
+  const safeValue = safeText(value);
+  if (!safeValue) return "";
+  if (safeValue === "proximo") return "Próximo";
+  if (safeValue === "celebrado") return "Celebrado";
+  if (safeValue === "cancelado") return "Cancelado";
+  if (safeValue === "programado") return "Programado";
+  if (safeValue === "finalizado") return "Finalizado";
+  return safeValue.charAt(0).toUpperCase() + safeValue.slice(1);
 }
 
 function formatCartelera(value?: string): string {
-  if (!value) return "";
-  if (value === "principal") return "Cartelera principal";
-  if (value === "preliminar") return "Cartelera preliminar";
-  return value;
+  const safeValue = safeText(value);
+  if (!safeValue) return "";
+  if (safeValue === "principal") return "Cartelera principal";
+  if (safeValue === "preliminar") return "Cartelera preliminar";
+  return safeValue;
+}
+
+function getLugar(ciudad?: string, pais?: string): string {
+  const parts = [safeText(ciudad), safeText(pais)].filter(Boolean);
+  return parts.join(", ");
 }
 
 export default async function EventoDetallePage({ params }: PageProps) {
   const { slug } = await params;
 
-  const evento: Evento | null = await client.fetch(eventoPorSlugQuery, { slug });
-
-  if (!evento) {
+  if (!isNonEmptyString(slug)) {
     notFound();
   }
 
-  const combates = Array.isArray(evento.combates) ? evento.combates : [];
-  const noticias = Array.isArray(evento.noticiasRelacionadas)
-    ? evento.noticiasRelacionadas
-    : [];
+  const eventoRaw = await client.fetch<Evento | null>(eventoPorSlugQuery, {
+    slug: slug.trim(),
+  });
+
+  if (!eventoRaw || !isNonEmptyString(eventoRaw.nombre)) {
+    notFound();
+  }
+
+  const evento: Evento = {
+    ...eventoRaw,
+    nombre: safeText(eventoRaw.nombre),
+    slug: safeText(eventoRaw.slug),
+    ciudad: safeText(eventoRaw.ciudad),
+    pais: safeText(eventoRaw.pais),
+    recinto: safeText(eventoRaw.recinto),
+    cartelPrincipal: safeText(eventoRaw.cartelPrincipal),
+    estado: safeText(eventoRaw.estado),
+    descripcionCorta: safeText(eventoRaw.descripcionCorta),
+    descripcion: safeText(eventoRaw.descripcion),
+    dondeVer: safeText(eventoRaw.dondeVer),
+    notas: safeText(eventoRaw.notas),
+    organizacionSlug: safeText(eventoRaw.organizacionSlug),
+    disciplinaSlug: safeText(eventoRaw.disciplinaSlug),
+    combates: safeArray(eventoRaw.combates),
+    noticiasRelacionadas: safeArray(eventoRaw.noticiasRelacionadas),
+  };
+
+  const combates = safeArray(evento.combates).filter(
+    (combate): combate is Combate =>
+      isNonEmptyString(combate?._id) &&
+      (isNonEmptyString(getEntityName(combate?.luchadorRojo)) ||
+        isNonEmptyString(getEntityName(combate?.luchadorAzul)) ||
+        isNonEmptyString(combate?.categoriaPeso))
+  );
+
+  const noticias = safeArray(evento.noticiasRelacionadas).filter(
+    (noticia): noticia is Noticia =>
+      isNonEmptyString(noticia?._id) &&
+      isNonEmptyString(noticia?.titulo) &&
+      isNonEmptyString(noticia?.slug)
+  );
 
   const organizacionNombre = getEntityName(evento.organizacion);
-  const organizacionSlug =
-    getEntitySlug(evento.organizacion) || evento.organizacionSlug;
+  const organizacionSlug = getEntitySlug(evento.organizacion) || safeText(evento.organizacionSlug);
 
   const disciplinaNombre = getEntityName(evento.disciplina);
-  const disciplinaSlug =
-    getEntitySlug(evento.disciplina) || evento.disciplinaSlug;
+  const disciplinaSlug = getEntitySlug(evento.disciplina) || safeText(evento.disciplinaSlug);
 
   const protagonistasMap = new Map<string, Protagonista>();
 
   for (const combate of combates) {
     const luchadorRojoNombre = getEntityName(combate.luchadorRojo);
-    const luchadorRojoSlug =
-      getEntitySlug(combate.luchadorRojo) || combate.luchadorRojoSlug;
+    const luchadorRojoSlug = getEntitySlug(combate.luchadorRojo) || safeText(combate.luchadorRojoSlug);
 
     if (luchadorRojoNombre) {
-      protagonistasMap.set(luchadorRojoNombre, {
+      const key = luchadorRojoSlug || luchadorRojoNombre;
+      protagonistasMap.set(key, {
         nombre: luchadorRojoNombre,
-        slug: luchadorRojoSlug,
+        slug: luchadorRojoSlug || undefined,
       });
     }
 
     const luchadorAzulNombre = getEntityName(combate.luchadorAzul);
-    const luchadorAzulSlug =
-      getEntitySlug(combate.luchadorAzul) || combate.luchadorAzulSlug;
+    const luchadorAzulSlug = getEntitySlug(combate.luchadorAzul) || safeText(combate.luchadorAzulSlug);
 
     if (luchadorAzulNombre) {
-      protagonistasMap.set(luchadorAzulNombre, {
+      const key = luchadorAzulSlug || luchadorAzulNombre;
+      protagonistasMap.set(key, {
         nombre: luchadorAzulNombre,
-        slug: luchadorAzulSlug,
+        slug: luchadorAzulSlug || undefined,
       });
     }
   }
 
-  const protagonistas = Array.from(protagonistasMap.values());
+  const protagonistas = Array.from(protagonistasMap.values()).filter(
+    (protagonista) => isNonEmptyString(protagonista.nombre)
+  );
+
+  const lugar = getLugar(evento.ciudad, evento.pais);
 
   return (
     <main className="evento-detalle-shell">
@@ -584,13 +640,13 @@ export default async function EventoDetallePage({ params }: PageProps) {
 
           <h1 className="evento-detalle-title">{evento.nombre}</h1>
 
-          {evento.cartelPrincipal && (
+          {isNonEmptyString(evento.cartelPrincipal) && (
             <p className="evento-detalle-cartel">{evento.cartelPrincipal}</p>
           )}
 
-          {(evento.descripcionCorta || evento.descripcion) && (
+          {(isNonEmptyString(evento.descripcionCorta) || isNonEmptyString(evento.descripcion)) && (
             <p className="evento-detalle-lead">
-              {evento.descripcionCorta || evento.descripcion}
+              {safeText(evento.descripcionCorta) || safeText(evento.descripcion)}
             </p>
           )}
         </header>
@@ -599,10 +655,8 @@ export default async function EventoDetallePage({ params }: PageProps) {
           {organizacionNombre && (
             <span className="evento-detalle-meta-pill">
               Organización:{" "}
-              {organizacionSlug ? (
-                <Link href={`/organizaciones/${organizacionSlug}`}>
-                  {organizacionNombre}
-                </Link>
+              {isNonEmptyString(organizacionSlug) ? (
+                <Link href={`/organizaciones/${organizacionSlug}`}>{organizacionNombre}</Link>
               ) : (
                 organizacionNombre
               )}
@@ -612,50 +666,40 @@ export default async function EventoDetallePage({ params }: PageProps) {
           {disciplinaNombre && (
             <span className="evento-detalle-meta-pill">
               Disciplina:{" "}
-              {disciplinaSlug ? (
-                <Link href={`/disciplinas/${disciplinaSlug}`}>
-                  {disciplinaNombre}
-                </Link>
+              {isNonEmptyString(disciplinaSlug) ? (
+                <Link href={`/disciplinas/${disciplinaSlug}`}>{disciplinaNombre}</Link>
               ) : (
                 disciplinaNombre
               )}
             </span>
           )}
 
-          {evento.estado && (
+          {isNonEmptyString(evento.estado) && (
             <span className="evento-detalle-meta-pill">
               Estado: {formatEstado(evento.estado)}
             </span>
           )}
 
-          {evento.fecha && (
+          {isNonEmptyString(evento.fecha) && (
             <span className="evento-detalle-meta-pill">
               Fecha: {formatDate(evento.fecha)}
             </span>
           )}
 
-          {evento.horaLocal && (
-            <span className="evento-detalle-meta-pill">
-              Hora: {evento.horaLocal}
-            </span>
+          {isNonEmptyString(evento.horaLocal) && (
+            <span className="evento-detalle-meta-pill">Hora: {evento.horaLocal}</span>
           )}
 
-          {(evento.ciudad || evento.pais) && (
-            <span className="evento-detalle-meta-pill">
-              Lugar: {[evento.ciudad, evento.pais].filter(Boolean).join(", ")}
-            </span>
+          {lugar && (
+            <span className="evento-detalle-meta-pill">Lugar: {lugar}</span>
           )}
 
-          {evento.recinto && (
-            <span className="evento-detalle-meta-pill">
-              Recinto: {evento.recinto}
-            </span>
+          {isNonEmptyString(evento.recinto) && (
+            <span className="evento-detalle-meta-pill">Recinto: {evento.recinto}</span>
           )}
 
-          {evento.dondeVer && (
-            <span className="evento-detalle-meta-pill">
-              Dónde verlo: {evento.dondeVer}
-            </span>
+          {isNonEmptyString(evento.dondeVer) && (
+            <span className="evento-detalle-meta-pill">Dónde verlo: {evento.dondeVer}</span>
           )}
         </div>
 
@@ -663,8 +707,10 @@ export default async function EventoDetallePage({ params }: PageProps) {
           <article className="evento-detalle-panel">
             <h2 className="evento-detalle-panel-title">Sobre el evento</h2>
             <p className="evento-detalle-panel-text">
-              {evento.descripcion ||
-                "Este evento todavía no tiene una descripción editorial desarrollada."}
+              {safeText(
+                evento.descripcion,
+                "Este evento todavía no tiene una descripción editorial desarrollada."
+              )}
             </p>
           </article>
 
@@ -672,50 +718,49 @@ export default async function EventoDetallePage({ params }: PageProps) {
             <h2 className="evento-detalle-panel-title">Ficha rápida</h2>
 
             <div className="evento-detalle-info-list">
-              {evento.fecha && (
+              {isNonEmptyString(evento.fecha) && (
                 <p className="evento-detalle-info-item">
                   <strong>Fecha:</strong> {formatDate(evento.fecha)}
                 </p>
               )}
 
-              {evento.horaLocal && (
+              {isNonEmptyString(evento.horaLocal) && (
                 <p className="evento-detalle-info-item">
                   <strong>Hora:</strong> {evento.horaLocal}
                 </p>
               )}
 
-              {(evento.ciudad || evento.pais) && (
+              {lugar && (
                 <p className="evento-detalle-info-item">
-                  <strong>Ubicación:</strong>{" "}
-                  {[evento.ciudad, evento.pais].filter(Boolean).join(", ")}
+                  <strong>Ubicación:</strong> {lugar}
                 </p>
               )}
 
-              {evento.recinto && (
+              {isNonEmptyString(evento.recinto) && (
                 <p className="evento-detalle-info-item">
                   <strong>Recinto:</strong> {evento.recinto}
                 </p>
               )}
 
-              {evento.cartelPrincipal && (
+              {isNonEmptyString(evento.cartelPrincipal) && (
                 <p className="evento-detalle-info-item">
                   <strong>Pelea principal:</strong> {evento.cartelPrincipal}
                 </p>
               )}
 
-              {evento.dondeVer && (
+              {isNonEmptyString(evento.dondeVer) && (
                 <p className="evento-detalle-info-item">
                   <strong>Dónde verlo:</strong> {evento.dondeVer}
                 </p>
               )}
 
-              {evento.estado && (
+              {isNonEmptyString(evento.estado) && (
                 <p className="evento-detalle-info-item">
                   <strong>Estado:</strong> {formatEstado(evento.estado)}
                 </p>
               )}
 
-              {evento.notas && (
+              {isNonEmptyString(evento.notas) && (
                 <p className="evento-detalle-info-item">
                   <strong>Notas:</strong> {evento.notas}
                 </p>
@@ -748,13 +793,13 @@ export default async function EventoDetallePage({ params }: PageProps) {
                   </article>
                 );
 
-                if (!protagonista.slug) {
-                  return <div key={protagonista.nombre}>{contenido}</div>;
+                if (!isNonEmptyString(protagonista.slug)) {
+                  return <div key={protagonista.slug || protagonista.nombre}>{contenido}</div>;
                 }
 
                 return (
                   <Link
-                    key={protagonista.nombre}
+                    key={protagonista.slug || protagonista.nombre}
                     href={`/luchadores/${protagonista.slug}`}
                     className="evento-detalle-link"
                   >
@@ -776,24 +821,25 @@ export default async function EventoDetallePage({ params }: PageProps) {
           ) : (
             <div className="evento-detalle-grid-combates">
               {combates.map((combate) => {
+                const combateId = safeText(combate._id);
                 const luchadorRojoNombre =
                   getEntityName(combate.luchadorRojo) || "Luchador rojo";
                 const luchadorRojoSlug =
-                  getEntitySlug(combate.luchadorRojo) || combate.luchadorRojoSlug;
+                  getEntitySlug(combate.luchadorRojo) || safeText(combate.luchadorRojoSlug);
 
                 const luchadorAzulNombre =
                   getEntityName(combate.luchadorAzul) || "Luchador azul";
                 const luchadorAzulSlug =
-                  getEntitySlug(combate.luchadorAzul) || combate.luchadorAzulSlug;
+                  getEntitySlug(combate.luchadorAzul) || safeText(combate.luchadorAzulSlug);
 
                 const ganadorNombre = getEntityName(combate.ganador);
                 const ganadorSlug =
-                  getEntitySlug(combate.ganador) || combate.ganadorSlug;
+                  getEntitySlug(combate.ganador) || safeText(combate.ganadorSlug);
 
                 return (
-                  <article key={combate._id} className="evento-detalle-card">
+                  <article key={combateId} className="evento-detalle-card">
                     <p className="evento-detalle-card-label">
-                      {formatCartelera(combate.cartelera)}
+                      {formatCartelera(combate.cartelera) || "Combate"}
                       {typeof combate.orden === "number" ? ` · Orden ${combate.orden}` : ""}
                     </p>
 
@@ -802,30 +848,34 @@ export default async function EventoDetallePage({ params }: PageProps) {
                     </h3>
 
                     {ganadorNombre && (
-                      <p className="evento-detalle-card-subtitle">
-                        Ganador: {ganadorNombre}
-                      </p>
+                      <p className="evento-detalle-card-subtitle">Ganador: {ganadorNombre}</p>
                     )}
 
-                    {combate.resumen && (
+                    {isNonEmptyString(combate.resumen) && (
                       <p className="evento-detalle-card-text">{combate.resumen}</p>
                     )}
 
                     <div className="evento-detalle-card-data">
-                      {combate.categoriaPeso && <p>Categoría: {combate.categoriaPeso}</p>}
-                      {combate.estado && <p>Estado: {formatEstado(combate.estado)}</p>}
-                      {combate.metodo && <p>Método: {combate.metodo}</p>}
-                      {typeof combate.asalto === "number" && (
-                        <p>Asalto final: {combate.asalto}</p>
+                      {isNonEmptyString(combate.categoriaPeso) && (
+                        <p>Categoría: {combate.categoriaPeso}</p>
                       )}
-                      {combate.tiempo && <p>Tiempo final: {combate.tiempo}</p>}
+                      {isNonEmptyString(combate.estado) && (
+                        <p>Estado: {formatEstado(combate.estado)}</p>
+                      )}
+                      {isNonEmptyString(combate.metodo) && <p>Método: {combate.metodo}</p>}
+                      {typeof combate.asalto === "number" && <p>Asalto final: {combate.asalto}</p>}
+                      {isNonEmptyString(combate.tiempo) && <p>Tiempo final: {combate.tiempo}</p>}
                       {combate.tituloEnJuego && <p>Título en juego</p>}
-                      {combate.momentoClave && <p>Momento clave: {combate.momentoClave}</p>}
-                      {combate.consecuencia && <p>Consecuencia: {combate.consecuencia}</p>}
+                      {isNonEmptyString(combate.momentoClave) && (
+                        <p>Momento clave: {combate.momentoClave}</p>
+                      )}
+                      {isNonEmptyString(combate.consecuencia) && (
+                        <p>Consecuencia: {combate.consecuencia}</p>
+                      )}
                     </div>
 
                     <div className="evento-detalle-fighter-links">
-                      {luchadorRojoSlug && (
+                      {isNonEmptyString(luchadorRojoSlug) && (
                         <Link
                           href={`/luchadores/${luchadorRojoSlug}`}
                           className="evento-detalle-fighter-link"
@@ -834,7 +884,7 @@ export default async function EventoDetallePage({ params }: PageProps) {
                         </Link>
                       )}
 
-                      {luchadorAzulSlug && (
+                      {isNonEmptyString(luchadorAzulSlug) && (
                         <Link
                           href={`/luchadores/${luchadorAzulSlug}`}
                           className="evento-detalle-fighter-link"
@@ -843,21 +893,25 @@ export default async function EventoDetallePage({ params }: PageProps) {
                         </Link>
                       )}
 
-                      {ganadorSlug && ganadorSlug !== luchadorRojoSlug && ganadorSlug !== luchadorAzulSlug && (
+                      {isNonEmptyString(ganadorSlug) &&
+                        ganadorSlug !== luchadorRojoSlug &&
+                        ganadorSlug !== luchadorAzulSlug && (
+                          <Link
+                            href={`/luchadores/${ganadorSlug}`}
+                            className="evento-detalle-fighter-link"
+                          >
+                            Ver ganador
+                          </Link>
+                        )}
+
+                      {isNonEmptyString(combateId) && (
                         <Link
-                          href={`/luchadores/${ganadorSlug}`}
-                          className="evento-detalle-fighter-link"
+                          href={`/resultados/${combateId}`}
+                          className="evento-detalle-result-link"
                         >
-                          Ver ganador
+                          Ver resultado completo
                         </Link>
                       )}
-
-                      <Link
-                        href={`/resultados/${combate._id}`}
-                        className="evento-detalle-result-link"
-                      >
-                        Ver resultado completo
-                      </Link>
                     </div>
                   </article>
                 );
@@ -877,32 +931,31 @@ export default async function EventoDetallePage({ params }: PageProps) {
             <div className="evento-detalle-grid-noticias">
               {noticias.map((noticia) => (
                 <Link
-                  key={noticia._id}
-                  href={`/noticias/${noticia.slug}`}
+                  key={safeText(noticia._id)}
+                  href={`/noticias/${safeText(noticia.slug)}`}
                   className="evento-detalle-link"
                 >
                   <article className="evento-detalle-card">
-                    {noticia.destacada && (
-                      <p className="evento-detalle-card-badge">Destacada</p>
-                    )}
+                    {noticia.destacada && <p className="evento-detalle-card-badge">Destacada</p>}
 
-                    <h3 className="evento-detalle-card-title">{noticia.titulo}</h3>
+                    <h3 className="evento-detalle-card-title">{safeText(noticia.titulo)}</h3>
 
-                    {noticia.extracto && (
+                    {isNonEmptyString(noticia.extracto) && (
                       <p className="evento-detalle-card-text">{noticia.extracto}</p>
                     )}
 
                     <div className="evento-detalle-card-data evento-detalle-card-data--muted">
-                      {noticia.fechaPublicacion && (
+                      {isNonEmptyString(noticia.fechaPublicacion) && (
                         <p>Publicada el {formatDate(noticia.fechaPublicacion)}</p>
                       )}
-                      {noticia.disciplina && <p>Disciplina: {noticia.disciplina}</p>}
-                      {noticia.luchadoresRelacionados &&
-                        noticia.luchadoresRelacionados.length > 0 && (
-                          <p>
-                            Luchadores: {noticia.luchadoresRelacionados.join(", ")}
-                          </p>
-                        )}
+                      {isNonEmptyString(noticia.disciplina) && (
+                        <p>Disciplina: {noticia.disciplina}</p>
+                      )}
+                      {safeArray(noticia.luchadoresRelacionados).length > 0 && (
+                        <p>
+                          Luchadores: {safeArray(noticia.luchadoresRelacionados).join(", ")}
+                        </p>
+                      )}
                     </div>
 
                     <p className="evento-detalle-cta">Leer noticia</p>

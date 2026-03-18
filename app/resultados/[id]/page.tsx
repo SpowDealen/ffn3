@@ -42,7 +42,7 @@ type OrganizacionEntity = {
 };
 
 type Combate = {
-  _id: string;
+  _id?: string;
   _createdAt?: string;
   metodo?: string;
   asalto?: number;
@@ -55,14 +55,14 @@ type Combate = {
   desarrollo?: string;
   momentoClave?: string;
   consecuencia?: string;
-  evento?: EventoEntity | string;
-  organizacion?: OrganizacionEntity | string;
+  evento?: EventoEntity | string | null;
+  organizacion?: OrganizacionEntity | string | null;
   disciplina?: string;
   disciplinaSlug?: string;
-  luchadorRojo?: SluggedEntity | string;
-  luchadorAzul?: SluggedEntity | string;
-  ganador?: SluggedEntity | string;
-  categoriaPeso?: CategoriaPesoEntity | string;
+  luchadorRojo?: SluggedEntity | string | null;
+  luchadorAzul?: SluggedEntity | string | null;
+  ganador?: SluggedEntity | string | null;
+  categoriaPeso?: CategoriaPesoEntity | string | null;
 };
 
 type PageProps = {
@@ -71,47 +71,55 @@ type PageProps = {
   }>;
 };
 
+function hasText(value?: string | null): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function safeText(value?: string | null, fallback = ""): string {
+  return hasText(value) ? value.trim() : fallback;
+}
+
 function getEntityName(
   value?: SluggedEntity | OrganizacionEntity | string | null
 ): string {
   if (!value) return "";
-  if (typeof value === "string") return value;
-  return value.nombre || "";
+  if (typeof value === "string") return safeText(value);
+  return safeText(value.nombre);
 }
 
 function getEntitySlug(
   value?: SluggedEntity | OrganizacionEntity | string | null
 ): string | undefined {
   if (!value || typeof value === "string") return undefined;
-  return value.slug || undefined;
+  return hasText(value.slug) ? value.slug.trim() : undefined;
 }
 
 function getEventName(value?: EventoEntity | string | null): string {
   if (!value) return "";
-  if (typeof value === "string") return value;
-  return value.nombre || "";
+  if (typeof value === "string") return safeText(value);
+  return safeText(value.nombre);
 }
 
 function getEventSlug(value?: EventoEntity | string | null): string | undefined {
   if (!value || typeof value === "string") return undefined;
-  return value.slug || undefined;
+  return hasText(value.slug) ? value.slug.trim() : undefined;
 }
 
 function getCategoryName(value?: CategoriaPesoEntity | string | null): string {
   if (!value) return "";
-  if (typeof value === "string") return value;
-  return value.nombre || "";
+  if (typeof value === "string") return safeText(value);
+  return safeText(value.nombre);
 }
 
 function getCategorySlug(
   value?: CategoriaPesoEntity | string | null
 ): string | undefined {
   if (!value || typeof value === "string") return undefined;
-  return value.slug || undefined;
+  return hasText(value.slug) ? value.slug.trim() : undefined;
 }
 
 function formatDate(value?: string): string {
-  if (!value) return "";
+  if (!hasText(value)) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
@@ -123,38 +131,68 @@ function formatDate(value?: string): string {
 }
 
 function formatEstado(value?: string): string {
-  if (!value) return "";
-  if (value === "programado") return "Programado";
-  if (value === "finalizado") return "Finalizado";
-  if (value === "cancelado") return "Cancelado";
-  if (value === "proximo") return "Próximo";
-  if (value === "celebrado") return "Celebrado";
-  return value.charAt(0).toUpperCase() + value.slice(1);
+  const safeValue = safeText(value);
+  if (!safeValue) return "";
+  if (safeValue === "programado") return "Programado";
+  if (safeValue === "finalizado") return "Finalizado";
+  if (safeValue === "cancelado") return "Cancelado";
+  if (safeValue === "proximo") return "Próximo";
+  if (safeValue === "celebrado") return "Celebrado";
+  return safeValue.charAt(0).toUpperCase() + safeValue.slice(1);
 }
 
 function formatCartelera(value?: string): string {
-  if (!value) return "";
-  if (value === "principal") return "Cartelera principal";
-  if (value === "preliminar") return "Cartelera preliminar";
-  return value;
+  const safeValue = safeText(value);
+  if (!safeValue) return "";
+  if (safeValue === "principal") return "Cartelera principal";
+  if (safeValue === "preliminar") return "Cartelera preliminar";
+  return safeValue;
 }
 
-function formatPeso(categoria?: CategoriaPesoEntity | string): string {
+function formatPeso(categoria?: CategoriaPesoEntity | string | null): string {
   if (!categoria || typeof categoria === "string") return "";
-  if (typeof categoria.limitePeso === "number" && categoria.unidad) {
+  if (typeof categoria.limitePeso === "number" && hasText(categoria.unidad)) {
     return `${categoria.limitePeso} ${categoria.unidad}`;
   }
   return "";
 }
 
+function getLugar(evento?: EventoEntity): string {
+  if (!evento) return "";
+  const parts = [safeText(evento.ciudad), safeText(evento.pais)].filter(Boolean);
+  return parts.join(", ");
+}
+
 export default async function ResultadoDetallePage({ params }: PageProps) {
   const { id } = await params;
 
-  const combate: Combate | null = await client.fetch(combatePorIdQuery, { id });
-
-  if (!combate) {
+  if (!hasText(id)) {
     notFound();
   }
+
+  const combateRaw = await client.fetch<Combate | null>(combatePorIdQuery, {
+    id: id.trim(),
+  });
+
+  if (!combateRaw || !hasText(combateRaw._id)) {
+    notFound();
+  }
+
+  const combate: Combate = {
+    ...combateRaw,
+    _id: safeText(combateRaw._id),
+    _createdAt: safeText(combateRaw._createdAt),
+    metodo: safeText(combateRaw.metodo),
+    tiempo: safeText(combateRaw.tiempo),
+    cartelera: safeText(combateRaw.cartelera),
+    estado: safeText(combateRaw.estado),
+    resumen: safeText(combateRaw.resumen),
+    desarrollo: safeText(combateRaw.desarrollo),
+    momentoClave: safeText(combateRaw.momentoClave),
+    consecuencia: safeText(combateRaw.consecuencia),
+    disciplina: safeText(combateRaw.disciplina),
+    disciplinaSlug: safeText(combateRaw.disciplinaSlug),
+  };
 
   const luchadorRojoNombre = getEntityName(combate.luchadorRojo) || "Luchador rojo";
   const luchadorRojoSlug = getEntitySlug(combate.luchadorRojo);
@@ -176,7 +214,25 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
   const organizacionSlug = getEntitySlug(combate.organizacion);
 
   const eventoData =
-    combate.evento && typeof combate.evento !== "string" ? combate.evento : undefined;
+    combate.evento && typeof combate.evento !== "string"
+      ? {
+          ...combate.evento,
+          nombre: safeText(combate.evento.nombre),
+          slug: safeText(combate.evento.slug),
+          fecha: safeText(combate.evento.fecha),
+          horaLocal: safeText(combate.evento.horaLocal),
+          ciudad: safeText(combate.evento.ciudad),
+          pais: safeText(combate.evento.pais),
+          recinto: safeText(combate.evento.recinto),
+          cartelPrincipal: safeText(combate.evento.cartelPrincipal),
+          descripcionCorta: safeText(combate.evento.descripcionCorta),
+          descripcion: safeText(combate.evento.descripcion),
+          dondeVer: safeText(combate.evento.dondeVer),
+          estado: safeText(combate.evento.estado),
+        }
+      : undefined;
+
+  const lugarEvento = getLugar(eventoData);
 
   return (
     <main className="resultado-detalle-shell">
@@ -441,10 +497,11 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
         </h1>
 
         <p className="resultado-detalle-summary">
-          {combate.resumen ||
-            (ganadorNombre
+          {hasText(combate.resumen)
+            ? combate.resumen
+            : ganadorNombre
               ? `${ganadorNombre} se impuso en este combate.`
-              : "Todavía no hay un resumen editorial desarrollado para este combate.")}
+              : "Todavía no hay un resumen editorial desarrollado para este combate."}
         </p>
 
         <div className="resultado-detalle-meta">
@@ -477,13 +534,13 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
             </span>
           )}
 
-          {combate.estado && (
+          {hasText(combate.estado) && (
             <span className="resultado-detalle-meta-pill">
               Estado: {formatEstado(combate.estado)}
             </span>
           )}
 
-          {combate.cartelera && (
+          {hasText(combate.cartelera) && (
             <span className="resultado-detalle-meta-pill">
               {formatCartelera(combate.cartelera)}
             </span>
@@ -515,7 +572,7 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
             <h2 className="resultado-detalle-card-title">Ficha del resultado</h2>
 
             <div className="resultado-detalle-data">
-              {combate.metodo && (
+              {hasText(combate.metodo) && (
                 <p>
                   <strong>Método:</strong> {combate.metodo}
                 </p>
@@ -527,7 +584,7 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
                 </p>
               )}
 
-              {combate.tiempo && (
+              {hasText(combate.tiempo) && (
                 <p>
                   <strong>Tiempo final:</strong> {combate.tiempo}
                 </p>
@@ -550,28 +607,27 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
                 </p>
               )}
 
-              {eventoData?.fecha && (
+              {hasText(eventoData?.fecha) && (
                 <p>
-                  <strong>Fecha del evento:</strong> {formatDate(eventoData.fecha)}
+                  <strong>Fecha del evento:</strong> {formatDate(eventoData?.fecha)}
                 </p>
               )}
 
-              {eventoData?.horaLocal && (
+              {hasText(eventoData?.horaLocal) && (
                 <p>
-                  <strong>Hora:</strong> {eventoData.horaLocal}
+                  <strong>Hora:</strong> {eventoData?.horaLocal}
                 </p>
               )}
 
-              {(eventoData?.ciudad || eventoData?.pais) && (
+              {lugarEvento && (
                 <p>
-                  <strong>Lugar:</strong>{" "}
-                  {[eventoData?.ciudad, eventoData?.pais].filter(Boolean).join(", ")}
+                  <strong>Lugar:</strong> {lugarEvento}
                 </p>
               )}
 
-              {eventoData?.recinto && (
+              {hasText(eventoData?.recinto) && (
                 <p>
-                  <strong>Recinto:</strong> {eventoData.recinto}
+                  <strong>Recinto:</strong> {eventoData?.recinto}
                 </p>
               )}
 
@@ -591,10 +647,10 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
                 </p>
               )}
 
-              {combate.disciplina && (
+              {hasText(combate.disciplina) && (
                 <p>
                   <strong>Disciplina:</strong>{" "}
-                  {combate.disciplinaSlug ? (
+                  {hasText(combate.disciplinaSlug) ? (
                     <Link
                       href={`/disciplinas/${combate.disciplinaSlug}`}
                       className="resultado-detalle-pill-link"
@@ -607,13 +663,13 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
                 </p>
               )}
 
-              {eventoData?.dondeVer && (
+              {hasText(eventoData?.dondeVer) && (
                 <p>
-                  <strong>Dónde se pudo ver:</strong> {eventoData.dondeVer}
+                  <strong>Dónde se pudo ver:</strong> {eventoData?.dondeVer}
                 </p>
               )}
 
-              {combate._createdAt && (
+              {hasText(combate._createdAt) && (
                 <p>
                   <strong>Registrado:</strong> {formatDate(combate._createdAt)}
                 </p>
@@ -645,14 +701,16 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
                 </Link>
               )}
 
-              {ganadorSlug && (
-                <Link
-                  href={`/luchadores/${ganadorSlug}`}
-                  className="resultado-detalle-action"
-                >
-                  Ver ganador
-                </Link>
-              )}
+              {ganadorSlug &&
+                ganadorSlug !== luchadorRojoSlug &&
+                ganadorSlug !== luchadorAzulSlug && (
+                  <Link
+                    href={`/luchadores/${ganadorSlug}`}
+                    className="resultado-detalle-action"
+                  >
+                    Ver ganador
+                  </Link>
+                )}
             </div>
           </article>
 
@@ -660,9 +718,10 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
             <h2 className="resultado-detalle-card-title">Contexto del evento</h2>
 
             <p className="resultado-detalle-card-text">
-              {eventoData?.descripcionCorta ||
-                eventoData?.descripcion ||
-                "Este combate pertenece a un evento que todavía no tiene contexto editorial desarrollado."}
+              {safeText(
+                eventoData?.descripcionCorta || eventoData?.descripcion,
+                "Este combate pertenece a un evento que todavía no tiene contexto editorial desarrollado."
+              )}
             </p>
           </article>
         </section>
@@ -671,19 +730,21 @@ export default async function ResultadoDetallePage({ params }: PageProps) {
           <article className="resultado-detalle-card resultado-detalle-section">
             <h2 className="resultado-detalle-section-title">Cómo se desarrolló el combate</h2>
             <p className="resultado-detalle-section-text">
-              {combate.desarrollo ||
-                "Todavía no hay una descripción detallada del desarrollo del combate."}
+              {safeText(
+                combate.desarrollo,
+                "Todavía no hay una descripción detallada del desarrollo del combate."
+              )}
             </p>
           </article>
 
-          {combate.momentoClave && (
+          {hasText(combate.momentoClave) && (
             <article className="resultado-detalle-card resultado-detalle-section">
               <h2 className="resultado-detalle-section-title">Momento clave</h2>
               <p className="resultado-detalle-section-text">{combate.momentoClave}</p>
             </article>
           )}
 
-          {combate.consecuencia && (
+          {hasText(combate.consecuencia) && (
             <article className="resultado-detalle-card resultado-detalle-section">
               <h2 className="resultado-detalle-section-title">
                 Qué significa este resultado

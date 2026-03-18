@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { PortableTextComponents } from "@portabletext/react";
+import type { PortableTextBlock, PortableTextComponents } from "@portabletext/react";
 import { PortableText } from "@portabletext/react";
 import { client } from "../../../sanity/lib/client";
 import { noticiaPorSlugQuery } from "../../../sanity/lib/queries";
@@ -20,9 +20,9 @@ type LuchadorRelacionado = {
 };
 
 type Noticia = {
-  _id: string;
-  titulo: string;
-  slug: string;
+  _id?: string;
+  titulo?: string;
+  slug?: string;
   extracto?: string;
   contenido?: unknown;
   fechaPublicacion?: string;
@@ -43,19 +43,31 @@ type PageProps = {
   }>;
 };
 
-function getDisplayText(value: TextoOReferencia) {
-  if (!value) return "";
-  if (typeof value === "string") return value;
-  return value.nombre ?? value.titulo ?? "";
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
-function getSlug(value: TextoOReferencia) {
+function safeText(value: unknown, fallback = ""): string {
+  return isNonEmptyString(value) ? value.trim() : fallback;
+}
+
+function safeArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function getDisplayText(value: TextoOReferencia): string {
+  if (!value) return "";
+  if (typeof value === "string") return safeText(value);
+  return safeText(value.nombre) || safeText(value.titulo);
+}
+
+function getSlug(value: TextoOReferencia): string | undefined {
   if (!value || typeof value === "string") return undefined;
-  return value.slug ?? undefined;
+  return isNonEmptyString(value.slug) ? value.slug.trim() : undefined;
 }
 
 function formatDate(value?: string) {
-  if (!value) return "";
+  if (!isNonEmptyString(value)) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("es-ES");
@@ -100,7 +112,7 @@ const portableTextComponents: PortableTextComponents = {
   },
 };
 
-function esArrayPortableText(contenido: unknown): contenido is unknown[] {
+function esArrayPortableText(contenido: unknown): contenido is PortableTextBlock[] {
   return Array.isArray(contenido);
 }
 
@@ -114,18 +126,36 @@ function renderContenido(contenido: unknown) {
   }
 
   if (typeof contenido === "string") {
-    return contenido
+    const parrafos = contenido
       .split("\n")
-      .filter((parrafo) => parrafo.trim().length > 0)
-      .map((parrafo, index) => (
-        <p key={index} className="noticia-pt-p">
-          {parrafo}
+      .map((parrafo) => parrafo.trim())
+      .filter((parrafo) => parrafo.length > 0);
+
+    if (!parrafos.length) {
+      return (
+        <p className="noticia-contenido-vacio">
+          Esta noticia todavía no tiene contenido disponible.
         </p>
-      ));
+      );
+    }
+
+    return parrafos.map((parrafo, index) => (
+      <p key={index} className="noticia-pt-p">
+        {parrafo}
+      </p>
+    ));
   }
 
   if (esArrayPortableText(contenido)) {
-    return <PortableText value={contenido as any} components={portableTextComponents} />;
+    if (!contenido.length) {
+      return (
+        <p className="noticia-contenido-vacio">
+          Esta noticia todavía no tiene contenido disponible.
+        </p>
+      );
+    }
+
+    return <PortableText value={contenido} components={portableTextComponents} />;
   }
 
   return (
@@ -138,39 +168,74 @@ function renderContenido(contenido: unknown) {
 export default async function NoticiaDetallePage({ params }: PageProps) {
   const { slug } = await params;
 
-  const noticia: Noticia | null = await client.fetch(noticiaPorSlugQuery, { slug });
-
-  if (!noticia) {
+  if (!isNonEmptyString(slug)) {
     notFound();
   }
 
-  const luchadoresRelacionadosBase = Array.isArray(noticia.luchadoresRelacionadosData)
-    ? noticia.luchadoresRelacionadosData
-    : [];
+  const noticiaRaw = await client.fetch<Noticia | null>(noticiaPorSlugQuery, {
+    slug: slug.trim(),
+  });
 
-  const luchadoresRelacionados = luchadoresRelacionadosBase.filter(
-    (luchador) => typeof luchador?.nombre === "string" && luchador.nombre.trim().length > 0
+  if (!noticiaRaw || !isNonEmptyString(noticiaRaw.titulo)) {
+    notFound();
+  }
+
+  const noticia: Noticia = {
+    ...noticiaRaw,
+    titulo: safeText(noticiaRaw.titulo),
+    slug: safeText(noticiaRaw.slug),
+    extracto: safeText(noticiaRaw.extracto),
+    disciplinaSlug: isNonEmptyString(noticiaRaw.disciplinaSlug)
+      ? noticiaRaw.disciplinaSlug.trim()
+      : null,
+    eventoRelacionadoSlug: isNonEmptyString(noticiaRaw.eventoRelacionadoSlug)
+      ? noticiaRaw.eventoRelacionadoSlug.trim()
+      : null,
+    organizacionRelacionadaSlug: isNonEmptyString(noticiaRaw.organizacionRelacionadaSlug)
+      ? noticiaRaw.organizacionRelacionadaSlug.trim()
+      : null,
+    luchadoresRelacionados: safeArray(noticiaRaw.luchadoresRelacionados),
+    luchadoresRelacionadosData: safeArray(noticiaRaw.luchadoresRelacionadosData),
+  };
+
+  const luchadoresRelacionados = safeArray(noticia.luchadoresRelacionadosData)
+    .filter(
+      (luchador): luchador is LuchadorRelacionado =>
+        isNonEmptyString(luchador?.nombre)
+    )
+    .map((luchador) => ({
+      nombre: safeText(luchador.nombre),
+      slug: isNonEmptyString(luchador.slug) ? luchador.slug.trim() : null,
+    }));
+
+  const luchadoresRelacionadosUnicos = Array.from(
+    new Map(
+      luchadoresRelacionados.map((luchador) => [
+        luchador.slug || luchador.nombre,
+        luchador,
+      ])
+    ).values()
   );
 
-  const luchadoresConSlug = luchadoresRelacionados.filter(
-    (luchador) => typeof luchador.slug === "string" && luchador.slug.trim().length > 0
+  const luchadoresConSlug = luchadoresRelacionadosUnicos.filter(
+    (luchador) => isNonEmptyString(luchador.slug)
   );
 
   const disciplinaTexto = getDisplayText(noticia.disciplina);
   const disciplinaSlug = noticia.disciplinaSlug || getSlug(noticia.disciplina);
 
   const eventoRelacionadoTexto = getDisplayText(noticia.eventoRelacionado);
-  const organizacionRelacionadaTexto = getDisplayText(noticia.organizacionRelacionada);
-
   const eventoSlug = noticia.eventoRelacionadoSlug || getSlug(noticia.eventoRelacionado);
+
+  const organizacionRelacionadaTexto = getDisplayText(noticia.organizacionRelacionada);
   const organizacionSlug =
     noticia.organizacionRelacionadaSlug || getSlug(noticia.organizacionRelacionada);
 
   const hayContextoRelacionado =
-    Boolean(disciplinaTexto) ||
-    Boolean(eventoRelacionadoTexto) ||
-    Boolean(organizacionRelacionadaTexto) ||
-    luchadoresRelacionados.length > 0;
+    isNonEmptyString(disciplinaTexto) ||
+    isNonEmptyString(eventoRelacionadoTexto) ||
+    isNonEmptyString(organizacionRelacionadaTexto) ||
+    luchadoresRelacionadosUnicos.length > 0;
 
   return (
     <main className="noticia-shell">
@@ -556,21 +621,23 @@ export default async function NoticiaDetallePage({ params }: PageProps) {
         <header className="noticia-hero">
           <p className="noticia-eyebrow">Noticia</p>
 
-          <h1 className="noticia-title">{noticia.titulo}</h1>
+          <h1 className="noticia-title">{safeText(noticia.titulo)}</h1>
 
-          {noticia.extracto && <p className="noticia-extracto">{noticia.extracto}</p>}
+          {isNonEmptyString(noticia.extracto) && (
+            <p className="noticia-extracto">{noticia.extracto}</p>
+          )}
 
           <div className="noticia-meta-row">
-            {noticia.fechaPublicacion && (
+            {isNonEmptyString(noticia.fechaPublicacion) && (
               <span className="noticia-meta-pill">
                 Publicada el {formatDate(noticia.fechaPublicacion)}
               </span>
             )}
 
-            {disciplinaTexto && (
+            {isNonEmptyString(disciplinaTexto) && (
               <span className="noticia-meta-pill">
                 Disciplina:{" "}
-                {disciplinaSlug ? (
+                {isNonEmptyString(disciplinaSlug) ? (
                   <Link href={`/disciplinas/${disciplinaSlug}`} className="noticia-meta-link">
                     {disciplinaTexto}
                   </Link>
@@ -591,26 +658,27 @@ export default async function NoticiaDetallePage({ params }: PageProps) {
             <hr className="noticia-divider" />
 
             <section className="noticia-footer-links">
-              {disciplinaSlug && disciplinaTexto && (
+              {isNonEmptyString(disciplinaSlug) && isNonEmptyString(disciplinaTexto) && (
                 <Link href={`/disciplinas/${disciplinaSlug}`} className="noticia-accent-link">
                   Ir a {disciplinaTexto}
                 </Link>
               )}
 
-              {eventoSlug && eventoRelacionadoTexto && (
+              {isNonEmptyString(eventoSlug) && isNonEmptyString(eventoRelacionadoTexto) && (
                 <Link href={`/eventos/${eventoSlug}`} className="noticia-accent-link">
                   Ir al evento relacionado
                 </Link>
               )}
 
-              {organizacionSlug && organizacionRelacionadaTexto && (
-                <Link
-                  href={`/organizaciones/${organizacionSlug}`}
-                  className="noticia-accent-link"
-                >
-                  Ver organización relacionada
-                </Link>
-              )}
+              {isNonEmptyString(organizacionSlug) &&
+                isNonEmptyString(organizacionRelacionadaTexto) && (
+                  <Link
+                    href={`/organizaciones/${organizacionSlug}`}
+                    className="noticia-accent-link"
+                  >
+                    Ver organización relacionada
+                  </Link>
+                )}
 
               {luchadoresConSlug.slice(0, 3).map((luchador) => (
                 <Link
@@ -629,11 +697,11 @@ export default async function NoticiaDetallePage({ params }: PageProps) {
               <section className="noticia-aside-card">
                 <h2 className="noticia-section-title">Contexto relacionado</h2>
 
-                {disciplinaTexto && (
+                {isNonEmptyString(disciplinaTexto) && (
                   <div className="noticia-evento-bloque">
                     <p className="noticia-section-label">Disciplina</p>
 
-                    {disciplinaSlug ? (
+                    {isNonEmptyString(disciplinaSlug) ? (
                       <Link href={`/disciplinas/${disciplinaSlug}`} className="noticia-evento-link">
                         {disciplinaTexto}
                       </Link>
@@ -643,11 +711,11 @@ export default async function NoticiaDetallePage({ params }: PageProps) {
                   </div>
                 )}
 
-                {eventoRelacionadoTexto && (
+                {isNonEmptyString(eventoRelacionadoTexto) && (
                   <div className="noticia-evento-bloque">
                     <p className="noticia-section-label">Evento</p>
 
-                    {eventoSlug ? (
+                    {isNonEmptyString(eventoSlug) ? (
                       <Link href={`/eventos/${eventoSlug}`} className="noticia-evento-link">
                         {eventoRelacionadoTexto}
                       </Link>
@@ -657,13 +725,15 @@ export default async function NoticiaDetallePage({ params }: PageProps) {
                   </div>
                 )}
 
-                {organizacionRelacionadaTexto && (
+                {isNonEmptyString(organizacionRelacionadaTexto) && (
                   <div
-                    className={luchadoresRelacionados.length > 0 ? "noticia-evento-bloque" : undefined}
+                    className={
+                      luchadoresRelacionadosUnicos.length > 0 ? "noticia-evento-bloque" : undefined
+                    }
                   >
                     <p className="noticia-section-label">Organización</p>
 
-                    {organizacionSlug ? (
+                    {isNonEmptyString(organizacionSlug) ? (
                       <Link
                         href={`/organizaciones/${organizacionSlug}`}
                         className="noticia-evento-link"
@@ -676,13 +746,13 @@ export default async function NoticiaDetallePage({ params }: PageProps) {
                   </div>
                 )}
 
-                {luchadoresRelacionados.length > 0 && (
+                {luchadoresRelacionadosUnicos.length > 0 && (
                   <div>
                     <p className="noticia-section-label">Luchadores relacionados</p>
 
                     <div className="noticia-chips">
-                      {luchadoresRelacionados.map((luchador) =>
-                        luchador.slug ? (
+                      {luchadoresRelacionadosUnicos.map((luchador) =>
+                        isNonEmptyString(luchador.slug) ? (
                           <Link
                             key={`${luchador.nombre}-${luchador.slug}`}
                             href={`/luchadores/${luchador.slug}`}
