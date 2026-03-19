@@ -10,7 +10,7 @@ type RouteParams = {
 };
 
 type PageProps = {
-  params: Promise<RouteParams> | RouteParams;
+  params: Promise<RouteParams>;
 };
 
 type ImagenSanity =
@@ -135,10 +135,6 @@ function getImageUrl(source?: ImagenSanity) {
   } catch {
     return null;
   }
-}
-
-async function resolveParams(params: Promise<RouteParams> | RouteParams) {
-  return params instanceof Promise ? await params : params;
 }
 
 function formatFecha(fecha?: string) {
@@ -266,8 +262,8 @@ function normalizeEvento(item: unknown): Evento | null {
 }
 
 export default async function DisciplinaDetallePage({ params }: PageProps) {
-  const { slug } = await resolveParams(params);
-  const safeSlug = getSafeText(slug).trim();
+  const resolvedParams = await params;
+  const safeSlug = getSafeText(resolvedParams.slug).trim();
 
   if (!safeSlug) {
     notFound();

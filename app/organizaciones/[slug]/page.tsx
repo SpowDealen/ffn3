@@ -13,7 +13,7 @@ type RouteParams = {
 };
 
 type PageProps = {
-  params: Promise<RouteParams> | RouteParams;
+  params: Promise<RouteParams>;
 };
 
 type SanityImage = {
@@ -355,8 +355,8 @@ const itemCardStyle: CSSProperties = {
 };
 
 export default async function OrganizacionDetailPage({ params }: PageProps) {
-  const resolvedParams = await Promise.resolve(params);
-  const slug = getSafeText(resolvedParams?.slug).trim();
+  const resolvedParams = await params;
+  const slug = getSafeText(resolvedParams.slug).trim();
 
   if (!slug) {
     notFound();
