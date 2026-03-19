@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type NavItem = {
   label: string;
@@ -41,6 +41,12 @@ export default function Navbar() {
   const [mobileNoticiasOpen, setMobileNoticiasOpen] = useState(false);
   const [desktopNoticiasOpen, setDesktopNoticiasOpen] = useState(false);
 
+  useEffect(() => {
+    setMobileOpen(false);
+    setMobileNoticiasOpen(false);
+    setDesktopNoticiasOpen(false);
+  }, [pathname]);
+
   const activeMap = useMemo(() => {
     return navItems.reduce<Record<string, boolean>>((acc, item) => {
       acc[item.label] = isItemActive(pathname, item);
@@ -55,6 +61,7 @@ export default function Navbar() {
         top: 0,
         zIndex: 1000,
         backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
         background: "rgba(10, 10, 15, 0.88)",
         borderBottom: "1px solid var(--ffn-border, rgba(255,255,255,0.08))",
       }}
@@ -67,6 +74,7 @@ export default function Navbar() {
         }}
       >
         <div
+          className="ffn-navbar-row"
           style={{
             minHeight: "76px",
             display: "flex",
@@ -78,6 +86,7 @@ export default function Navbar() {
           <Link
             href="/"
             onClick={() => setMobileOpen(false)}
+            className="ffn-navbar-brand"
             style={{
               color: "var(--ffn-text, #f5f7fb)",
               textDecoration: "none",
@@ -86,6 +95,7 @@ export default function Navbar() {
               textTransform: "uppercase",
               fontSize: "0.95rem",
               whiteSpace: "nowrap",
+              flexShrink: 0,
             }}
           >
             Full Fight News
@@ -97,6 +107,7 @@ export default function Navbar() {
               display: "flex",
               alignItems: "center",
               gap: "10px",
+              minWidth: 0,
             }}
           >
             <div
@@ -124,6 +135,7 @@ export default function Navbar() {
                     >
                       <Link
                         href={item.href || "#"}
+                        aria-expanded={desktopNoticiasOpen}
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
@@ -143,6 +155,7 @@ export default function Navbar() {
                           fontWeight: 600,
                           fontSize: "0.95rem",
                           transition: "all 0.2s ease",
+                          whiteSpace: "nowrap",
                         }}
                       >
                         {item.label}
@@ -215,6 +228,7 @@ export default function Navbar() {
                       fontWeight: 600,
                       fontSize: "0.95rem",
                       transition: "all 0.2s ease",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {item.label}
@@ -226,6 +240,7 @@ export default function Navbar() {
             <button
               type="button"
               aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
+              aria-expanded={mobileOpen}
               onClick={() => setMobileOpen((prev) => !prev)}
               className="ffn-navbar-mobile-button"
               style={{
@@ -240,6 +255,7 @@ export default function Navbar() {
                 color: "var(--ffn-text, #f5f7fb)",
                 fontSize: "1.2rem",
                 cursor: "pointer",
+                flexShrink: 0,
               }}
             >
               {mobileOpen ? "✕" : "☰"}
@@ -275,6 +291,7 @@ export default function Navbar() {
 
               <button
                 type="button"
+                aria-expanded={mobileNoticiasOpen}
                 onClick={() => setMobileNoticiasOpen((prev) => !prev)}
                 style={{
                   ...mobileButtonStyle(
@@ -346,7 +363,7 @@ export default function Navbar() {
       </div>
 
       <style jsx>{`
-        @media (max-width: 920px) {
+        @media (max-width: 980px) {
           .ffn-navbar-desktop {
             display: none !important;
           }
@@ -357,6 +374,34 @@ export default function Navbar() {
 
           .ffn-navbar-mobile-panel {
             display: block !important;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .ffn-navbar-row {
+            min-height: 70px !important;
+            gap: 14px !important;
+          }
+
+          .ffn-navbar-brand {
+            font-size: 0.8rem !important;
+            letter-spacing: 0.07em !important;
+            max-width: calc(100vw - 110px);
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+        }
+
+        @media (max-width: 420px) {
+          .ffn-navbar-brand {
+            font-size: 0.74rem !important;
+            max-width: calc(100vw - 96px);
+          }
+
+          .ffn-navbar-mobile-button {
+            width: 42px !important;
+            height: 42px !important;
+            border-radius: 12px !important;
           }
         }
       `}</style>

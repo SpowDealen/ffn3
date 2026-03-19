@@ -366,6 +366,7 @@ export default async function HomePage() {
 
   return (
     <main
+      className="ffn-home-main"
       style={{
         minHeight: "100vh",
         padding: "40px 20px 0",
@@ -374,6 +375,7 @@ export default async function HomePage() {
       }}
     >
       <div
+        className="ffn-home-shell"
         style={{
           maxWidth: "1440px",
           margin: "0 auto",
@@ -383,6 +385,7 @@ export default async function HomePage() {
       >
         {noticiaDestacada ? (
           <section
+            className="ffn-home-feature"
             style={{
               border: "1px solid var(--ffn-border)",
               background: "var(--ffn-surface)",
@@ -438,7 +441,7 @@ export default async function HomePage() {
               ) : null}
             </div>
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
+            <div className="ffn-home-feature-actions" style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
               <Link href={`/noticias/${noticiaDestacada.slug}`} className="ffn-button-primary">
                 Leer noticia
               </Link>
@@ -456,6 +459,7 @@ export default async function HomePage() {
         ) : null}
 
         <section
+          className="ffn-home-top-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
@@ -685,6 +689,7 @@ export default async function HomePage() {
         </section>
 
         <section
+          className="ffn-home-bottom-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
@@ -779,6 +784,7 @@ export default async function HomePage() {
         </section>
 
         <footer
+          className="ffn-home-footer"
           style={{
             marginTop: "8px",
             borderTop: "1px solid var(--ffn-border)",
@@ -799,6 +805,7 @@ export default async function HomePage() {
             </div>
 
             <div
+              className="ffn-home-footer-grid"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",

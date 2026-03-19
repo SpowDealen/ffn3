@@ -561,6 +561,22 @@ textarea:focus {
 }
 
 /* =========================
+   HOME RESPONSIVE
+   ========================= */
+
+.ffn-home-shell {
+  width: 100%;
+}
+
+.ffn-home-feature-actions {
+  align-items: center;
+}
+
+.ffn-home-footer-grid {
+  align-items: stretch;
+}
+
+/* =========================
    TABLAS
    ========================= */
 
@@ -620,6 +636,25 @@ textarea:focus {
 
   .ffn-section-spacing {
     padding-block: 44px;
+  }
+
+  .ffn-home-main {
+    padding-top: 32px !important;
+  }
+
+  .ffn-home-shell {
+    gap: 24px !important;
+  }
+
+  .ffn-home-feature {
+    padding: 24px !important;
+  }
+}
+
+@media (max-width: 980px) {
+  .ffn-home-top-grid,
+  .ffn-home-bottom-grid {
+    grid-template-columns: 1fr !important;
   }
 }
 
@@ -698,6 +733,37 @@ textarea:focus {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
+
+  .ffn-home-main {
+    padding: 28px 16px 0 !important;
+  }
+
+  .ffn-home-shell {
+    gap: 20px !important;
+  }
+
+  .ffn-home-feature {
+    padding: 22px !important;
+    border-radius: 22px !important;
+  }
+
+  .ffn-home-feature-actions {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .ffn-home-feature-actions > a {
+    width: 100%;
+  }
+
+  .ffn-home-footer {
+    padding: 28px 0 34px !important;
+  }
+
+  .ffn-home-footer-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 @media (max-width: 640px) {
@@ -718,6 +784,15 @@ textarea:focus {
     min-height: 32px;
     padding: 0 11px;
     font-size: 0.84rem;
+  }
+
+  .ffn-home-feature {
+    gap: 14px !important;
+  }
+
+  .ffn-home-feature h1 {
+    font-size: clamp(1.8rem, 9vw, 2.5rem) !important;
+    line-height: 1.06 !important;
   }
 }
 
@@ -744,6 +819,29 @@ textarea:focus {
   .ffn-table th,
   .ffn-table td {
     padding: 12px 10px;
+  }
+
+  .ffn-home-main {
+    padding: 24px 12px 0 !important;
+  }
+
+  .ffn-home-feature,
+  .ffn-footer-card,
+  .ffn-empty-state {
+    border-radius: 18px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .ffn-button,
+  .ffn-button-primary,
+  .ffn-button-secondary {
+    width: 100%;
+  }
+
+  .ffn-pill,
+  .ffn-pill-muted {
+    max-width: 100%;
   }
 }
 
