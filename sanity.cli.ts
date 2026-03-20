@@ -1,10 +1,20 @@
-/**
-* This configuration file lets you run `$ sanity [command]` in this folder
-* Go to https://www.sanity.io/docs/cli to learn more.
-**/
-import { defineCliConfig } from 'sanity/cli'
+"use client";
 
-const projectId = process.env.NEXT_PUBLIC_SANITY_PROJECT_ID
-const dataset = process.env.NEXT_PUBLIC_SANITY_DATASET
+import { defineConfig } from "sanity";
+import { structureTool } from "sanity/structure";
+import { visionTool } from "@sanity/vision";
+import { apiVersion, dataset, projectId } from "./sanity/env";
+import { schemaTypes } from "./sanity/schemaTypes";
+import { structure } from "./sanity/structure";
 
-export default defineCliConfig({ api: { projectId, dataset } })
+export default defineConfig({
+  name: "default",
+  title: "Full Fight News",
+  projectId,
+  dataset,
+  basePath: "/studio",
+  plugins: [structureTool({ structure }), visionTool()],
+  schema: {
+    types: schemaTypes,
+  },
+});
