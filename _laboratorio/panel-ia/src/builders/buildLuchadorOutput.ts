@@ -1,9 +1,7 @@
 import type {
-  AuxiliaryFormState,
   BuildOutputResult,
   ContentFormState,
   LuchadorSanityOutput,
-  ReferenceValue,
   ValidationIssue,
 } from "../types";
 import {
@@ -14,7 +12,6 @@ import { createSlugValue, hasValidSlugValue } from "../utils/slug";
 
 type BuildLuchadorOutputParams = {
   form: ContentFormState;
-  auxiliary?: AuxiliaryFormState;
 };
 
 type ReferenceInput = string | { _ref?: string | null; _type?: string };
@@ -66,8 +63,16 @@ function addIssue(
   issues.push({ field, message, severity });
 }
 
-function isValidImageValue(value: unknown): boolean {
-  return value !== null && value !== undefined && value !== "";
+function hasImageValue(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  return typeof value === "object";
 }
 
 export function buildLuchadorOutput({
@@ -119,12 +124,22 @@ export function buildLuchadorOutput({
     addIssue(issues, "record", "El récord no puede superar 40 caracteres.");
   }
 
-  if (descripcion && descripcion.length > 2000) {
-    addIssue(
-      issues,
-      "descripcion",
-      "La descripción no puede superar 2000 caracteres."
-    );
+  if (descripcion) {
+    if (descripcion.length < 20) {
+      addIssue(
+        issues,
+        "descripcion",
+        "La descripción debe tener al menos 20 caracteres."
+      );
+    }
+
+    if (descripcion.length > 2000) {
+      addIssue(
+        issues,
+        "descripcion",
+        "La descripción no puede superar 2000 caracteres."
+      );
+    }
   }
 
   if (
@@ -138,12 +153,12 @@ export function buildLuchadorOutput({
     );
   }
 
-  if (destacadoHome) {
-    if (ordenDestacadoHome === undefined) {
+  if (ordenDestacadoHome !== undefined) {
+    if (!Number.isInteger(ordenDestacadoHome)) {
       addIssue(
         issues,
         "ordenDestacadoHome",
-        "Si el luchador está destacado en inicio, debes indicar su orden."
+        "El orden destacado debe ser un número entero."
       );
     } else if (ordenDestacadoHome < 1) {
       addIssue(
@@ -152,22 +167,24 @@ export function buildLuchadorOutput({
         "El orden en home debe ser mayor que 0."
       );
     }
-  } else if (ordenDestacadoHome !== undefined && ordenDestacadoHome < 1) {
+  }
+
+  if (destacadoHome && ordenDestacadoHome === undefined) {
     addIssue(
       issues,
       "ordenDestacadoHome",
-      "El orden en home debe ser mayor que 0."
+      "Si el luchador está destacado en inicio, debes indicar su orden."
     );
   }
 
-  let disciplina: ReferenceValue | null = null;
-  let organizacion: ReferenceValue | null = null;
+  let disciplina: LuchadorSanityOutput["disciplina"] | null = null;
+  let organizacion: LuchadorSanityOutput["organizacion"] | null = null;
 
   try {
     disciplina = createRequiredReference(
       getReferenceInput(form.disciplina),
       "La disciplina"
-    );
+    ) as LuchadorSanityOutput["disciplina"];
   } catch (error) {
     addIssue(
       issues,
@@ -180,7 +197,7 @@ export function buildLuchadorOutput({
     organizacion = createRequiredReference(
       getReferenceInput(form.organizacion),
       "La organización"
-    );
+    ) as LuchadorSanityOutput["organizacion"];
   } catch (error) {
     addIssue(
       issues,
@@ -191,7 +208,7 @@ export function buildLuchadorOutput({
 
   const categoriaPeso = createOptionalReference(
     getReferenceInput(form.categoriaPeso)
-  );
+  ) as LuchadorSanityOutput["categoriaPeso"] | undefined;
 
   if (!slug.current.trim()) {
     addIssue(issues, "slug", "No se pudo generar un slug válido.");
@@ -208,8 +225,8 @@ export function buildLuchadorOutput({
   const output: LuchadorSanityOutput = {
     nombre,
     slug,
-    disciplina: disciplina as ReferenceValue,
-    organizacion: organizacion as ReferenceValue,
+    disciplina: disciplina as LuchadorSanityOutput["disciplina"],
+    organizacion: organizacion as LuchadorSanityOutput["organizacion"],
     activo,
     destacadoHome,
   };
@@ -218,7 +235,7 @@ export function buildLuchadorOutput({
     output.apodo = apodo;
   }
 
-  if (isValidImageValue(imagen)) {
+  if (hasImageValue(imagen)) {
     output.imagen = imagen;
   }
 

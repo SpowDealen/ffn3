@@ -2,10 +2,10 @@ import Link from "next/link";
 import { client } from "../../sanity/lib/client";
 import { luchadoresQuery } from "../../sanity/lib/queries";
 
-type SearchParams = Promise<Record<string, string | string[] | undefined>> | Record<string, string | string[] | undefined>;
+type SearchParams = Record<string, string | string[] | undefined>;
 
 type PageProps = {
-  searchParams?: SearchParams;
+  searchParams?: Promise<SearchParams>;
 };
 
 type Luchador = {
@@ -42,9 +42,11 @@ type GrupoDisciplina = {
   categorias: GrupoCategoria[];
 };
 
-async function resolveSearchParams(searchParams?: SearchParams) {
+async function resolveSearchParams(
+  searchParams?: Promise<SearchParams>
+): Promise<SearchParams> {
   if (!searchParams) return {};
-  return searchParams instanceof Promise ? await searchParams : searchParams;
+  return await searchParams;
 }
 
 function normalizeParam(value: string | string[] | undefined) {
@@ -60,7 +62,9 @@ function buildGroupedData(luchadores: Luchador[]) {
   const disciplinasMap = new Map<string, GrupoDisciplina>();
 
   for (const luchador of luchadores) {
-    const disciplinaKey = `${luchador.disciplinaSlug || "sin-disciplina"}::${safeText(luchador.disciplina)}`;
+    const disciplinaKey = `${luchador.disciplinaSlug || "sin-disciplina"}::${safeText(
+      luchador.disciplina
+    )}`;
 
     if (!disciplinasMap.has(disciplinaKey)) {
       disciplinasMap.set(disciplinaKey, {
@@ -78,7 +82,9 @@ function buildGroupedData(luchadores: Luchador[]) {
     const categoriasMap = new Map<string, GrupoCategoria>();
 
     for (const luchador of disciplinaGrupo.luchadores) {
-      const categoriaKey = `${luchador.categoriaPesoSlug || "sin-categoria"}::${safeText(luchador.categoriaPeso)}`;
+      const categoriaKey = `${luchador.categoriaPesoSlug || "sin-categoria"}::${safeText(
+        luchador.categoriaPeso
+      )}`;
 
       if (!categoriasMap.has(categoriaKey)) {
         categoriasMap.set(categoriaKey, {
@@ -94,8 +100,14 @@ function buildGroupedData(luchadores: Luchador[]) {
     }
 
     const categorias = Array.from(categoriasMap.values()).sort((a, b) => {
-      const aLimite = typeof a.categoriaPesoLimite === "number" ? a.categoriaPesoLimite : Number.MAX_SAFE_INTEGER;
-      const bLimite = typeof b.categoriaPesoLimite === "number" ? b.categoriaPesoLimite : Number.MAX_SAFE_INTEGER;
+      const aLimite =
+        typeof a.categoriaPesoLimite === "number"
+          ? a.categoriaPesoLimite
+          : Number.MAX_SAFE_INTEGER;
+      const bLimite =
+        typeof b.categoriaPesoLimite === "number"
+          ? b.categoriaPesoLimite
+          : Number.MAX_SAFE_INTEGER;
 
       if (aLimite !== bLimite) return aLimite - bLimite;
       return a.categoria.localeCompare(b.categoria, "es");
@@ -260,7 +272,9 @@ export default async function LuchadoresPage({ searchParams }: PageProps) {
                 borderRadius: "999px",
                 textDecoration: "none",
                 color: !disciplinaFiltro ? "var(--ffn-text)" : "var(--ffn-text-soft)",
-                background: !disciplinaFiltro ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.03)",
+                background: !disciplinaFiltro
+                  ? "rgba(255,255,255,0.08)"
+                  : "rgba(255,255,255,0.03)",
                 border: "1px solid var(--ffn-border)",
                 fontWeight: 700,
                 fontSize: "0.9rem",
@@ -381,7 +395,9 @@ export default async function LuchadoresPage({ searchParams }: PageProps) {
                 <div style={{ display: "grid", gap: "20px" }}>
                   {grupo.categorias.map((categoria) => (
                     <section
-                      key={`${grupo.disciplinaSlug || grupo.disciplina}-${categoria.categoriaSlug || categoria.categoria}`}
+                      key={`${grupo.disciplinaSlug || grupo.disciplina}-${
+                        categoria.categoriaSlug || categoria.categoria
+                      }`}
                       style={{
                         display: "grid",
                         gap: "14px",
@@ -421,7 +437,9 @@ export default async function LuchadoresPage({ searchParams }: PageProps) {
                           >
                             {categoria.luchadores.length} luchadores en esta división
                             {typeof categoria.categoriaPesoLimite === "number"
-                              ? ` · límite ${categoria.categoriaPesoLimite} ${categoria.categoriaPesoUnidad || ""}`.trim()
+                              ? ` · límite ${categoria.categoriaPesoLimite} ${
+                                  categoria.categoriaPesoUnidad || ""
+                                }`.trim()
                               : ""}
                           </p>
                         </div>

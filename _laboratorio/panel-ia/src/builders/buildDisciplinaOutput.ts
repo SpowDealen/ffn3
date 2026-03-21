@@ -1,5 +1,4 @@
 import type {
-  AuxiliaryFormState,
   BuildOutputResult,
   ContentFormState,
   DisciplinaSanityOutput,
@@ -9,7 +8,6 @@ import { createSlugValue, hasValidSlugValue } from "../utils/slug";
 
 type BuildDisciplinaOutputParams = {
   form: ContentFormState;
-  auxiliary?: AuxiliaryFormState;
 };
 
 function getString(value: unknown): string {

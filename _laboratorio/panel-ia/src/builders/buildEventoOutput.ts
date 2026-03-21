@@ -1,9 +1,7 @@
 import type {
-  AuxiliaryFormState,
   BuildOutputResult,
   ContentFormState,
   EventoSanityOutput,
-  ReferenceValue,
   ValidationIssue,
 } from "../types";
 import { createRequiredReference } from "../utils/references";
@@ -11,7 +9,6 @@ import { createSlugValue, hasValidSlugValue } from "../utils/slug";
 
 type BuildEventoOutputParams = {
   form: ContentFormState;
-  auxiliary?: AuxiliaryFormState;
 };
 
 type ReferenceInput = string | { _ref?: string | null; _type?: string };
@@ -57,8 +54,16 @@ function addIssue(
   issues.push({ field, message, severity });
 }
 
-function isValidImageValue(value: unknown): boolean {
-  return value !== null && value !== undefined && value !== "";
+function hasImageValue(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  return typeof value === "object";
 }
 
 function isValidIsoDateTime(value: string): boolean {
@@ -185,18 +190,18 @@ export function buildEventoOutput({
     );
   }
 
-  if (!isValidImageValue(imagen)) {
+  if (!hasImageValue(imagen)) {
     addIssue(issues, "imagen", "La imagen es obligatoria.");
   }
 
-  let organizacion: ReferenceValue | null = null;
-  let disciplina: ReferenceValue | null = null;
+  let organizacion: EventoSanityOutput["organizacion"] | null = null;
+  let disciplina: EventoSanityOutput["disciplina"] | null = null;
 
   try {
     organizacion = createRequiredReference(
       getReferenceInput(form.organizacion),
       "La organización"
-    );
+    ) as EventoSanityOutput["organizacion"];
   } catch (error) {
     addIssue(
       issues,
@@ -209,7 +214,7 @@ export function buildEventoOutput({
     disciplina = createRequiredReference(
       getReferenceInput(form.disciplina),
       "La disciplina"
-    );
+    ) as EventoSanityOutput["disciplina"];
   } catch (error) {
     addIssue(
       issues,
@@ -243,8 +248,8 @@ export function buildEventoOutput({
   const output: EventoSanityOutput = {
     nombre,
     slug,
-    organizacion: organizacion as ReferenceValue,
-    disciplina: disciplina as ReferenceValue,
+    organizacion: organizacion as EventoSanityOutput["organizacion"],
+    disciplina: disciplina as EventoSanityOutput["disciplina"],
     fecha,
     imagen,
     estado: estadoRaw as EventoSanityOutput["estado"],

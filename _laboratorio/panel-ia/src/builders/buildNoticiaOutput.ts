@@ -1,5 +1,4 @@
 import type {
-  AuxiliaryFormState,
   BuildOutputResult,
   ContentFormState,
   NoticiaSanityOutput,
@@ -21,7 +20,6 @@ import { createSlugValue, hasValidSlugValue } from "../utils/slug";
 
 type BuildNoticiaOutputParams = {
   form: ContentFormState;
-  auxiliary?: AuxiliaryFormState;
 };
 
 type ReferenceInput = string | { _ref?: string | null; _type?: string };
@@ -115,11 +113,7 @@ function hasImageValue(value: unknown): boolean {
     return value.trim().length > 0;
   }
 
-  if (typeof value === "object") {
-    return true;
-  }
-
-  return false;
+  return typeof value === "object";
 }
 
 function isReference(value: unknown): value is ReferenceValue {

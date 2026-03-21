@@ -178,6 +178,13 @@ export type BuildOutputResult<TOutput = Record<string, unknown>> = {
   issues: ValidationIssue[];
 };
 
+export type ReferenceFilterContext = {
+  selectedDisciplineRef?: string;
+  selectedOrganizationRef?: string;
+  selectedEventRef?: string;
+  selectedCategoriaPesoRef?: string;
+};
+
 export type NoticiaSanityOutput = {
   titulo: string;
   slug: SlugValue;
@@ -277,7 +284,7 @@ export type ContentOutput<T extends ContentTypeId> = ContentOutputMap[T];
 export type BuilderInput<T extends ContentTypeId = ContentTypeId> = {
   contentType: T;
   form: ContentFormState;
-  auxiliary: AuxiliaryFormState;
+  auxiliary?: AuxiliaryFormState;
 };
 
 export type BuilderResult<T extends ContentTypeId> = BuildOutputResult<ContentOutput<T>>;

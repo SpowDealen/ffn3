@@ -13,6 +13,8 @@ import type {
   ContentTypeId,
   FieldKind,
   FormValue,
+  ReferenceFilterContext,
+  ReferenceTarget,
   SchemaFieldDefinition,
   ValidationIssue,
 } from "../types";
@@ -23,7 +25,51 @@ type BuildResultState = {
   issues: ValidationIssue[];
 } | null;
 
+type ReferenceFieldConfig = {
+  fieldName: string;
+  target: ReferenceTarget;
+  isArray: boolean;
+};
+
 const DEFAULT_CONTENT_TYPE: ContentTypeId = "noticia";
+
+const FIELDS_THAT_TRIGGER_CLEANUP = new Set([
+  "disciplina",
+  "organizacion",
+  "organizacionRelacionada",
+  "evento",
+  "eventoRelacionado",
+  "categoriaPeso",
+]);
+
+const DEPENDENT_REFERENCE_FIELDS: ReferenceFieldConfig[] = [
+  { fieldName: "disciplina", target: "disciplina", isArray: false },
+  { fieldName: "organizacion", target: "organizacion", isArray: false },
+  {
+    fieldName: "organizacionRelacionada",
+    target: "organizacion",
+    isArray: false,
+  },
+  { fieldName: "evento", target: "evento", isArray: false },
+  {
+    fieldName: "eventoRelacionado",
+    target: "evento",
+    isArray: false,
+  },
+  {
+    fieldName: "categoriaPeso",
+    target: "categoriaPeso",
+    isArray: false,
+  },
+  { fieldName: "luchadorRojo", target: "luchador", isArray: false },
+  { fieldName: "luchadorAzul", target: "luchador", isArray: false },
+  { fieldName: "ganador", target: "luchador", isArray: false },
+  {
+    fieldName: "luchadoresRelacionados",
+    target: "luchador",
+    isArray: true,
+  },
+];
 
 function prettyJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
@@ -59,12 +105,12 @@ function getBooleanValue(
 
 function getReferenceValue(value: FormValue): string {
   if (typeof value === "string") {
-    return value;
+    return value.trim();
   }
 
   if (value && typeof value === "object" && "_ref" in value) {
     const candidate = value as { _ref?: unknown };
-    return typeof candidate._ref === "string" ? candidate._ref : "";
+    return typeof candidate._ref === "string" ? candidate._ref.trim() : "";
   }
 
   return "";
@@ -91,10 +137,6 @@ function getReferenceArrayValues(value: FormValue): string[] {
       return "";
     })
     .filter(Boolean);
-}
-
-function getReferenceArrayText(value: FormValue): string {
-  return getReferenceArrayValues(value).join("\n");
 }
 
 function getPortableTextEditorValue(value: FormValue): string {
@@ -166,12 +208,14 @@ function getIssueCount(
   return issues.filter((issue) => issue.severity === severity).length;
 }
 
-function getActiveFilterContext(form: ContentFormState): {
-  selectedDisciplineRef?: string;
-  selectedOrganizationRef?: string;
-  selectedEventRef?: string;
-  selectedCategoriaPesoRef?: string;
-} {
+function toReferenceValue(ref: string): { _type: "reference"; _ref: string } {
+  return {
+    _type: "reference",
+    _ref: ref,
+  };
+}
+
+function getActiveFilterContext(form: ContentFormState): ReferenceFilterContext {
   const selectedDisciplineRef = getReferenceValue(form.disciplina) || undefined;
 
   const selectedOrganizationRef =
@@ -195,71 +239,100 @@ function getActiveFilterContext(form: ContentFormState): {
   };
 }
 
+function getAllowedReferenceValueSet(
+  target: ReferenceTarget,
+  filters: ReferenceFilterContext
+): Set<string> {
+  return new Set(
+    getFilteredReferenceEntityOptions({
+      target,
+      ...filters,
+    }).map((option) => option.value)
+  );
+}
+
+function sanitizeReferenceFieldValue(
+  value: FormValue,
+  isArray: boolean,
+  allowedValues: Set<string>
+): FormValue {
+  if (isArray) {
+    return getReferenceArrayValues(value)
+      .filter((item) => allowedValues.has(item))
+      .map(toReferenceValue);
+  }
+
+  const singleValue = getReferenceValue(value);
+
+  if (!singleValue) {
+    return undefined;
+  }
+
+  return allowedValues.has(singleValue) ? toReferenceValue(singleValue) : undefined;
+}
+
 function clearInvalidDependentReferences(nextForm: ContentFormState): ContentFormState {
   const filters = getActiveFilterContext(nextForm);
+  const sanitized: ContentFormState = { ...nextForm };
 
-  const fieldsToCheck = [
-    { fieldName: "disciplina", target: "disciplina" as const, isArray: false },
-    { fieldName: "organizacion", target: "organizacion" as const, isArray: false },
-    {
-      fieldName: "organizacionRelacionada",
-      target: "organizacion" as const,
-      isArray: false,
-    },
-    { fieldName: "evento", target: "evento" as const, isArray: false },
-    {
-      fieldName: "eventoRelacionado",
-      target: "evento" as const,
-      isArray: false,
-    },
-    {
-      fieldName: "categoriaPeso",
-      target: "categoriaPeso" as const,
-      isArray: false,
-    },
-    { fieldName: "luchadorRojo", target: "luchador" as const, isArray: false },
-    { fieldName: "luchadorAzul", target: "luchador" as const, isArray: false },
-    { fieldName: "ganador", target: "luchador" as const, isArray: false },
-    {
-      fieldName: "luchadoresRelacionados",
-      target: "luchador" as const,
-      isArray: true,
-    },
-  ];
-
-  const sanitized = { ...nextForm };
-
-  for (const config of fieldsToCheck) {
+  for (const config of DEPENDENT_REFERENCE_FIELDS) {
     if (!(config.fieldName in sanitized)) {
       continue;
     }
 
-    const allowedOptions = getFilteredReferenceEntityOptions({
-      target: config.target,
-      ...filters,
-    });
+    const allowedValues = getAllowedReferenceValueSet(config.target, filters);
 
-    const allowedValues = new Set(allowedOptions.map((option) => option.value));
-
-    if (config.isArray) {
-      const currentValues = getReferenceArrayValues(sanitized[config.fieldName]);
-
-      sanitized[config.fieldName] = currentValues
-        .filter((value) => allowedValues.has(value))
-        .map((value) => ({
-          _type: "reference" as const,
-          _ref: value,
-        }));
-    } else {
-      const currentValue = getReferenceValue(sanitized[config.fieldName]);
-
-      if (currentValue && !allowedValues.has(currentValue)) {
-        sanitized[config.fieldName] = undefined;
-      }
-    }
+    sanitized[config.fieldName] = sanitizeReferenceFieldValue(
+      sanitized[config.fieldName],
+      config.isArray,
+      allowedValues
+    );
   }
 
   return sanitized;
+}
+
+function getReferencePlaceholder(target?: ReferenceTarget): string {
+  switch (target) {
+    case "disciplina":
+      return "Selecciona una disciplina";
+    case "organizacion":
+      return "Selecciona una organización";
+    case "evento":
+      return "Selecciona un evento";
+    case "luchador":
+      return "Selecciona un luchador";
+    case "categoriaPeso":
+      return "Selecciona una categoría";
+    default:
+      return "Selecciona una referencia";
+  }
+}
+
+function getReferenceEmptyStateMessage(
+  target?: ReferenceTarget,
+  filterContext?: ReferenceFilterContext
+): string {
+  if (!target) {
+    return "Sin opciones disponibles. Puedes meter un _ref manual.";
+  }
+
+  if (!filterContext?.selectedDisciplineRef && target !== "disciplina") {
+    return "Selecciona primero una disciplina para acotar referencias.";
+  }
+
+  switch (target) {
+    case "organizacion":
+      return "No hay organizaciones válidas para el filtro actual.";
+    case "evento":
+      return "No hay eventos válidos para el filtro actual.";
+    case "luchador":
+      return "No hay luchadores válidos para el filtro actual.";
+    case "categoriaPeso":
+      return "No hay categorías válidas para el filtro actual.";
+    default:
+      return "Sin opciones por filtro actual. Puedes meter un _ref manual.";
+  }
 }
 
 export default function PanelIA(): ReactElement {
@@ -280,7 +353,10 @@ export default function PanelIA(): ReactElement {
     [contentType]
   );
 
-  const filterContext = getActiveFilterContext(form);
+  const filterContext = useMemo<ReferenceFilterContext>(
+    () => getActiveFilterContext(form),
+    [form]
+  );
 
   useEffect(() => {
     const nextState = getInitialFormState(contentType);
@@ -323,17 +399,14 @@ export default function PanelIA(): ReactElement {
       case "reference":
         nextValue =
           typeof rawValue === "string" && rawValue.trim()
-            ? { _type: "reference", _ref: rawValue.trim() }
+            ? toReferenceValue(rawValue.trim())
             : undefined;
         break;
 
       case "referenceArray":
         nextValue =
           typeof rawValue === "string"
-            ? parseReferenceArrayInput(rawValue).map((ref) => ({
-                _type: "reference" as const,
-                _ref: ref,
-              }))
+            ? parseReferenceArrayInput(rawValue).map(toReferenceValue)
             : [];
         break;
 
@@ -359,20 +432,9 @@ export default function PanelIA(): ReactElement {
         [name]: nextValue,
       };
 
-      const fieldsThatTriggerCleanup = new Set([
-        "disciplina",
-        "organizacion",
-        "organizacionRelacionada",
-        "evento",
-        "eventoRelacionado",
-        "categoriaPeso",
-      ]);
-
-      if (fieldsThatTriggerCleanup.has(name)) {
-        return clearInvalidDependentReferences(nextForm);
-      }
-
-      return nextForm;
+      return FIELDS_THAT_TRIGGER_CLEANUP.has(name)
+        ? clearInvalidDependentReferences(nextForm)
+        : nextForm;
     });
   }
 
@@ -388,13 +450,12 @@ export default function PanelIA(): ReactElement {
         ? Array.from(new Set([...currentValues, refValue]))
         : currentValues.filter((value) => value !== refValue);
 
-      return {
+      const nextForm = {
         ...prev,
-        [field.name]: nextValues.map((value) => ({
-          _type: "reference" as const,
-          _ref: value,
-        })),
+        [field.name]: nextValues.map(toReferenceValue),
       };
+
+      return clearInvalidDependentReferences(nextForm);
     });
   }
 
@@ -425,10 +486,14 @@ export default function PanelIA(): ReactElement {
 
   function renderField(field: SchemaFieldDefinition): ReactElement {
     const value = form[field.name];
-    const referenceOptions = getFilteredReferenceEntityOptions({
-      target: field.referenceTo,
-      ...filterContext,
-    });
+    const hasReferenceTarget = Boolean(field.referenceTo);
+
+    const referenceOptions = hasReferenceTarget
+      ? getFilteredReferenceEntityOptions({
+          target: field.referenceTo,
+          ...filterContext,
+        })
+      : [];
 
     switch (field.kind) {
       case "boolean":
@@ -469,24 +534,35 @@ export default function PanelIA(): ReactElement {
         );
 
       case "reference":
-        if (field.referenceTo && referenceOptions.length > 0) {
+        if (field.referenceTo) {
+          if (referenceOptions.length > 0) {
+            return (
+              <select
+                value={getReferenceValue(value)}
+                onChange={(event) => updateFormField(field, event.target.value)}
+                style={styles.input}
+              >
+                <option value="">{getReferencePlaceholder(field.referenceTo)}</option>
+                {referenceOptions.map((option) => (
+                  <option key={`${field.name}-${option.value}`} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            );
+          }
+
           return (
-            <select
+            <input
+              type="text"
               value={getReferenceValue(value)}
               onChange={(event) => updateFormField(field, event.target.value)}
               style={styles.input}
-            >
-              <option value="">
-                {field.referenceTo === "disciplina"
-                  ? "Selecciona una disciplina"
-                  : "Selecciona una referencia"}
-              </option>
-              {referenceOptions.map((option) => (
-                <option key={`${field.name}-${option.value}`} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              placeholder={getReferenceEmptyStateMessage(
+                field.referenceTo,
+                filterContext
+              )}
+            />
           );
         }
 
@@ -501,41 +577,56 @@ export default function PanelIA(): ReactElement {
         );
 
       case "referenceArray":
-        if (field.referenceTo && referenceOptions.length > 0) {
-          const selectedValues = getReferenceArrayValues(value);
+        if (field.referenceTo) {
+          if (referenceOptions.length > 0) {
+            const selectedValues = getReferenceArrayValues(value);
+
+            return (
+              <div style={styles.referenceArrayGroup}>
+                {referenceOptions.map((option) => {
+                  const checked = selectedValues.includes(option.value);
+
+                  return (
+                    <label
+                      key={`${field.name}-${option.value}`}
+                      style={styles.referenceCheckboxRow}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) =>
+                          updateReferenceArrayField(
+                            field,
+                            option.value,
+                            event.target.checked
+                          )
+                        }
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            );
+          }
 
           return (
-            <div style={styles.referenceArrayGroup}>
-              {referenceOptions.map((option) => {
-                const checked = selectedValues.includes(option.value);
-
-                return (
-                  <label
-                    key={`${field.name}-${option.value}`}
-                    style={styles.referenceCheckboxRow}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(event) =>
-                        updateReferenceArrayField(
-                          field,
-                          option.value,
-                          event.target.checked
-                        )
-                      }
-                    />
-                    <span>{option.label}</span>
-                  </label>
-                );
-              })}
-            </div>
+            <textarea
+              value={getReferenceArrayValues(value).join("\n")}
+              onChange={(event) => updateFormField(field, event.target.value)}
+              rows={getTextAreaRows(field.kind, field.rows)}
+              style={styles.textarea}
+              placeholder={getReferenceEmptyStateMessage(
+                field.referenceTo,
+                filterContext
+              )}
+            />
           );
         }
 
         return (
           <textarea
-            value={getReferenceArrayText(value)}
+            value={getReferenceArrayValues(value).join("\n")}
             onChange={(event) => updateFormField(field, event.target.value)}
             rows={getTextAreaRows(field.kind, field.rows)}
             style={styles.textarea}

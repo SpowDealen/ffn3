@@ -25,42 +25,33 @@ export function buildContentOutput<T extends ContentTypeId>({
   form,
   auxiliary,
 }: BuildContentOutputParams<T>): BuildOutputResult<ContentOutput<T>> {
+  const sharedParams = {
+    form,
+    auxiliary,
+  };
+
   switch (contentType) {
     case "noticia":
-      return buildNoticiaOutput({
-        form,
-        auxiliary,
-      }) as BuildOutputResult<ContentOutput<T>>;
+      return buildNoticiaOutput(sharedParams) as BuildOutputResult<ContentOutput<T>>;
 
     case "evento":
-      return buildEventoOutput({
-        form,
-        auxiliary,
-      }) as BuildOutputResult<ContentOutput<T>>;
+      return buildEventoOutput(sharedParams) as BuildOutputResult<ContentOutput<T>>;
 
     case "luchador":
-      return buildLuchadorOutput({
-        form,
-        auxiliary,
-      }) as BuildOutputResult<ContentOutput<T>>;
+      return buildLuchadorOutput(sharedParams) as BuildOutputResult<ContentOutput<T>>;
 
     case "combate":
-      return buildCombateOutput({
-        form,
-        auxiliary,
-      }) as BuildOutputResult<ContentOutput<T>>;
+      return buildCombateOutput(sharedParams) as BuildOutputResult<ContentOutput<T>>;
 
     case "categoriaPeso":
-      return buildCategoriaPesoOutput({
-        form,
-        auxiliary,
-      }) as BuildOutputResult<ContentOutput<T>>;
+      return buildCategoriaPesoOutput(
+        sharedParams
+      ) as BuildOutputResult<ContentOutput<T>>;
 
     case "disciplina":
-      return buildDisciplinaOutput({
-        form,
-        auxiliary,
-      }) as BuildOutputResult<ContentOutput<T>>;
+      return buildDisciplinaOutput(
+        sharedParams
+      ) as BuildOutputResult<ContentOutput<T>>;
   }
 
   const exhaustiveCheck: never = contentType;

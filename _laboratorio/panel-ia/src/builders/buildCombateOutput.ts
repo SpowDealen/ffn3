@@ -1,5 +1,4 @@
 import type {
-  AuxiliaryFormState,
   BuildOutputResult,
   CombateSanityOutput,
   ContentFormState,
@@ -15,7 +14,6 @@ import {
 
 type BuildCombateOutputParams = {
   form: ContentFormState;
-  auxiliary?: AuxiliaryFormState;
 };
 
 type ReferenceInput = string | { _ref?: string | null; _type?: string };
@@ -113,13 +111,16 @@ export function buildCombateOutput({
   const estadoRaw = getString(form.estado);
   const carteleraRaw = getString(form.cartelera);
 
-  let evento: ReferenceValue | null = null;
-  let luchadorRojo: ReferenceValue | null = null;
-  let luchadorAzul: ReferenceValue | null = null;
-  let categoriaPeso: ReferenceValue | null = null;
+  let evento: CombateSanityOutput["evento"] | null = null;
+  let luchadorRojo: CombateSanityOutput["luchadorRojo"] | null = null;
+  let luchadorAzul: CombateSanityOutput["luchadorAzul"] | null = null;
+  let categoriaPeso: CombateSanityOutput["categoriaPeso"] | null = null;
 
   try {
-    evento = createRequiredReference(getReferenceInput(form.evento), "El evento");
+    evento = createRequiredReference(
+      getReferenceInput(form.evento),
+      "El evento"
+    ) as CombateSanityOutput["evento"];
   } catch (error) {
     addIssue(
       issues,
@@ -132,7 +133,7 @@ export function buildCombateOutput({
     luchadorRojo = createRequiredReference(
       getReferenceInput(form.luchadorRojo),
       "El luchador rojo"
-    );
+    ) as CombateSanityOutput["luchadorRojo"];
   } catch (error) {
     addIssue(
       issues,
@@ -145,7 +146,7 @@ export function buildCombateOutput({
     luchadorAzul = createRequiredReference(
       getReferenceInput(form.luchadorAzul),
       "El luchador azul"
-    );
+    ) as CombateSanityOutput["luchadorAzul"];
   } catch (error) {
     addIssue(
       issues,
@@ -158,7 +159,7 @@ export function buildCombateOutput({
     categoriaPeso = createRequiredReference(
       getReferenceInput(form.categoriaPeso),
       "La categoría de peso"
-    );
+    ) as CombateSanityOutput["categoriaPeso"];
   } catch (error) {
     addIssue(
       issues,
@@ -314,10 +315,10 @@ export function buildCombateOutput({
   }
 
   const output: CombateSanityOutput = {
-    evento: evento as ReferenceValue,
-    luchadorRojo: luchadorRojo as ReferenceValue,
-    luchadorAzul: luchadorAzul as ReferenceValue,
-    categoriaPeso: categoriaPeso as ReferenceValue,
+    evento: evento as CombateSanityOutput["evento"],
+    luchadorRojo: luchadorRojo as CombateSanityOutput["luchadorRojo"],
+    luchadorAzul: luchadorAzul as CombateSanityOutput["luchadorAzul"],
+    categoriaPeso: categoriaPeso as CombateSanityOutput["categoriaPeso"],
     tituloEnJuego,
     cartelera: carteleraRaw as CombateSanityOutput["cartelera"],
     estado: estadoRaw as CombateSanityOutput["estado"],

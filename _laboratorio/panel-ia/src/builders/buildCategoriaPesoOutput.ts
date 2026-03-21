@@ -1,9 +1,7 @@
 import type {
-  AuxiliaryFormState,
   BuildOutputResult,
   CategoriaPesoSanityOutput,
   ContentFormState,
-  ReferenceValue,
   ValidationIssue,
 } from "../types";
 import { createRequiredReference } from "../utils/references";
@@ -11,7 +9,6 @@ import { createSlugValue, hasValidSlugValue } from "../utils/slug";
 
 type BuildCategoriaPesoOutputParams = {
   form: ContentFormState;
-  auxiliary?: AuxiliaryFormState;
 };
 
 type ReferenceInput = string | { _ref?: string | null; _type?: string };
@@ -93,13 +90,13 @@ export function buildCategoriaPesoOutput({
     }
   }
 
-  let disciplina: ReferenceValue | null = null;
+  let disciplina: CategoriaPesoSanityOutput["disciplina"] | null = null;
 
   try {
     disciplina = createRequiredReference(
       getReferenceInput(form.disciplina),
       "La disciplina"
-    );
+    ) as CategoriaPesoSanityOutput["disciplina"];
   } catch (error) {
     addIssue(
       issues,
@@ -157,7 +154,7 @@ export function buildCategoriaPesoOutput({
   const output: CategoriaPesoSanityOutput = {
     nombre,
     slug,
-    disciplina: disciplina as ReferenceValue,
+    disciplina: disciplina as CategoriaPesoSanityOutput["disciplina"],
     limitePeso: limitePeso as number,
     unidad: unidadRaw as CategoriaPesoSanityOutput["unidad"],
   };

@@ -8,7 +8,7 @@ type RouteParams = {
 };
 
 type PageProps = {
-  params: Promise<RouteParams> | RouteParams;
+  params: Promise<RouteParams>;
 };
 
 type LuchadorRelacionado = {
@@ -83,7 +83,8 @@ function getResultadoLabel(combate: CombateRelacionado) {
 
 function getMetodoLabel(combate: CombateRelacionado) {
   const metodo = safeText(combate.metodo);
-  const asalto = typeof combate.asalto === "number" ? ` · Asalto ${combate.asalto}` : "";
+  const asalto =
+    typeof combate.asalto === "number" ? ` · Asalto ${combate.asalto}` : "";
   const tiempo = isNonEmptyString(combate.tiempo) ? ` · ${combate.tiempo}` : "";
 
   if (metodo) return `${metodo}${asalto}${tiempo}`;
@@ -91,13 +92,18 @@ function getMetodoLabel(combate: CombateRelacionado) {
   return "Método por confirmar";
 }
 
-export default async function CategoriaPesoDetallePage({ params }: PageProps) {
-  const resolvedParams = await Promise.resolve(params);
-  const slug = safeText(resolvedParams?.slug);
+export default async function CategoriaPesoDetallePage({
+  params,
+}: PageProps) {
+  const { slug } = await params;
+  const safeSlug = safeText(slug);
 
-  if (!slug) notFound();
+  if (!safeSlug) notFound();
 
-  const categoria = await client.fetch<CategoriaPeso | null>(categoriaPesoPorSlugQuery, { slug });
+  const categoria = await client.fetch<CategoriaPeso | null>(
+    categoriaPesoPorSlugQuery,
+    { slug: safeSlug }
+  );
 
   if (!categoria?._id || !isNonEmptyString(categoria?.nombre)) {
     notFound();
@@ -115,15 +121,17 @@ export default async function CategoriaPesoDetallePage({ params }: PageProps) {
     (luchador) => isNonEmptyString(luchador?.nombre)
   );
 
-  const combatesRelacionados = safeArray(categoria.combatesRelacionados).filter((combate) => {
-    return (
-      isNonEmptyString(combate?.luchadorRojo) ||
-      isNonEmptyString(combate?.luchadorAzul) ||
-      isNonEmptyString(combate?.evento) ||
-      isNonEmptyString(combate?._id) ||
-      isNonEmptyString(combate?.id)
-    );
-  });
+  const combatesRelacionados = safeArray(categoria.combatesRelacionados).filter(
+    (combate) => {
+      return (
+        isNonEmptyString(combate?.luchadorRojo) ||
+        isNonEmptyString(combate?.luchadorAzul) ||
+        isNonEmptyString(combate?.evento) ||
+        isNonEmptyString(combate?._id) ||
+        isNonEmptyString(combate?.id)
+      );
+    }
+  );
 
   return (
     <main
@@ -153,7 +161,9 @@ export default async function CategoriaPesoDetallePage({ params }: PageProps) {
             boxShadow: "var(--ffn-shadow-soft)",
           }}
         >
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+          <div
+            style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}
+          >
             <span className="ffn-pill">Categoría de peso</span>
 
             {typeof categoria.limitePeso === "number" ? (
