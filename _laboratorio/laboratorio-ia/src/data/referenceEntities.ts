@@ -1,400 +1,257 @@
-import type { ReferenceFilterContext, ReferenceTarget } from "../types";
-
-export type ReferenceDisciplineId = "mma" | "boxeo" | "muay-thai";
+import type { ReferenceTarget } from "../types";
 
 export type ReferenceEntityOption = {
   label: string;
   value: string;
   target: ReferenceTarget;
-  disciplineIds?: ReferenceDisciplineId[];
+  disciplineIds?: string[];
   organizationIds?: string[];
   eventIds?: string[];
   categoryPesoIds?: string[];
 };
 
-const MMA: ReferenceDisciplineId = "mma";
-const BOXEO: ReferenceDisciplineId = "boxeo";
-const MUAY_THAI: ReferenceDisciplineId = "muay-thai";
+type GetFilteredReferenceEntityOptionsParams = {
+  target: ReferenceTarget;
+  selectedDisciplineRef?: string;
+  selectedOrganizationRef?: string;
+  selectedEventRef?: string;
+  selectedCategoriaPesoRef?: string;
+};
+
+const MMA = "f1cf0cbc-3bb1-4e4f-9cbf-a4d06227af24";
+const UFC = "2352ff66-a625-497f-820f-4fbd4a080ca6";
+const UFC_308 = "9bb50701-907b-4c3d-ad37-a3ed54d655b7";
+const ILIA_TOPURIA = "9d3a5b7f-ec4f-4bb6-8ee2-81be63bce7c3";
+const PESO_PLUMA = "761e3a81-7212-4e52-995f-dc9eb4d264d7";
+
+// Valores provisionales / mock donde aún no hay _id real
+const BOXEO = "boxeo";
+const MUAY_THAI = "muay-thai";
+const ONE = "one";
+const MATCHROOM = "matchroom";
+const GLORY = "glory";
+const UFC_300 = "ufc-300";
+const UFC_306 = "ufc-306";
+const UFC_309 = "ufc-309";
+const UFC_311 = "ufc-311";
+const MATCHROOM_LONDON_SERIES = "matchroom-london-series";
+const MATCHROOM_MADRID_NIGHT = "matchroom-madrid-night";
+const ONE_LUMPINEE = "one-lumpinee";
+const ALEX_PEREIRA = "alex-pereira";
+const ISLAM_MAKHACHEV = "islam-makhachev";
+const ALEXANDER_VOLKANOVSKI = "alexander-volkanovski";
+const DMITRY_BIVOL = "dmitry-bivol";
+const RODTANG = "rodtang";
+const PESO_LIGERO = "peso-ligero";
+const PESO_WELTER = "peso-welter";
+const PESO_MEDIO = "peso-medio";
+const PESO_SEMIPESADO = "peso-semipesado";
+const PESO_PESADO = "peso-pesado";
+const PESO_SUPERMEDIO = "peso-supermedio";
 
 const referenceEntities: Record<ReferenceTarget, ReferenceEntityOption[]> = {
   disciplina: [
-    {
-      label: "MMA",
-      value: "mma",
-      target: "disciplina",
-    },
-    {
-      label: "Boxeo",
-      value: "boxeo",
-      target: "disciplina",
-    },
-    {
-      label: "Muay Thai",
-      value: "muay-thai",
-      target: "disciplina",
-    },
+    { label: "MMA", value: MMA, target: "disciplina" },
+    { label: "Boxeo", value: BOXEO, target: "disciplina" },
+    { label: "Muay Thai", value: MUAY_THAI, target: "disciplina" },
   ],
 
   organizacion: [
     {
       label: "UFC",
-      value: "ufc",
+      value: UFC,
       target: "organizacion",
       disciplineIds: [MMA],
-      eventIds: ["ufc-300", "ufc-306", "ufc-308", "ufc-309", "ufc-311"],
+    },
+    {
+      label: "Matchroom",
+      value: MATCHROOM,
+      target: "organizacion",
+      disciplineIds: [BOXEO],
     },
     {
       label: "ONE Championship",
-      value: "one-championship",
-      target: "organizacion",
-      disciplineIds: [MMA, MUAY_THAI],
-      eventIds: ["one-fight-night-18", "superlek-vs-rodtang"],
-    },
-    {
-      label: "Matchroom Boxing",
-      value: "matchroom-boxing",
-      target: "organizacion",
-      disciplineIds: [BOXEO],
-      eventIds: ["beterbiev-vs-bivol"],
-    },
-    {
-      label: "Queensberry Promotions",
-      value: "queensberry-promotions",
-      target: "organizacion",
-      disciplineIds: [BOXEO],
-      eventIds: ["fury-vs-usyk"],
-    },
-    {
-      label: "Top Rank",
-      value: "top-rank",
-      target: "organizacion",
-      disciplineIds: [BOXEO],
-    },
-    {
-      label: "RWS",
-      value: "rws",
+      value: ONE,
       target: "organizacion",
       disciplineIds: [MUAY_THAI],
-      eventIds: ["rws-rajadamnern-world-series"],
+    },
+    {
+      label: "GLORY",
+      value: GLORY,
+      target: "organizacion",
+      disciplineIds: [MUAY_THAI],
     },
   ],
 
   evento: [
     {
-      label: "UFC 300",
-      value: "ufc-300",
+      label: "UFC 308",
+      value: UFC_308,
       target: "evento",
       disciplineIds: [MMA],
-      organizationIds: ["ufc"],
+      organizationIds: [UFC],
+    },
+    {
+      label: "UFC 300",
+      value: UFC_300,
+      target: "evento",
+      disciplineIds: [MMA],
+      organizationIds: [UFC],
     },
     {
       label: "UFC 306",
-      value: "ufc-306",
+      value: UFC_306,
       target: "evento",
       disciplineIds: [MMA],
-      organizationIds: ["ufc"],
-    },
-    {
-      label: "UFC 308",
-      value: "ufc-308",
-      target: "evento",
-      disciplineIds: [MMA],
-      organizationIds: ["ufc"],
+      organizationIds: [UFC],
     },
     {
       label: "UFC 309",
-      value: "ufc-309",
+      value: UFC_309,
       target: "evento",
       disciplineIds: [MMA],
-      organizationIds: ["ufc"],
+      organizationIds: [UFC],
     },
     {
       label: "UFC 311",
-      value: "ufc-311",
+      value: UFC_311,
       target: "evento",
       disciplineIds: [MMA],
-      organizationIds: ["ufc"],
+      organizationIds: [UFC],
     },
     {
-      label: "ONE Fight Night 18",
-      value: "one-fight-night-18",
-      target: "evento",
-      disciplineIds: [MMA, MUAY_THAI],
-      organizationIds: ["one-championship"],
-    },
-    {
-      label: "Superlek vs Rodtang",
-      value: "superlek-vs-rodtang",
-      target: "evento",
-      disciplineIds: [MUAY_THAI],
-      organizationIds: ["one-championship"],
-    },
-    {
-      label: "RWS Rajadamnern World Series",
-      value: "rws-rajadamnern-world-series",
-      target: "evento",
-      disciplineIds: [MUAY_THAI],
-      organizationIds: ["rws"],
-    },
-    {
-      label: "Beterbiev vs Bivol",
-      value: "beterbiev-vs-bivol",
+      label: "Matchroom London Series",
+      value: MATCHROOM_LONDON_SERIES,
       target: "evento",
       disciplineIds: [BOXEO],
-      organizationIds: ["matchroom-boxing"],
+      organizationIds: [MATCHROOM],
     },
     {
-      label: "Tyson Fury vs Oleksandr Usyk",
-      value: "fury-vs-usyk",
+      label: "Matchroom Madrid Night",
+      value: MATCHROOM_MADRID_NIGHT,
       target: "evento",
       disciplineIds: [BOXEO],
-      organizationIds: ["queensberry-promotions"],
+      organizationIds: [MATCHROOM],
+    },
+    {
+      label: "ONE Lumpinee",
+      value: ONE_LUMPINEE,
+      target: "evento",
+      disciplineIds: [MUAY_THAI],
+      organizationIds: [ONE],
     },
   ],
 
   luchador: [
     {
       label: "Ilia Topuria",
-      value: "ilia-topuria",
+      value: ILIA_TOPURIA,
       target: "luchador",
       disciplineIds: [MMA],
-      organizationIds: ["ufc"],
-      eventIds: ["ufc-308"],
-      categoryPesoIds: ["peso-pluma"],
-    },
-    {
-      label: "Max Holloway",
-      value: "max-holloway",
-      target: "luchador",
-      disciplineIds: [MMA],
-      organizationIds: ["ufc"],
-      eventIds: ["ufc-308"],
-      categoryPesoIds: ["peso-pluma"],
-    },
-    {
-      label: "Islam Makhachev",
-      value: "islam-makhachev",
-      target: "luchador",
-      disciplineIds: [MMA],
-      organizationIds: ["ufc"],
-      eventIds: ["ufc-311"],
-      categoryPesoIds: ["peso-ligero"],
-    },
-    {
-      label: "Charles Oliveira",
-      value: "charles-oliveira",
-      target: "luchador",
-      disciplineIds: [MMA],
-      organizationIds: ["ufc"],
-      eventIds: ["ufc-300", "ufc-311"],
-      categoryPesoIds: ["peso-ligero"],
+      organizationIds: [UFC],
+      eventIds: [UFC_308],
+      categoryPesoIds: [PESO_PLUMA],
     },
     {
       label: "Alex Pereira",
-      value: "alex-pereira",
+      value: ALEX_PEREIRA,
       target: "luchador",
       disciplineIds: [MMA],
-      organizationIds: ["ufc"],
-      eventIds: ["ufc-300", "ufc-306", "ufc-309"],
-      categoryPesoIds: ["peso-semipesado"],
+      organizationIds: [UFC],
+      eventIds: [UFC_300, UFC_306],
+      categoryPesoIds: [PESO_SEMIPESADO, PESO_MEDIO],
     },
     {
-      label: "Tom Aspinall",
-      value: "tom-aspinall",
+      label: "Islam Makhachev",
+      value: ISLAM_MAKHACHEV,
       target: "luchador",
       disciplineIds: [MMA],
-      organizationIds: ["ufc"],
-      eventIds: ["ufc-309"],
-      categoryPesoIds: ["peso-pesado"],
+      organizationIds: [UFC],
+      eventIds: [UFC_309, UFC_311],
+      categoryPesoIds: [PESO_LIGERO],
     },
     {
-      label: "Artur Beterbiev",
-      value: "artur-beterbiev",
+      label: "Alexander Volkanovski",
+      value: ALEXANDER_VOLKANOVSKI,
       target: "luchador",
-      disciplineIds: [BOXEO],
-      organizationIds: ["matchroom-boxing"],
-      eventIds: ["beterbiev-vs-bivol"],
-      categoryPesoIds: ["peso-semipesado-boxeo"],
+      disciplineIds: [MMA],
+      organizationIds: [UFC],
+      eventIds: [UFC_308],
+      categoryPesoIds: [PESO_PLUMA],
     },
     {
       label: "Dmitry Bivol",
-      value: "dmitry-bivol",
+      value: DMITRY_BIVOL,
       target: "luchador",
       disciplineIds: [BOXEO],
-      organizationIds: ["matchroom-boxing"],
-      eventIds: ["beterbiev-vs-bivol"],
-      categoryPesoIds: ["peso-semipesado-boxeo"],
+      organizationIds: [MATCHROOM],
+      eventIds: [MATCHROOM_LONDON_SERIES, MATCHROOM_MADRID_NIGHT],
+      categoryPesoIds: [PESO_SUPERMEDIO, PESO_SEMIPESADO],
     },
     {
-      label: "Tyson Fury",
-      value: "tyson-fury",
-      target: "luchador",
-      disciplineIds: [BOXEO],
-      organizationIds: ["queensberry-promotions"],
-      eventIds: ["fury-vs-usyk"],
-      categoryPesoIds: ["peso-pesado-boxeo"],
-    },
-    {
-      label: "Oleksandr Usyk",
-      value: "oleksandr-usyk",
-      target: "luchador",
-      disciplineIds: [BOXEO],
-      organizationIds: ["queensberry-promotions"],
-      eventIds: ["fury-vs-usyk"],
-      categoryPesoIds: ["peso-pesado-boxeo"],
-    },
-    {
-      label: "Naoya Inoue",
-      value: "naoya-inoue",
-      target: "luchador",
-      disciplineIds: [BOXEO],
-      organizationIds: ["top-rank"],
-      categoryPesoIds: ["peso-superwelter"],
-    },
-    {
-      label: "Canelo Álvarez",
-      value: "canelo-alvarez",
-      target: "luchador",
-      disciplineIds: [BOXEO],
-      categoryPesoIds: ["peso-superwelter"],
-    },
-    {
-      label: "Rodtang Jitmuangnon",
-      value: "rodtang-jitmuangnon",
+      label: "Rodtang",
+      value: RODTANG,
       target: "luchador",
       disciplineIds: [MUAY_THAI],
-      organizationIds: ["one-championship"],
-      eventIds: ["superlek-vs-rodtang"],
-      categoryPesoIds: ["peso-gallo-muay-thai"],
-    },
-    {
-      label: "Superlek Kiatmoo9",
-      value: "superlek-kiatmoo9",
-      target: "luchador",
-      disciplineIds: [MUAY_THAI],
-      organizationIds: ["one-championship"],
-      eventIds: ["superlek-vs-rodtang"],
-      categoryPesoIds: ["peso-gallo-muay-thai"],
-    },
-    {
-      label: "Tawanchai PK Saenchai",
-      value: "tawanchai-pk-saenchai",
-      target: "luchador",
-      disciplineIds: [MUAY_THAI],
-      organizationIds: ["one-championship"],
-      eventIds: ["one-fight-night-18"],
-      categoryPesoIds: ["peso-pluma-muay-thai"],
-    },
-    {
-      label: "Nong-O Hama",
-      value: "nong-o-hama",
-      target: "luchador",
-      disciplineIds: [MUAY_THAI],
-      organizationIds: ["one-championship"],
-      eventIds: ["one-fight-night-18"],
-      categoryPesoIds: ["peso-gallo-muay-thai"],
+      organizationIds: [ONE],
+      eventIds: [ONE_LUMPINEE],
     },
   ],
 
   categoriaPeso: [
     {
-      label: "Peso mosca",
-      value: "peso-mosca",
-      target: "categoriaPeso",
-      disciplineIds: [MMA],
-    },
-    {
-      label: "Peso gallo",
-      value: "peso-gallo",
-      target: "categoriaPeso",
-      disciplineIds: [MMA],
-    },
-    {
       label: "Peso pluma",
-      value: "peso-pluma",
+      value: PESO_PLUMA,
       target: "categoriaPeso",
       disciplineIds: [MMA],
+      organizationIds: [UFC],
     },
     {
       label: "Peso ligero",
-      value: "peso-ligero",
+      value: PESO_LIGERO,
       target: "categoriaPeso",
       disciplineIds: [MMA],
+      organizationIds: [UFC],
     },
     {
       label: "Peso wélter",
-      value: "peso-welter",
+      value: PESO_WELTER,
       target: "categoriaPeso",
       disciplineIds: [MMA],
+      organizationIds: [UFC],
     },
     {
       label: "Peso medio",
-      value: "peso-medio",
+      value: PESO_MEDIO,
       target: "categoriaPeso",
       disciplineIds: [MMA],
+      organizationIds: [UFC],
     },
     {
       label: "Peso semipesado",
-      value: "peso-semipesado",
+      value: PESO_SEMIPESADO,
       target: "categoriaPeso",
       disciplineIds: [MMA],
+      organizationIds: [UFC],
     },
     {
       label: "Peso pesado",
-      value: "peso-pesado",
+      value: PESO_PESADO,
       target: "categoriaPeso",
       disciplineIds: [MMA],
+      organizationIds: [UFC],
     },
     {
-      label: "Peso superwélter",
-      value: "peso-superwelter",
+      label: "Peso supermedio",
+      value: PESO_SUPERMEDIO,
       target: "categoriaPeso",
       disciplineIds: [BOXEO],
-    },
-    {
-      label: "Peso semipesado boxeo",
-      value: "peso-semipesado-boxeo",
-      target: "categoriaPeso",
-      disciplineIds: [BOXEO],
-    },
-    {
-      label: "Peso pesado boxeo",
-      value: "peso-pesado-boxeo",
-      target: "categoriaPeso",
-      disciplineIds: [BOXEO],
-    },
-    {
-      label: "Peso mosca Muay Thai",
-      value: "peso-mosca-muay-thai",
-      target: "categoriaPeso",
-      disciplineIds: [MUAY_THAI],
-    },
-    {
-      label: "Peso gallo Muay Thai",
-      value: "peso-gallo-muay-thai",
-      target: "categoriaPeso",
-      disciplineIds: [MUAY_THAI],
-    },
-    {
-      label: "Peso pluma Muay Thai",
-      value: "peso-pluma-muay-thai",
-      target: "categoriaPeso",
-      disciplineIds: [MUAY_THAI],
+      organizationIds: [MATCHROOM],
     },
   ],
 };
 
-export function getReferenceEntityOptions(
-  target?: ReferenceTarget
-): ReferenceEntityOption[] {
-  if (!target) {
-    return [];
-  }
-
-  return referenceEntities[target] ?? [];
-}
-
-function matchesSelectedRelation(
+function matchesFilter(
   optionValues: string[] | undefined,
   selectedValue: string | undefined
 ): boolean {
@@ -403,90 +260,49 @@ function matchesSelectedRelation(
   }
 
   if (!optionValues || optionValues.length === 0) {
-    return true;
+    return false;
   }
 
   return optionValues.includes(selectedValue);
 }
 
-function matchesDiscipline(
-  option: ReferenceEntityOption,
-  selectedDisciplineRef?: string
-): boolean {
-  if (option.target === "disciplina") {
-    return true;
-  }
-
-  if (!selectedDisciplineRef) {
-    return true;
-  }
-
-  if (!option.disciplineIds || option.disciplineIds.length === 0) {
-    return false;
-  }
-
-  return option.disciplineIds.includes(
-    selectedDisciplineRef as ReferenceDisciplineId
-  );
-}
-
-function sanitizeFilterContext(
-  context: ReferenceFilterContext
-): ReferenceFilterContext {
-  return {
-    selectedDisciplineRef: context.selectedDisciplineRef || undefined,
-    selectedOrganizationRef: context.selectedOrganizationRef || undefined,
-    selectedEventRef: context.selectedEventRef || undefined,
-    selectedCategoriaPesoRef: context.selectedCategoriaPesoRef || undefined,
-  };
-}
-
-export function getFilteredReferenceEntityOptions(
-  params: {
-    target?: ReferenceTarget;
-  } & ReferenceFilterContext
+export function getReferenceEntityOptions(
+  target: ReferenceTarget
 ): ReferenceEntityOption[] {
-  const { target, ...rawContext } = params;
-  const context = sanitizeFilterContext(rawContext);
+  return referenceEntities[target] ?? [];
+}
 
-  if (!target) {
-    return [];
+export function getFilteredReferenceEntityOptions({
+  target,
+  selectedDisciplineRef,
+  selectedOrganizationRef,
+}: GetFilteredReferenceEntityOptionsParams): ReferenceEntityOption[] {
+  const options = getReferenceEntityOptions(target);
+
+  if (target === "disciplina") {
+    return options;
   }
-
-  const options = referenceEntities[target] ?? [];
 
   return options.filter((option) => {
-    const matchesCurrentDiscipline = matchesDiscipline(
-      option,
-      context.selectedDisciplineRef
+    const matchesDiscipline = matchesFilter(
+      option.disciplineIds,
+      selectedDisciplineRef
     );
 
-    const matchesOrganization =
-      target === "organizacion"
-        ? true
-        : matchesSelectedRelation(
-            option.organizationIds,
-            context.selectedOrganizationRef
-          );
+    if (!matchesDiscipline) {
+      return false;
+    }
 
-    const matchesEvent =
-      target === "evento"
-        ? true
-        : matchesSelectedRelation(option.eventIds, context.selectedEventRef);
+    if (target === "organizacion" || target === "evento" || target === "categoriaPeso") {
+      return true;
+    }
 
-    const matchesCategoriaPeso =
-      target === "categoriaPeso"
-        ? true
-        : matchesSelectedRelation(
-            option.categoryPesoIds,
-            context.selectedCategoriaPesoRef
-          );
+    if (target === "luchador") {
+      return matchesFilter(option.organizationIds, selectedOrganizationRef);
+    }
 
-    return (
-      matchesCurrentDiscipline &&
-      matchesOrganization &&
-      matchesEvent &&
-      matchesCategoriaPeso
-    );
+    return true;
   });
 }
+
+export { referenceEntities };

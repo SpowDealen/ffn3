@@ -1,4 +1,11 @@
-import { postDraftToSanity, type SaveDraftResponse } from "./sanity";
+export type SaveDraftResponse = {
+  ok: boolean;
+  message?: string;
+  error?: string;
+  contentType?: string;
+  documentId?: string;
+  documentType?: string;
+};
 
 export type SaveDraftInput = {
   contentType: string;
@@ -27,7 +34,9 @@ export async function saveDraft({
   contentType,
   document,
 }: SaveDraftInput): Promise<SaveDraftResponse> {
-  if (!getString(contentType)) {
+  const safeContentType = getString(contentType);
+
+  if (!safeContentType) {
     throw new Error("Falta contentType.");
   }
 
@@ -37,8 +46,28 @@ export async function saveDraft({
 
   const safeDocument = ensureDocumentShape(document);
 
-  return postDraftToSanity({
-    contentType: getString(contentType),
-    document: safeDocument,
+  const response = await fetch("http://localhost:3000/api/guardar-borrador", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      contentType: safeContentType,
+      document: safeDocument,
+    }),
   });
+
+  let data: SaveDraftResponse;
+
+  try {
+    data = (await response.json()) as SaveDraftResponse;
+  } catch {
+    throw new Error("La respuesta del servidor no es válida.");
+  }
+
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Error al guardar borrador.");
+  }
+
+  return data;
 }

@@ -1,4 +1,3 @@
-// app/api/guardar-borrador/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@sanity/client";
 
