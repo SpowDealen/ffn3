@@ -246,6 +246,7 @@ export function buildEventoOutput({
   }
 
   const output: EventoSanityOutput = {
+    _type: "evento",
     nombre,
     slug,
     organizacion: organizacion as EventoSanityOutput["organizacion"],

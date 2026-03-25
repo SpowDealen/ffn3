@@ -315,6 +315,7 @@ export function buildCombateOutput({
   }
 
   const output: CombateSanityOutput = {
+    _type: "combate",
     evento: evento as CombateSanityOutput["evento"],
     luchadorRojo: luchadorRojo as CombateSanityOutput["luchadorRojo"],
     luchadorAzul: luchadorAzul as CombateSanityOutput["luchadorAzul"],

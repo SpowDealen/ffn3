@@ -85,6 +85,7 @@ export function buildDisciplinaOutput({
   }
 
   const output: DisciplinaSanityOutput = {
+    _type: "disciplina",
     nombre,
     slug,
     descripcion,

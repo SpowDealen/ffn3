@@ -152,6 +152,7 @@ export function buildCategoriaPesoOutput({
   }
 
   const output: CategoriaPesoSanityOutput = {
+    _type: "categoriaPeso",
     nombre,
     slug,
     disciplina: disciplina as CategoriaPesoSanityOutput["disciplina"],

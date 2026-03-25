@@ -223,6 +223,7 @@ export function buildLuchadorOutput({
   }
 
   const output: LuchadorSanityOutput = {
+    _type: "luchador",
     nombre,
     slug,
     disciplina: disciplina as LuchadorSanityOutput["disciplina"],

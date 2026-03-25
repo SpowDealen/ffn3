@@ -4,7 +4,6 @@ import {
   contentTypeOptions,
   getContentTypeDefinition,
 } from "../config/contentTypes";
-import { getFilteredReferenceEntityOptions } from "../data/referenceEntities";
 import { buildContentOutput } from "../lib/buildContentOutput";
 import { getInitialFormState } from "../lib/getInitialFormState";
 import { saveDraft } from "../lib/saveDraft";
@@ -19,6 +18,7 @@ import type {
   SchemaFieldDefinition,
   ValidationIssue,
 } from "../types";
+import type { ReferenceEntityOption } from "../data/referenceEntities";
 
 type BuildResultState = {
   ok: boolean;
@@ -44,6 +44,16 @@ type SaveDraftStatus =
   | {
       type: "error";
       message: string;
+    };
+
+type ReferenceEntitiesApiResponse =
+  | {
+      ok: true;
+      data: Record<ReferenceTarget, ReferenceEntityOption[]>;
+    }
+  | {
+      ok: false;
+      message?: string;
     };
 
 const DEFAULT_CONTENT_TYPE: ContentTypeId = "noticia";
@@ -85,6 +95,14 @@ const DEPENDENT_REFERENCE_FIELDS: ReferenceFieldConfig[] = [
     isArray: true,
   },
 ];
+
+const EMPTY_REFERENCE_DATA: Record<ReferenceTarget, ReferenceEntityOption[]> = {
+  disciplina: [],
+  organizacion: [],
+  evento: [],
+  luchador: [],
+  categoriaPeso: [],
+};
 
 function prettyJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
@@ -254,14 +272,74 @@ function getActiveFilterContext(form: ContentFormState): ReferenceFilterContext 
   };
 }
 
+function matchesReferenceOption(
+  option: ReferenceEntityOption,
+  filters: ReferenceFilterContext
+): boolean {
+  const {
+    selectedDisciplineRef,
+    selectedOrganizationRef,
+    selectedEventRef,
+    selectedCategoriaPesoRef,
+  } = filters;
+
+  const matchesDiscipline =
+    !selectedDisciplineRef ||
+    !option.disciplineIds ||
+    option.disciplineIds.length === 0 ||
+    option.disciplineIds.includes(selectedDisciplineRef);
+
+  const matchesOrganization =
+    !selectedOrganizationRef ||
+    !option.organizationIds ||
+    option.organizationIds.length === 0 ||
+    option.organizationIds.includes(selectedOrganizationRef);
+
+  const matchesEvent =
+    !selectedEventRef ||
+    !option.eventIds ||
+    option.eventIds.length === 0 ||
+    option.eventIds.includes(selectedEventRef);
+
+  const categoryPesoIds =
+    "categoryPesoIds" in option && Array.isArray(option.categoryPesoIds)
+      ? option.categoryPesoIds
+      : [];
+
+  const matchesCategoriaPeso =
+    !selectedCategoriaPesoRef ||
+    categoryPesoIds.length === 0 ||
+    categoryPesoIds.includes(selectedCategoriaPesoRef);
+
+  return (
+    matchesDiscipline &&
+    matchesOrganization &&
+    matchesEvent &&
+    matchesCategoriaPeso
+  );
+}
+
+function getFilteredReferenceEntityOptionsFromApiData(params: {
+  target: ReferenceTarget;
+  filters: ReferenceFilterContext;
+  referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>;
+}): ReferenceEntityOption[] {
+  const { target, filters, referenceData } = params;
+  const options = referenceData[target] ?? [];
+
+  return options.filter((option) => matchesReferenceOption(option, filters));
+}
+
 function getAllowedReferenceValueSet(
   target: ReferenceTarget,
-  filters: ReferenceFilterContext
+  filters: ReferenceFilterContext,
+  referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>
 ): Set<string> {
   return new Set(
-    getFilteredReferenceEntityOptions({
+    getFilteredReferenceEntityOptionsFromApiData({
       target,
-      ...filters,
+      filters,
+      referenceData,
     }).map((option) => option.value)
   );
 }
@@ -286,7 +364,10 @@ function sanitizeReferenceFieldValue(
   return allowedValues.has(singleValue) ? toReferenceValue(singleValue) : undefined;
 }
 
-function clearInvalidDependentReferences(nextForm: ContentFormState): ContentFormState {
+function clearInvalidDependentReferences(
+  nextForm: ContentFormState,
+  referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>
+): ContentFormState {
   const filters = getActiveFilterContext(nextForm);
   const sanitized: ContentFormState = { ...nextForm };
 
@@ -295,7 +376,11 @@ function clearInvalidDependentReferences(nextForm: ContentFormState): ContentFor
       continue;
     }
 
-    const allowedValues = getAllowedReferenceValueSet(config.target, filters);
+    const allowedValues = getAllowedReferenceValueSet(
+      config.target,
+      filters,
+      referenceData
+    );
 
     sanitized[config.fieldName] = sanitizeReferenceFieldValue(
       sanitized[config.fieldName],
@@ -350,6 +435,30 @@ function getReferenceEmptyStateMessage(
   }
 }
 
+function buildReferenceQueryString(
+  filters: ReferenceFilterContext
+): string {
+  const params = new URLSearchParams();
+
+  if (filters.selectedDisciplineRef) {
+    params.set("disciplinas", filters.selectedDisciplineRef);
+  }
+
+  if (filters.selectedOrganizationRef) {
+    params.set("organizaciones", filters.selectedOrganizationRef);
+  }
+
+  if (filters.selectedEventRef) {
+    params.set("eventos", filters.selectedEventRef);
+  }
+
+  if (filters.selectedCategoriaPesoRef) {
+    params.set("categoriasPeso", filters.selectedCategoriaPesoRef);
+  }
+
+  return params.toString();
+}
+
 export default function PanelIA(): ReactElement {
   const [contentType, setContentType] = useState<ContentTypeId>(
     DEFAULT_CONTENT_TYPE
@@ -367,6 +476,13 @@ export default function PanelIA(): ReactElement {
     type: "idle",
     message: "",
   });
+
+  const [referenceData, setReferenceData] = useState<
+    Record<ReferenceTarget, ReferenceEntityOption[]>
+  >(EMPTY_REFERENCE_DATA);
+
+  const [isLoadingReferences, setIsLoadingReferences] = useState(false);
+  const [referenceLoadError, setReferenceLoadError] = useState("");
 
   const definition = useMemo(
     () => getContentTypeDefinition(contentType),
@@ -388,6 +504,58 @@ export default function PanelIA(): ReactElement {
       message: "",
     });
   }, [contentType]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadReferenceEntities(): Promise<void> {
+      try {
+        setIsLoadingReferences(true);
+        setReferenceLoadError("");
+
+        const queryString = buildReferenceQueryString(filterContext);
+        const url = queryString
+          ? `http://localhost:3000/api/reference-entities?${queryString}`
+          : "http://localhost:3000/api/reference-entities";
+
+        const response = await fetch(url);
+        const payload =
+          (await response.json()) as ReferenceEntitiesApiResponse;
+
+        if (!response.ok || !payload.ok) {
+          throw new Error(
+            "message" in payload && payload.message
+              ? payload.message
+              : "No se pudieron cargar las referencias."
+          );
+        }
+
+        if (!isCancelled) {
+          setReferenceData(payload.data);
+          setForm((prev) => clearInvalidDependentReferences(prev, payload.data));
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setReferenceLoadError(
+            error instanceof Error
+              ? error.message
+              : "Error desconocido cargando referencias."
+          );
+          setReferenceData(EMPTY_REFERENCE_DATA);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingReferences(false);
+        }
+      }
+    }
+
+    void loadReferenceEntities();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [filterContext]);
 
   const visibleSchemaFields = useMemo(
     () => definition.schemaFields.filter((field) => !shouldHideField(field, form)),
@@ -457,7 +625,7 @@ export default function PanelIA(): ReactElement {
       };
 
       return FIELDS_THAT_TRIGGER_CLEANUP.has(name)
-        ? clearInvalidDependentReferences(nextForm)
+        ? clearInvalidDependentReferences(nextForm, referenceData)
         : nextForm;
     });
   }
@@ -479,7 +647,7 @@ export default function PanelIA(): ReactElement {
         [field.name]: nextValues.map(toReferenceValue),
       };
 
-      return clearInvalidDependentReferences(nextForm);
+      return clearInvalidDependentReferences(nextForm, referenceData);
     });
   }
 
@@ -566,9 +734,10 @@ export default function PanelIA(): ReactElement {
     const referenceTarget = field.referenceTo;
 
     const referenceOptions = referenceTarget
-      ? getFilteredReferenceEntityOptions({
+      ? getFilteredReferenceEntityOptionsFromApiData({
           target: referenceTarget,
-          ...filterContext,
+          filters: filterContext,
+          referenceData,
         })
       : [];
 
@@ -635,10 +804,11 @@ export default function PanelIA(): ReactElement {
               value={getReferenceValue(value)}
               onChange={(event) => updateFormField(field, event.target.value)}
               style={styles.input}
-              placeholder={getReferenceEmptyStateMessage(
-                referenceTarget,
-                filterContext
-              )}
+              placeholder={
+                isLoadingReferences
+                  ? "Cargando referencias..."
+                  : getReferenceEmptyStateMessage(referenceTarget, filterContext)
+              }
             />
           );
         }
@@ -693,10 +863,11 @@ export default function PanelIA(): ReactElement {
               onChange={(event) => updateFormField(field, event.target.value)}
               rows={getTextAreaRows(field.kind, field.rows)}
               style={styles.textarea}
-              placeholder={getReferenceEmptyStateMessage(
-                referenceTarget,
-                filterContext
-              )}
+              placeholder={
+                isLoadingReferences
+                  ? "Cargando referencias..."
+                  : getReferenceEmptyStateMessage(referenceTarget, filterContext)
+              }
             />
           );
         }
@@ -830,6 +1001,10 @@ export default function PanelIA(): ReactElement {
                 {isSavingDraft ? "Guardando..." : "Guardar borrador"}
               </button>
             </div>
+
+            {referenceLoadError ? (
+              <div style={styles.feedbackError}>{referenceLoadError}</div>
+            ) : null}
 
             {saveDraftStatus.type !== "idle" ? (
               <div
