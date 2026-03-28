@@ -20,7 +20,19 @@ function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function ensureDocumentShape(document: Record<string, unknown>): Record<string, unknown> {
+function getApiBaseUrl(): string {
+  const raw = import.meta.env.VITE_FFN3_API_BASE_URL;
+
+  if (typeof raw !== "string" || !raw.trim()) {
+    return "http://localhost:3000";
+  }
+
+  return raw.trim().replace(/\/+$/, "");
+}
+
+function ensureDocumentShape(
+  document: Record<string, unknown>
+): Record<string, unknown> {
   const _type = getString(document._type);
 
   if (!_type) {
@@ -45,8 +57,9 @@ export async function saveDraft({
   }
 
   const safeDocument = ensureDocumentShape(document);
+  const apiBaseUrl = getApiBaseUrl();
 
-  const response = await fetch("http://localhost:3000/api/guardar-borrador", {
+  const response = await fetch(`${apiBaseUrl}/api/guardar-borrador`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

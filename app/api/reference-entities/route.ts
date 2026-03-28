@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { client } from "../../../sanity/lib/client";
-import type {
-  ReferenceEntityOption,
-} from "../../../_laboratorio/laboratorio-ia/src/data/referenceEntities";
 import type { ReferenceTarget } from "../../../_laboratorio/laboratorio-ia/src/types";
+import type { ReferenceEntityOption } from "../../../_laboratorio/laboratorio-ia/src/data/referenceEntities";
 
 type ReferenceEntitiesResponse = {
   ok: true;
@@ -48,6 +46,34 @@ type LuchadorDoc = {
   eventIds?: string[] | null;
 };
 
+function getAllowedOrigin(request: Request): string {
+  const origin = request.headers.get("origin")?.trim();
+
+  if (!origin) {
+    return "*";
+  }
+
+  const allowedOrigins = new Set([
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+  ]);
+
+  return allowedOrigins.has(origin) ? origin : "*";
+}
+
+function withCors(response: NextResponse, request: Request): NextResponse {
+  const allowedOrigin = getAllowedOrigin(request);
+
+  response.headers.set("Access-Control-Allow-Origin", allowedOrigin);
+  response.headers.set("Access-Control-Allow-Methods", "GET,OPTIONS");
+  response.headers.set("Access-Control-Allow-Headers", "Content-Type");
+  response.headers.set("Vary", "Origin");
+
+  return response;
+}
+
 function toArray(value: string | null): string[] {
   if (!value) return [];
 
@@ -59,7 +85,8 @@ function toArray(value: string | null): string[] {
 
 function compactStringArray(values: Array<string | null | undefined>): string[] {
   return values.filter(
-    (value): value is string => typeof value === "string" && value.trim().length > 0
+    (value): value is string =>
+      typeof value === "string" && value.trim().length > 0
   );
 }
 
@@ -72,11 +99,6 @@ function labelFromDoc(
   return value && value.length > 0 ? value : `${typeLabel} ${fallbackId}`;
 }
 
-function slugOrId(slug: { current?: string } | undefined, id: string): string {
-  const current = slug?.current?.trim();
-  return current && current.length > 0 ? current : id;
-}
-
 function matchesDiscipline(
   option: ReferenceEntityOption,
   selectedDisciplineIds: string[]
@@ -84,9 +106,7 @@ function matchesDiscipline(
   if (selectedDisciplineIds.length === 0) return true;
   if (!option.disciplineIds || option.disciplineIds.length === 0) return true;
 
-  return option.disciplineIds.some((id: string) =>
-    selectedDisciplineIds.includes(id)
-  );
+  return option.disciplineIds.some((id) => selectedDisciplineIds.includes(id));
 }
 
 function matchesOrganization(
@@ -96,7 +116,7 @@ function matchesOrganization(
   if (selectedOrganizationIds.length === 0) return true;
   if (!option.organizationIds || option.organizationIds.length === 0) return true;
 
-  return option.organizationIds.some((id: string) =>
+  return option.organizationIds.some((id) =>
     selectedOrganizationIds.includes(id)
   );
 }
@@ -108,7 +128,7 @@ function matchesEvent(
   if (selectedEventIds.length === 0) return true;
   if (!option.eventIds || option.eventIds.length === 0) return true;
 
-  return option.eventIds.some((id: string) => selectedEventIds.includes(id));
+  return option.eventIds.some((id) => selectedEventIds.includes(id));
 }
 
 function matchesCategoriaPeso(
@@ -118,7 +138,7 @@ function matchesCategoriaPeso(
   if (selectedCategoriaPesoIds.length === 0) return true;
   if (!option.categoryPesoIds || option.categoryPesoIds.length === 0) return true;
 
-  return option.categoryPesoIds.some((id: string) =>
+  return option.categoryPesoIds.some((id) =>
     selectedCategoriaPesoIds.includes(id)
   );
 }
@@ -143,80 +163,73 @@ function filterOptions(
 async function fetchReferenceEntities(): Promise<
   Record<ReferenceTarget, ReferenceEntityOption[]>
 > {
-  const [
-    disciplinas,
-    organizaciones,
-    eventos,
-    categoriasPeso,
-    luchadores,
-  ] = await Promise.all([
-    client.fetch<DisciplinaDoc[]>(`
-      *[_type == "disciplina"] | order(nombre asc) {
-        _id,
-        nombre,
-        slug
-      }
-    `),
-    client.fetch<OrganizacionDoc[]>(`
-      *[_type == "organizacion"] | order(nombre asc) {
-        _id,
-        nombre,
-        slug,
-        disciplinas
-      }
-    `),
-    client.fetch<EventoDoc[]>(`
-      *[_type == "evento"] | order(fecha desc, nombre asc) {
-        _id,
-        nombre,
-        slug,
-        disciplina,
-        organizacion
-      }
-    `),
-    client.fetch<CategoriaPesoDoc[]>(`
-      *[_type == "categoriaPeso"] | order(nombre asc) {
-        _id,
-        nombre,
-        slug,
-        disciplina
-      }
-    `),
-    client.fetch<LuchadorDoc[]>(`
-      *[_type == "luchador"] | order(nombre asc) {
-        _id,
-        nombre,
-        slug,
-        disciplina,
-        organizacion,
-        categoriaPeso,
-        "eventIds": array::unique(
-          *[
-            _type == "combate" &&
-            (
-              luchadorRojo._ref == ^._id ||
-              luchadorAzul._ref == ^._id
-            ) &&
-            defined(evento._ref)
-          ].evento._ref
-        )
-      }
-    `),
-  ]);
+  const [disciplinas, organizaciones, eventos, categoriasPeso, luchadores] =
+    await Promise.all([
+      client.fetch<DisciplinaDoc[]>(`
+        *[_type == "disciplina"] | order(nombre asc) {
+          _id,
+          nombre,
+          slug
+        }
+      `),
+      client.fetch<OrganizacionDoc[]>(`
+        *[_type == "organizacion"] | order(nombre asc) {
+          _id,
+          nombre,
+          slug,
+          disciplinas
+        }
+      `),
+      client.fetch<EventoDoc[]>(`
+        *[_type == "evento"] | order(fecha desc, nombre asc) {
+          _id,
+          nombre,
+          slug,
+          disciplina,
+          organizacion
+        }
+      `),
+      client.fetch<CategoriaPesoDoc[]>(`
+        *[_type == "categoriaPeso"] | order(nombre asc) {
+          _id,
+          nombre,
+          slug,
+          disciplina
+        }
+      `),
+      client.fetch<LuchadorDoc[]>(`
+        *[_type == "luchador"] | order(nombre asc) {
+          _id,
+          nombre,
+          slug,
+          disciplina,
+          organizacion,
+          categoriaPeso,
+          "eventIds": array::unique(
+            *[
+              _type == "combate" &&
+              (
+                luchadorRojo._ref == ^._id ||
+                luchadorAzul._ref == ^._id
+              ) &&
+              defined(evento._ref)
+            ].evento._ref
+          )
+        }
+      `),
+    ]);
 
-  const data: Record<ReferenceTarget, ReferenceEntityOption[]> = {
+  return {
     disciplina: disciplinas.map((doc) => ({
       label: labelFromDoc(doc.nombre, doc._id, "Disciplina"),
       value: doc._id,
       target: "disciplina",
-      slug: slugOrId(doc.slug, doc._id),
     })),
 
     organizacion: organizaciones.map((doc) => ({
       label: labelFromDoc(doc.nombre, doc._id, "Organización"),
       value: doc._id,
       target: "organizacion",
-      slug: slugOrId(doc.slug, doc._id),
       disciplineIds: compactStringArray(
         (doc.disciplinas ?? []).map((item) => item?._ref)
       ),
@@ -226,7 +239,6 @@ async function fetchReferenceEntities(): Promise<
       label: labelFromDoc(doc.nombre, doc._id, "Evento"),
       value: doc._id,
       target: "evento",
-      slug: slugOrId(doc.slug, doc._id),
       disciplineIds: compactStringArray([doc.disciplina?._ref]),
       organizationIds: compactStringArray([doc.organizacion?._ref]),
     })),
@@ -235,7 +247,6 @@ async function fetchReferenceEntities(): Promise<
       label: labelFromDoc(doc.nombre, doc._id, "Categoría"),
       value: doc._id,
       target: "categoriaPeso",
-      slug: slugOrId(doc.slug, doc._id),
       disciplineIds: compactStringArray([doc.disciplina?._ref]),
     })),
 
@@ -243,15 +254,16 @@ async function fetchReferenceEntities(): Promise<
       label: labelFromDoc(doc.nombre, doc._id, "Luchador"),
       value: doc._id,
       target: "luchador",
-      slug: slugOrId(doc.slug, doc._id),
       disciplineIds: compactStringArray([doc.disciplina?._ref]),
       organizationIds: compactStringArray([doc.organizacion?._ref]),
       categoryPesoIds: compactStringArray([doc.categoriaPeso?._ref]),
       eventIds: compactStringArray(doc.eventIds ?? []),
     })),
   };
+}
 
-  return data;
+export async function OPTIONS(request: Request) {
+  return withCors(new NextResponse(null, { status: 204 }), request);
 }
 
 export async function GET(request: Request) {
@@ -308,16 +320,19 @@ export async function GET(request: Request) {
       data,
     };
 
-    return NextResponse.json(response);
+    return withCors(NextResponse.json(response), request);
   } catch (error) {
     console.error("Error cargando entidades de referencia desde Sanity:", error);
 
-    return NextResponse.json(
-      {
-        ok: false,
-        message: "No se pudieron cargar las entidades de referencia.",
-      },
-      { status: 500 }
+    return withCors(
+      NextResponse.json(
+        {
+          ok: false,
+          message: "No se pudieron cargar las entidades de referencia.",
+        },
+        { status: 500 }
+      ),
+      request
     );
   }
 }

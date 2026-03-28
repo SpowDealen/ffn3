@@ -58,6 +58,10 @@ type ReferenceEntitiesApiResponse =
 
 const DEFAULT_CONTENT_TYPE: ContentTypeId = "noticia";
 
+const API_BASE_URL = (
+  import.meta.env.VITE_FFN3_API_BASE_URL?.trim() || "http://localhost:3000"
+).replace(/\/$/, "");
+
 const FIELDS_THAT_TRIGGER_CLEANUP = new Set([
   "disciplina",
   "organizacion",
@@ -65,35 +69,45 @@ const FIELDS_THAT_TRIGGER_CLEANUP = new Set([
   "evento",
   "eventoRelacionado",
   "categoriaPeso",
+  "luchadorRojo",
+  "luchadorAzul",
+  "ganador",
+  "luchadoresRelacionados",
 ]);
 
-const DEPENDENT_REFERENCE_FIELDS: ReferenceFieldConfig[] = [
-  { fieldName: "disciplina", target: "disciplina", isArray: false },
-  { fieldName: "organizacion", target: "organizacion", isArray: false },
-  {
-    fieldName: "organizacionRelacionada",
-    target: "organizacion",
-    isArray: false,
-  },
-  { fieldName: "evento", target: "evento", isArray: false },
-  {
-    fieldName: "eventoRelacionado",
-    target: "evento",
-    isArray: false,
-  },
-  {
-    fieldName: "categoriaPeso",
-    target: "categoriaPeso",
-    isArray: false,
-  },
-  { fieldName: "luchadorRojo", target: "luchador", isArray: false },
-  { fieldName: "luchadorAzul", target: "luchador", isArray: false },
-  { fieldName: "ganador", target: "luchador", isArray: false },
-  {
-    fieldName: "luchadoresRelacionados",
-    target: "luchador",
-    isArray: true,
-  },
+const CASCADE_REFERENCE_GROUPS: ReferenceFieldConfig[][] = [
+  [{ fieldName: "disciplina", target: "disciplina", isArray: false }],
+  [
+    { fieldName: "organizacion", target: "organizacion", isArray: false },
+    {
+      fieldName: "organizacionRelacionada",
+      target: "organizacion",
+      isArray: false,
+    },
+  ],
+  [
+    { fieldName: "evento", target: "evento", isArray: false },
+    {
+      fieldName: "eventoRelacionado",
+      target: "evento",
+      isArray: false,
+    },
+    {
+      fieldName: "categoriaPeso",
+      target: "categoriaPeso",
+      isArray: false,
+    },
+  ],
+  [
+    { fieldName: "luchadorRojo", target: "luchador", isArray: false },
+    { fieldName: "luchadorAzul", target: "luchador", isArray: false },
+    { fieldName: "ganador", target: "luchador", isArray: false },
+    {
+      fieldName: "luchadoresRelacionados",
+      target: "luchador",
+      isArray: true,
+    },
+  ],
 ];
 
 const EMPTY_REFERENCE_DATA: Record<ReferenceTarget, ReferenceEntityOption[]> = {
@@ -248,21 +262,33 @@ function toReferenceValue(ref: string): { _type: "reference"; _ref: string } {
   };
 }
 
+function pickFirstReference(
+  ...values: Array<FormValue | undefined>
+): string | undefined {
+  for (const value of values) {
+    const ref = getReferenceValue(value);
+    if (ref) {
+      return ref;
+    }
+  }
+
+  return undefined;
+}
+
 function getActiveFilterContext(form: ContentFormState): ReferenceFilterContext {
-  const selectedDisciplineRef = getReferenceValue(form.disciplina) || undefined;
+  const selectedDisciplineRef = pickFirstReference(form.disciplina);
 
-  const selectedOrganizationRef =
-    getReferenceValue(form.organizacion) ||
-    getReferenceValue(form.organizacionRelacionada) ||
-    undefined;
+  const selectedOrganizationRef = pickFirstReference(
+    form.organizacion,
+    form.organizacionRelacionada
+  );
 
-  const selectedEventRef =
-    getReferenceValue(form.evento) ||
-    getReferenceValue(form.eventoRelacionado) ||
-    undefined;
+  const selectedEventRef = pickFirstReference(
+    form.evento,
+    form.eventoRelacionado
+  );
 
-  const selectedCategoriaPesoRef =
-    getReferenceValue(form.categoriaPeso) || undefined;
+  const selectedCategoriaPesoRef = pickFirstReference(form.categoriaPeso);
 
   return {
     selectedDisciplineRef,
@@ -272,51 +298,141 @@ function getActiveFilterContext(form: ContentFormState): ReferenceFilterContext 
   };
 }
 
-function matchesReferenceOption(
-  option: ReferenceEntityOption,
-  filters: ReferenceFilterContext
-): boolean {
-  const {
-    selectedDisciplineRef,
-    selectedOrganizationRef,
-    selectedEventRef,
-    selectedCategoriaPesoRef,
-  } = filters;
+function getDisciplineOptions(
+  referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>
+): ReferenceEntityOption[] {
+  return referenceData.disciplina ?? [];
+}
 
-  const matchesDiscipline =
-    !selectedDisciplineRef ||
-    !option.disciplineIds ||
-    option.disciplineIds.length === 0 ||
-    option.disciplineIds.includes(selectedDisciplineRef);
+function getCategoriaPesoOptions(params: {
+  filters: ReferenceFilterContext;
+  referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>;
+}): ReferenceEntityOption[] {
+  const { filters, referenceData } = params;
+  const options = referenceData.categoriaPeso ?? [];
 
-  const matchesOrganization =
-    !selectedOrganizationRef ||
-    !option.organizationIds ||
-    option.organizationIds.length === 0 ||
-    option.organizationIds.includes(selectedOrganizationRef);
+  return options.filter((option) => {
+    return (
+      !filters.selectedDisciplineRef ||
+      !option.disciplineIds ||
+      option.disciplineIds.length === 0 ||
+      option.disciplineIds.includes(filters.selectedDisciplineRef)
+    );
+  });
+}
 
-  const matchesEvent =
-    !selectedEventRef ||
-    !option.eventIds ||
-    option.eventIds.length === 0 ||
-    option.eventIds.includes(selectedEventRef);
+function getEventoOptions(params: {
+  filters: ReferenceFilterContext;
+  referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>;
+}): ReferenceEntityOption[] {
+  const { filters, referenceData } = params;
+  const options = referenceData.evento ?? [];
 
-  const categoryPesoIds =
-    "categoryPesoIds" in option && Array.isArray(option.categoryPesoIds)
-      ? option.categoryPesoIds
-      : [];
+  return options.filter((option) => {
+    const matchesDiscipline =
+      !filters.selectedDisciplineRef ||
+      !option.disciplineIds ||
+      option.disciplineIds.length === 0 ||
+      option.disciplineIds.includes(filters.selectedDisciplineRef);
 
-  const matchesCategoriaPeso =
-    !selectedCategoriaPesoRef ||
-    categoryPesoIds.length === 0 ||
-    categoryPesoIds.includes(selectedCategoriaPesoRef);
+    const matchesOrganization =
+      !filters.selectedOrganizationRef ||
+      !option.organizationIds ||
+      option.organizationIds.length === 0 ||
+      option.organizationIds.includes(filters.selectedOrganizationRef);
 
-  return (
-    matchesDiscipline &&
-    matchesOrganization &&
-    matchesEvent &&
-    matchesCategoriaPeso
-  );
+    return matchesDiscipline && matchesOrganization;
+  });
+}
+
+function getLuchadorOptions(params: {
+  filters: ReferenceFilterContext;
+  referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>;
+}): ReferenceEntityOption[] {
+  const { filters, referenceData } = params;
+  const options = referenceData.luchador ?? [];
+
+  return options.filter((option) => {
+    const matchesDiscipline =
+      !filters.selectedDisciplineRef ||
+      !option.disciplineIds ||
+      option.disciplineIds.length === 0 ||
+      option.disciplineIds.includes(filters.selectedDisciplineRef);
+
+    const matchesOrganization =
+      !filters.selectedOrganizationRef ||
+      !option.organizationIds ||
+      option.organizationIds.length === 0 ||
+      option.organizationIds.includes(filters.selectedOrganizationRef);
+
+    const matchesEvent =
+      !filters.selectedEventRef ||
+      !option.eventIds ||
+      option.eventIds.length === 0 ||
+      option.eventIds.includes(filters.selectedEventRef);
+
+    const matchesCategoriaPeso =
+      !filters.selectedCategoriaPesoRef ||
+      !option.categoryPesoIds ||
+      option.categoryPesoIds.length === 0 ||
+      option.categoryPesoIds.includes(filters.selectedCategoriaPesoRef);
+
+    return (
+      matchesDiscipline &&
+      matchesOrganization &&
+      matchesEvent &&
+      matchesCategoriaPeso
+    );
+  });
+}
+
+function getOrganizacionOptions(params: {
+  filters: ReferenceFilterContext;
+  referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>;
+}): ReferenceEntityOption[] {
+  const { filters, referenceData } = params;
+  const options = referenceData.organizacion ?? [];
+
+  if (!filters.selectedDisciplineRef) {
+    return options;
+  }
+
+  const eventos = referenceData.evento ?? [];
+  const luchadores = referenceData.luchador ?? [];
+
+  return options.filter((organization) => {
+    const hasDirectDiscipline =
+      Array.isArray(organization.disciplineIds) &&
+      organization.disciplineIds.includes(filters.selectedDisciplineRef!);
+
+    const hasEventoInDiscipline = eventos.some((event) => {
+      const eventHasDiscipline =
+        !event.disciplineIds ||
+        event.disciplineIds.length === 0 ||
+        event.disciplineIds.includes(filters.selectedDisciplineRef!);
+
+      const eventMatchesOrganization =
+        Array.isArray(event.organizationIds) &&
+        event.organizationIds.includes(organization.value);
+
+      return eventHasDiscipline && eventMatchesOrganization;
+    });
+
+    const hasLuchadorInDiscipline = luchadores.some((fighter) => {
+      const fighterHasDiscipline =
+        !fighter.disciplineIds ||
+        fighter.disciplineIds.length === 0 ||
+        fighter.disciplineIds.includes(filters.selectedDisciplineRef!);
+
+      const fighterMatchesOrganization =
+        Array.isArray(fighter.organizationIds) &&
+        fighter.organizationIds.includes(organization.value);
+
+      return fighterHasDiscipline && fighterMatchesOrganization;
+    });
+
+    return hasDirectDiscipline || hasEventoInDiscipline || hasLuchadorInDiscipline;
+  });
 }
 
 function getFilteredReferenceEntityOptionsFromApiData(params: {
@@ -325,9 +441,26 @@ function getFilteredReferenceEntityOptionsFromApiData(params: {
   referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>;
 }): ReferenceEntityOption[] {
   const { target, filters, referenceData } = params;
-  const options = referenceData[target] ?? [];
 
-  return options.filter((option) => matchesReferenceOption(option, filters));
+  switch (target) {
+    case "disciplina":
+      return getDisciplineOptions(referenceData);
+
+    case "organizacion":
+      return getOrganizacionOptions({ filters, referenceData });
+
+    case "evento":
+      return getEventoOptions({ filters, referenceData });
+
+    case "luchador":
+      return getLuchadorOptions({ filters, referenceData });
+
+    case "categoriaPeso":
+      return getCategoriaPesoOptions({ filters, referenceData });
+
+    default:
+      return [];
+  }
 }
 
 function getAllowedReferenceValueSet(
@@ -364,29 +497,43 @@ function sanitizeReferenceFieldValue(
   return allowedValues.has(singleValue) ? toReferenceValue(singleValue) : undefined;
 }
 
+function sanitizeReferenceFieldByConfig(
+  form: ContentFormState,
+  config: ReferenceFieldConfig,
+  referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>
+): FormValue {
+  const filters = getActiveFilterContext(form);
+  const allowedValues = getAllowedReferenceValueSet(
+    config.target,
+    filters,
+    referenceData
+  );
+
+  return sanitizeReferenceFieldValue(
+    form[config.fieldName],
+    config.isArray,
+    allowedValues
+  );
+}
+
 function clearInvalidDependentReferences(
   nextForm: ContentFormState,
   referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>
 ): ContentFormState {
-  const filters = getActiveFilterContext(nextForm);
   const sanitized: ContentFormState = { ...nextForm };
 
-  for (const config of DEPENDENT_REFERENCE_FIELDS) {
-    if (!(config.fieldName in sanitized)) {
-      continue;
+  for (const group of CASCADE_REFERENCE_GROUPS) {
+    for (const config of group) {
+      if (!(config.fieldName in sanitized)) {
+        continue;
+      }
+
+      sanitized[config.fieldName] = sanitizeReferenceFieldByConfig(
+        sanitized,
+        config,
+        referenceData
+      );
     }
-
-    const allowedValues = getAllowedReferenceValueSet(
-      config.target,
-      filters,
-      referenceData
-    );
-
-    sanitized[config.fieldName] = sanitizeReferenceFieldValue(
-      sanitized[config.fieldName],
-      config.isArray,
-      allowedValues
-    );
   }
 
   return sanitized;
@@ -414,49 +561,29 @@ function getReferenceEmptyStateMessage(
   filterContext?: ReferenceFilterContext
 ): string {
   if (!target) {
-    return "Sin opciones disponibles. Puedes meter un _ref manual.";
+    return "Sin opciones disponibles.";
   }
 
-  if (!filterContext?.selectedDisciplineRef && target !== "disciplina") {
-    return "Selecciona primero una disciplina para acotar referencias.";
+  if (target === "disciplina") {
+    return "No hay disciplinas cargadas desde Sanity.";
+  }
+
+  if (!filterContext?.selectedDisciplineRef) {
+    return "Selecciona primero una disciplina.";
   }
 
   switch (target) {
     case "organizacion":
-      return "No hay organizaciones válidas para el filtro actual.";
+      return "No hay organizaciones para esa disciplina.";
     case "evento":
-      return "No hay eventos válidos para el filtro actual.";
+      return "No hay eventos para el filtro actual.";
     case "luchador":
-      return "No hay luchadores válidos para el filtro actual.";
+      return "No hay luchadores para el filtro actual.";
     case "categoriaPeso":
-      return "No hay categorías válidas para el filtro actual.";
+      return "No hay categorías para esa disciplina.";
     default:
-      return "Sin opciones por filtro actual. Puedes meter un _ref manual.";
+      return "Sin opciones disponibles.";
   }
-}
-
-function buildReferenceQueryString(
-  filters: ReferenceFilterContext
-): string {
-  const params = new URLSearchParams();
-
-  if (filters.selectedDisciplineRef) {
-    params.set("disciplinas", filters.selectedDisciplineRef);
-  }
-
-  if (filters.selectedOrganizationRef) {
-    params.set("organizaciones", filters.selectedOrganizationRef);
-  }
-
-  if (filters.selectedEventRef) {
-    params.set("eventos", filters.selectedEventRef);
-  }
-
-  if (filters.selectedCategoriaPesoRef) {
-    params.set("categoriasPeso", filters.selectedCategoriaPesoRef);
-  }
-
-  return params.toString();
 }
 
 export default function PanelIA(): ReactElement {
@@ -513,14 +640,8 @@ export default function PanelIA(): ReactElement {
         setIsLoadingReferences(true);
         setReferenceLoadError("");
 
-        const queryString = buildReferenceQueryString(filterContext);
-        const url = queryString
-          ? `http://localhost:3000/api/reference-entities?${queryString}`
-          : "http://localhost:3000/api/reference-entities";
-
-        const response = await fetch(url);
-        const payload =
-          (await response.json()) as ReferenceEntitiesApiResponse;
+        const response = await fetch(`${API_BASE_URL}/api/reference-entities`);
+        const payload = (await response.json()) as ReferenceEntitiesApiResponse;
 
         if (!response.ok || !payload.ok) {
           throw new Error(
@@ -555,7 +676,7 @@ export default function PanelIA(): ReactElement {
     return () => {
       isCancelled = true;
     };
-  }, [filterContext]);
+  }, []);
 
   const visibleSchemaFields = useMemo(
     () => definition.schemaFields.filter((field) => !shouldHideField(field, form)),
@@ -714,7 +835,9 @@ export default function PanelIA(): ReactElement {
         type: "success",
         message:
           response.message ||
-          `Borrador guardado correctamente${response.documentId ? ` (${response.documentId})` : ""}.`,
+          `Borrador guardado correctamente${
+            response.documentId ? ` (${response.documentId})` : ""
+          }.`,
       });
     } catch (error) {
       setSaveDraftStatus({
@@ -729,17 +852,112 @@ export default function PanelIA(): ReactElement {
     }
   }
 
+  function renderReferenceSelect(
+    field: SchemaFieldDefinition,
+    referenceTarget: ReferenceTarget,
+    value: FormValue
+  ): ReactElement {
+    const referenceOptions = getFilteredReferenceEntityOptionsFromApiData({
+      target: referenceTarget,
+      filters: filterContext,
+      referenceData,
+    });
+
+    const currentValue = getReferenceValue(value);
+    const disabled = isLoadingReferences || referenceOptions.length === 0;
+
+    return (
+      <>
+        <select
+          value={currentValue}
+          onChange={(event) => updateFormField(field, event.target.value)}
+          style={styles.input}
+          disabled={disabled}
+        >
+          <option value="">
+            {isLoadingReferences
+              ? "Cargando referencias..."
+              : getReferencePlaceholder(referenceTarget)}
+          </option>
+          {referenceOptions.map((option) => (
+            <option key={`${field.name}-${option.value}`} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+
+        {!isLoadingReferences && referenceOptions.length === 0 ? (
+          <p style={styles.inlineEmptyState}>
+            {getReferenceEmptyStateMessage(referenceTarget, filterContext)}
+          </p>
+        ) : null}
+      </>
+    );
+  }
+
+  function renderReferenceArray(
+    field: SchemaFieldDefinition,
+    referenceTarget: ReferenceTarget,
+    value: FormValue
+  ): ReactElement {
+    const referenceOptions = getFilteredReferenceEntityOptionsFromApiData({
+      target: referenceTarget,
+      filters: filterContext,
+      referenceData,
+    });
+
+    if (isLoadingReferences) {
+      return (
+        <div style={styles.referenceArrayGroup}>
+          <p style={styles.inlineEmptyState}>Cargando referencias...</p>
+        </div>
+      );
+    }
+
+    if (referenceOptions.length === 0) {
+      return (
+        <div style={styles.referenceArrayGroup}>
+          <p style={styles.inlineEmptyState}>
+            {getReferenceEmptyStateMessage(referenceTarget, filterContext)}
+          </p>
+        </div>
+      );
+    }
+
+    const selectedValues = getReferenceArrayValues(value);
+
+    return (
+      <div style={styles.referenceArrayGroup}>
+        {referenceOptions.map((option) => {
+          const checked = selectedValues.includes(option.value);
+
+          return (
+            <label
+              key={`${field.name}-${option.value}`}
+              style={styles.referenceCheckboxRow}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(event) =>
+                  updateReferenceArrayField(
+                    field,
+                    option.value,
+                    event.target.checked
+                  )
+                }
+              />
+              <span>{option.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    );
+  }
+
   function renderField(field: SchemaFieldDefinition): ReactElement {
     const value = form[field.name];
     const referenceTarget = field.referenceTo;
-
-    const referenceOptions = referenceTarget
-      ? getFilteredReferenceEntityOptionsFromApiData({
-          target: referenceTarget,
-          filters: filterContext,
-          referenceData,
-        })
-      : [];
 
     switch (field.kind) {
       case "boolean":
@@ -781,36 +999,7 @@ export default function PanelIA(): ReactElement {
 
       case "reference":
         if (referenceTarget) {
-          if (referenceOptions.length > 0) {
-            return (
-              <select
-                value={getReferenceValue(value)}
-                onChange={(event) => updateFormField(field, event.target.value)}
-                style={styles.input}
-              >
-                <option value="">{getReferencePlaceholder(referenceTarget)}</option>
-                {referenceOptions.map((option) => (
-                  <option key={`${field.name}-${option.value}`} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            );
-          }
-
-          return (
-            <input
-              type="text"
-              value={getReferenceValue(value)}
-              onChange={(event) => updateFormField(field, event.target.value)}
-              style={styles.input}
-              placeholder={
-                isLoadingReferences
-                  ? "Cargando referencias..."
-                  : getReferenceEmptyStateMessage(referenceTarget, filterContext)
-              }
-            />
-          );
+          return renderReferenceSelect(field, referenceTarget, value);
         }
 
         return (
@@ -825,51 +1014,7 @@ export default function PanelIA(): ReactElement {
 
       case "referenceArray":
         if (referenceTarget) {
-          if (referenceOptions.length > 0) {
-            const selectedValues = getReferenceArrayValues(value);
-
-            return (
-              <div style={styles.referenceArrayGroup}>
-                {referenceOptions.map((option) => {
-                  const checked = selectedValues.includes(option.value);
-
-                  return (
-                    <label
-                      key={`${field.name}-${option.value}`}
-                      style={styles.referenceCheckboxRow}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(event) =>
-                          updateReferenceArrayField(
-                            field,
-                            option.value,
-                            event.target.checked
-                          )
-                        }
-                      />
-                      <span>{option.label}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            );
-          }
-
-          return (
-            <textarea
-              value={getReferenceArrayValues(value).join("\n")}
-              onChange={(event) => updateFormField(field, event.target.value)}
-              rows={getTextAreaRows(field.kind, field.rows)}
-              style={styles.textarea}
-              placeholder={
-                isLoadingReferences
-                  ? "Cargando referencias..."
-                  : getReferenceEmptyStateMessage(referenceTarget, filterContext)
-              }
-            />
-          );
+          return renderReferenceArray(field, referenceTarget, value);
         }
 
         return (
@@ -1268,6 +1413,12 @@ const styles: Record<string, CSSProperties> = {
     margin: 0,
     fontSize: 12,
     opacity: 0.7,
+    lineHeight: 1.4,
+  },
+  inlineEmptyState: {
+    margin: 0,
+    fontSize: 12,
+    opacity: 0.72,
     lineHeight: 1.4,
   },
   input: {
