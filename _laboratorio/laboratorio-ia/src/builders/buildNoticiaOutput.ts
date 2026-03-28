@@ -2,27 +2,15 @@ import type {
   BuildOutputResult,
   ContentFormState,
   NoticiaSanityOutput,
-  PortableTextBlock,
   PortableTextValue,
   ReferenceValue,
   ValidationIssue,
 } from "../types";
-import {
-  createPortableText,
-  hasPortableTextContent,
-} from "../utils/portableText";
-import {
-  createOptionalReference,
-  createReferenceArray,
-  createRequiredReference,
-} from "../utils/references";
 import { createSlugValue, hasValidSlugValue } from "../utils/slug";
 
 type BuildNoticiaOutputParams = {
   form: ContentFormState;
 };
-
-type ReferenceInput = string | { _ref?: string | null; _type?: string };
 
 function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -32,67 +20,83 @@ function getBoolean(value: unknown, fallback = false): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
-function isPortableTextBlock(value: unknown): value is PortableTextBlock {
-  return (
-    value !== null &&
+function getReferenceValue(value: unknown): ReferenceValue | undefined {
+  if (
+    value &&
     typeof value === "object" &&
-    "_type" in value &&
-    (value as { _type?: unknown })._type === "block"
-  );
-}
+    "_ref" in value &&
+    typeof (value as { _ref?: unknown })._ref === "string"
+  ) {
+    const ref = ((value as { _ref?: string })._ref || "").trim();
 
-function getPortableTextInput(
-  value: unknown
-): string | string[] | PortableTextValue | null {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
-    return value;
-  }
-
-  if (Array.isArray(value) && value.every((item) => isPortableTextBlock(item))) {
-    return value;
-  }
-
-  return null;
-}
-
-function getReferenceInput(value: unknown): ReferenceInput | null {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (value && typeof value === "object") {
-    const candidate = value as { _ref?: unknown; _type?: unknown };
-
-    if (
-      typeof candidate._ref === "string" ||
-      typeof candidate._ref === "undefined" ||
-      candidate._ref === null
-    ) {
+    if (ref) {
       return {
-        _ref:
-          typeof candidate._ref === "string" || candidate._ref === null
-            ? candidate._ref
-            : undefined,
-        _type: typeof candidate._type === "string" ? candidate._type : undefined,
+        _type: "reference",
+        _ref: ref,
       };
     }
   }
 
-  return null;
+  return undefined;
 }
 
-function getReferenceArrayInput(value: unknown): ReferenceInput[] | null {
+function getReferenceArrayValues(value: unknown): ReferenceValue[] {
   if (!Array.isArray(value)) {
-    return null;
+    return [];
   }
 
   return value
-    .map((item) => getReferenceInput(item))
-    .filter((item): item is ReferenceInput => item !== null);
+    .map((item) => getReferenceValue(item))
+    .filter((item): item is ReferenceValue => Boolean(item));
+}
+
+function createPortableTextFromString(value: string): PortableTextValue {
+  const paragraphs = value
+    .split(/\n{2,}/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return paragraphs.map((paragraph, index) => ({
+    _type: "block",
+    _key: `block-${index + 1}`,
+    style: "normal",
+    markDefs: [],
+    children: [
+      {
+        _type: "span",
+        _key: `span-${index + 1}`,
+        text: paragraph,
+        marks: [],
+      },
+    ],
+  }));
+}
+
+function getPortableTextValue(value: unknown): PortableTextValue {
+  if (typeof value === "string") {
+    return createPortableTextFromString(value.trim());
+  }
+
+  if (Array.isArray(value)) {
+    return value as PortableTextValue;
+  }
+
+  return [];
+}
+
+function getPortableTextPlainText(value: PortableTextValue): string {
+  return value
+    .map((block) => {
+      if (!block || !Array.isArray(block.children)) {
+        return "";
+      }
+
+      return block.children
+        .map((child) => (typeof child?.text === "string" ? child.text : ""))
+        .join("");
+    })
+    .join("\n\n")
+    .trim();
 }
 
 function addIssue(
@@ -104,28 +108,6 @@ function addIssue(
   issues.push({ field, message, severity });
 }
 
-function hasImageValue(value: unknown): boolean {
-  if (value === null || value === undefined) {
-    return false;
-  }
-
-  if (typeof value === "string") {
-    return value.trim().length > 0;
-  }
-
-  return typeof value === "object";
-}
-
-function isReference(value: unknown): value is ReferenceValue {
-  return (
-    Boolean(value) &&
-    typeof value === "object" &&
-    (value as ReferenceValue)._type === "reference" &&
-    typeof (value as ReferenceValue)._ref === "string" &&
-    (value as ReferenceValue)._ref.trim().length > 0
-  );
-}
-
 export function buildNoticiaOutput({
   form,
 }: BuildNoticiaOutputParams): BuildOutputResult<NoticiaSanityOutput> {
@@ -133,15 +115,19 @@ export function buildNoticiaOutput({
 
   const titulo = getString(form.titulo);
   const extracto = getString(form.extracto);
+  const contenido = getPortableTextValue(form.contenido);
+  const contenidoTextoPlano = getPortableTextPlainText(contenido);
   const fechaPublicacion = getString(form.fechaPublicacion);
+  const disciplina = getReferenceValue(form.disciplina);
+  const organizacionRelacionada = getReferenceValue(form.organizacionRelacionada);
+  const luchadoresRelacionados = getReferenceArrayValues(form.luchadoresRelacionados);
+  const eventoRelacionado = getReferenceValue(form.eventoRelacionado);
   const destacada = getBoolean(form.destacada, false);
   const imagenPrincipal = form.imagenPrincipal;
 
   const slug = hasValidSlugValue(form.slug)
     ? form.slug
     : createSlugValue(titulo, { maxLength: 96, fallback: "sin-slug" });
-
-  const contenido = createPortableText(getPortableTextInput(form.contenido));
 
   if (!titulo) {
     addIssue(issues, "titulo", "El título es obligatorio.");
@@ -151,73 +137,36 @@ export function buildNoticiaOutput({
     }
 
     if (titulo.length > 160) {
-      addIssue(
-        issues,
-        "titulo",
-        "El título no puede superar 160 caracteres."
-      );
+      addIssue(issues, "titulo", "El título no puede superar 160 caracteres.");
     }
   }
 
   if (!extracto) {
     addIssue(issues, "extracto", "El extracto es obligatorio.");
-  } else {
-    if (extracto.length < 20) {
-      addIssue(
-        issues,
-        "extracto",
-        "El extracto debe tener al menos 20 caracteres."
-      );
-    }
-
-    if (extracto.length > 200) {
-      addIssue(
-        issues,
-        "extracto",
-        "El extracto no puede superar 200 caracteres."
-      );
-    }
+  } else if (extracto.length < 20) {
+    addIssue(issues, "extracto", "El extracto debe tener al menos 20 caracteres.");
   }
 
-  if (!hasPortableTextContent(contenido)) {
-    addIssue(issues, "contenido", "La noticia debe tener contenido.");
+  if (!contenidoTextoPlano) {
+    addIssue(issues, "contenido", "El contenido es obligatorio.");
   }
 
   if (!fechaPublicacion) {
-    addIssue(
-      issues,
-      "fechaPublicacion",
-      "La fecha de publicación es obligatoria."
-    );
+    addIssue(issues, "fechaPublicacion", "La fecha de publicación es obligatoria.");
   }
 
-  let disciplina: ReferenceValue | null = null;
-
-  try {
-    disciplina = createRequiredReference(
-      getReferenceInput(form.disciplina),
-      "La disciplina"
-    );
-  } catch (error) {
-    addIssue(
-      issues,
-      "disciplina",
-      error instanceof Error ? error.message : "La disciplina es obligatoria."
-    );
+  if (!disciplina) {
+    addIssue(issues, "disciplina", "La disciplina es obligatoria.");
   }
 
-  const organizacionRelacionada = createOptionalReference(
-    getReferenceInput(form.organizacionRelacionada)
-  );
-
-  const eventoRelacionado = createOptionalReference(
-    getReferenceInput(form.eventoRelacionado)
-  );
-
-  const luchadoresRelacionados = createReferenceArray(
-    getReferenceArrayInput(form.luchadoresRelacionados),
-    { unique: true, removeEmpty: true }
-  );
+  const uniqueFighterRefs = new Set(luchadoresRelacionados.map((item) => item._ref));
+  if (uniqueFighterRefs.size !== luchadoresRelacionados.length) {
+    addIssue(
+      issues,
+      "luchadoresRelacionados",
+      "Los luchadores relacionados no deben repetirse."
+    );
+  }
 
   if (!slug.current.trim()) {
     addIssue(issues, "slug", "No se pudo generar un slug válido.");
@@ -238,24 +187,24 @@ export function buildNoticiaOutput({
     extracto,
     contenido,
     fechaPublicacion,
-    disciplina: disciplina as ReferenceValue,
+    disciplina: disciplina!,
     destacada,
   };
 
-  if (hasImageValue(imagenPrincipal)) {
+  if (imagenPrincipal) {
     output.imagenPrincipal = imagenPrincipal;
   }
 
-  if (organizacionRelacionada && isReference(organizacionRelacionada)) {
+  if (organizacionRelacionada) {
     output.organizacionRelacionada = organizacionRelacionada;
-  }
-
-  if (eventoRelacionado && isReference(eventoRelacionado)) {
-    output.eventoRelacionado = eventoRelacionado;
   }
 
   if (luchadoresRelacionados.length > 0) {
     output.luchadoresRelacionados = luchadoresRelacionados;
+  }
+
+  if (eventoRelacionado) {
+    output.eventoRelacionado = eventoRelacionado;
   }
 
   return {

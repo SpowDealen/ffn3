@@ -19,6 +19,27 @@ const sanityClient = createClient({
   useCdn: false,
 });
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+function withCors(response: NextResponse): NextResponse {
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => {
+    response.headers.set(key, value);
+  });
+
+  return response;
+}
+
+function jsonWithCors(
+  body: Record<string, unknown>,
+  init?: ResponseInit
+): NextResponse {
+  return withCors(NextResponse.json(body, init));
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -48,33 +69,46 @@ function ensureDraftId(document: Record<string, unknown>): DraftDocument {
   };
 }
 
+export async function OPTIONS() {
+  return withCors(new NextResponse(null, { status: 204 }));
+}
+
 export async function POST(request: Request) {
   try {
     if (!process.env.NEXT_PUBLIC_SANITY_PROJECT_ID) {
-      return NextResponse.json(
+      return jsonWithCors(
         { ok: false, error: "Falta NEXT_PUBLIC_SANITY_PROJECT_ID." },
         { status: 500 }
       );
     }
 
     if (!process.env.NEXT_PUBLIC_SANITY_DATASET) {
-      return NextResponse.json(
+      return jsonWithCors(
         { ok: false, error: "Falta NEXT_PUBLIC_SANITY_DATASET." },
         { status: 500 }
       );
     }
 
     if (!process.env.SANITY_API_WRITE_TOKEN) {
-      return NextResponse.json(
+      return jsonWithCors(
         { ok: false, error: "Falta SANITY_API_WRITE_TOKEN." },
         { status: 500 }
       );
     }
 
-    const body = (await request.json()) as SaveDraftBody;
+    let body: SaveDraftBody;
+
+    try {
+      body = (await request.json()) as SaveDraftBody;
+    } catch {
+      return jsonWithCors(
+        { ok: false, error: "El body no es un JSON válido." },
+        { status: 400 }
+      );
+    }
 
     if (!isRecord(body)) {
-      return NextResponse.json(
+      return jsonWithCors(
         { ok: false, error: "Body inválido." },
         { status: 400 }
       );
@@ -83,17 +117,16 @@ export async function POST(request: Request) {
     const { document, contentType } = body;
 
     if (!isRecord(document)) {
-      return NextResponse.json(
+      return jsonWithCors(
         { ok: false, error: "Falta document o no es válido." },
         { status: 400 }
       );
     }
 
     const draftDocument = ensureDraftId(document);
-
     const result = await sanityClient.createOrReplace(draftDocument);
 
-    return NextResponse.json({
+    return jsonWithCors({
       ok: true,
       message: "Borrador guardado correctamente.",
       contentType: getString(contentType) || draftDocument._type,
@@ -102,9 +135,11 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Error desconocido al guardar borrador.";
+      error instanceof Error
+        ? error.message
+        : "Error desconocido al guardar borrador.";
 
-    return NextResponse.json(
+    return jsonWithCors(
       {
         ok: false,
         error: message,

@@ -4,7 +4,8 @@ export type ContentTypeId =
   | "luchador"
   | "combate"
   | "categoriaPeso"
-  | "disciplina";
+  | "disciplina"
+  | "organizacion";
 
 export type SupportEntityId = "organizacion";
 
@@ -274,6 +275,23 @@ export type DisciplinaSanityOutput = BaseSanityOutput<"disciplina"> & {
   activa: boolean;
 };
 
+export type OrganizacionSanityOutput = BaseSanityOutput<"organizacion"> & {
+  nombre: string;
+  slug: SlugValue;
+  logo: unknown;
+  banner?: unknown;
+  descripcionCorta: string;
+  descripcion: string;
+  paisOrigen: string;
+  sede?: string;
+  anioFundacion?: number;
+  identidad?: string;
+  datosCuriosos?: string[];
+  disciplinas: ReferenceValue[];
+  sitioWeb?: string;
+  activa: boolean;
+};
+
 export type ContentOutputMap = {
   noticia: NoticiaSanityOutput;
   evento: EventoSanityOutput;
@@ -281,6 +299,7 @@ export type ContentOutputMap = {
   combate: CombateSanityOutput;
   categoriaPeso: CategoriaPesoSanityOutput;
   disciplina: DisciplinaSanityOutput;
+  organizacion: OrganizacionSanityOutput;
 };
 
 export type ContentOutput<T extends ContentTypeId> = ContentOutputMap[T];

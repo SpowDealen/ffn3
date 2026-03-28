@@ -42,6 +42,20 @@ function ensureDocumentShape(
   return document;
 }
 
+async function parseJsonSafely(response: Response): Promise<SaveDraftResponse | null> {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (!contentType.toLowerCase().includes("application/json")) {
+    return null;
+  }
+
+  try {
+    return (await response.json()) as SaveDraftResponse;
+  } catch {
+    return null;
+  }
+}
+
 export async function saveDraft({
   contentType,
   document,
@@ -59,27 +73,42 @@ export async function saveDraft({
   const safeDocument = ensureDocumentShape(document);
   const apiBaseUrl = getApiBaseUrl();
 
-  const response = await fetch(`${apiBaseUrl}/api/guardar-borrador`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      contentType: safeContentType,
-      document: safeDocument,
-    }),
-  });
-
-  let data: SaveDraftResponse;
+  let response: Response;
 
   try {
-    data = (await response.json()) as SaveDraftResponse;
+    response = await fetch(`${apiBaseUrl}/api/guardar-borrador`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        contentType: safeContentType,
+        document: safeDocument,
+      }),
+    });
   } catch {
-    throw new Error("La respuesta del servidor no es válida.");
+    throw new Error(
+      "No se pudo conectar con /api/guardar-borrador. Revisa que el host Next esté levantado y que CORS esté permitido."
+    );
   }
 
-  if (!response.ok || !data.ok) {
-    throw new Error(data.error || "Error al guardar borrador.");
+  const data = await parseJsonSafely(response);
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error ||
+        data?.message ||
+        `Error HTTP ${response.status} al guardar borrador.`
+    );
+  }
+
+  if (!data) {
+    throw new Error("La respuesta del servidor no es JSON válido.");
+  }
+
+  if (!data.ok) {
+    throw new Error(data.error || data.message || "Error al guardar borrador.");
   }
 
   return data;

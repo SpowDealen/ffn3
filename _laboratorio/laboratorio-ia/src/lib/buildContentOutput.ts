@@ -5,6 +5,7 @@ import {
   buildEventoOutput,
   buildLuchadorOutput,
   buildNoticiaOutput,
+  buildOrganizacionOutput,
 } from "../builders";
 import type {
   AuxiliaryFormState,
@@ -52,8 +53,12 @@ export function buildContentOutput<T extends ContentTypeId>({
       return buildDisciplinaOutput(
         sharedParams
       ) as BuildOutputResult<ContentOutput<T>>;
+
+    case "organizacion":
+      return buildOrganizacionOutput(
+        sharedParams
+      ) as BuildOutputResult<ContentOutput<T>>;
   }
 
-  const exhaustiveCheck: never = contentType;
-  throw new Error(`Tipo de contenido no soportado: ${exhaustiveCheck}`);
+  throw new Error(`Tipo de contenido no soportado: ${String(contentType)}`);
 }
