@@ -107,12 +107,23 @@ export function buildCategoriaPesoOutput({
 
   if (limitePeso === undefined) {
     addIssue(issues, "limitePeso", "El límite de peso es obligatorio.");
-  } else if (limitePeso <= 0) {
-    addIssue(
-      issues,
-      "limitePeso",
-      "El límite de peso debe ser un número positivo."
-    );
+  } else {
+    if (limitePeso <= 0) {
+      addIssue(
+        issues,
+        "limitePeso",
+        "El límite de peso debe ser un número positivo."
+      );
+    }
+
+    if (!Number.isInteger(limitePeso)) {
+      addIssue(
+        issues,
+        "limitePeso",
+        "El límite de peso debería ser un número entero para mantener consistencia editorial.",
+        "warning"
+      );
+    }
   }
 
   if (!unidadRaw) {
@@ -137,6 +148,22 @@ export function buildCategoriaPesoOutput({
         "La descripción no puede superar 500 caracteres."
       );
     }
+
+    if (descripcion.length >= 10 && descripcion.length < 30) {
+      addIssue(
+        issues,
+        "descripcion",
+        "La descripción cumple el mínimo, pero sigue siendo pobre editorialmente.",
+        "warning"
+      );
+    }
+  } else {
+    addIssue(
+      issues,
+      "descripcion",
+      "La categoría cumple lo estructural, pero estaría bien añadir una breve descripción editorial.",
+      "warning"
+    );
   }
 
   if (!slug.current.trim()) {

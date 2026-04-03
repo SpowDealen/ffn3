@@ -64,6 +64,26 @@ function getStringArrayFromTextarea(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function hasImageValue(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  if (typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>).length > 0;
+  }
+
+  return false;
+}
+
+function isValidUrl(value: string): boolean {
+  return /^https?:\/\/.+/i.test(value);
+}
+
 function addIssue(
   issues: ValidationIssue[],
   field: string,
@@ -108,7 +128,7 @@ export function buildOrganizacionOutput({
     }
   }
 
-  if (!logo) {
+  if (!hasImageValue(logo)) {
     addIssue(issues, "logo", "El logo es obligatorio.");
   }
 
@@ -276,6 +296,29 @@ export function buildOrganizacionOutput({
     );
   }
 
+  if (sitioWeb && !isValidUrl(sitioWeb)) {
+    addIssue(
+      issues,
+      "sitioWeb",
+      "El sitio web debe empezar por http:// o https://"
+    );
+  }
+
+  if (
+    !sede &&
+    anioFundacion === undefined &&
+    !identidad &&
+    datosCuriosos.length === 0 &&
+    !sitioWeb
+  ) {
+    addIssue(
+      issues,
+      "descripcion",
+      "La organización cumple lo mínimo, pero está demasiado pelada de contexto institucional.",
+      "warning"
+    );
+  }
+
   if (!slug.current.trim()) {
     addIssue(issues, "slug", "No se pudo generar un slug válido.");
   }
@@ -300,7 +343,7 @@ export function buildOrganizacionOutput({
     activa,
   };
 
-  if (banner) {
+  if (hasImageValue(banner)) {
     output.banner = banner;
   }
 

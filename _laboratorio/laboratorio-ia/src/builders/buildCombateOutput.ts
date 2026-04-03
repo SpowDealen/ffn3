@@ -254,6 +254,44 @@ export function buildCombateOutput({
     );
   }
 
+  if (estadoRaw === "programado" || estadoRaw === "cancelado") {
+    if (metodo) {
+      addIssue(
+        issues,
+        "metodo",
+        `Si el combate está ${estadoRaw}, el método debería ir vacío.`,
+        "warning"
+      );
+    }
+
+    if (asalto !== undefined) {
+      addIssue(
+        issues,
+        "asalto",
+        `Si el combate está ${estadoRaw}, el asalto debería ir vacío.`,
+        "warning"
+      );
+    }
+
+    if (tiempo) {
+      addIssue(
+        issues,
+        "tiempo",
+        `Si el combate está ${estadoRaw}, el tiempo debería ir vacío.`,
+        "warning"
+      );
+    }
+  }
+
+  if (estadoRaw === "finalizado" && !metodo && !resumen && !desarrollo) {
+    addIssue(
+      issues,
+      "estado",
+      "El combate está finalizado, pero no incluye método, resumen ni desarrollo.",
+      "warning"
+    );
+  }
+
   if (metodo && metodo.length > 120) {
     addIssue(issues, "metodo", "El método no puede superar 120 caracteres.");
   }
@@ -325,7 +363,7 @@ export function buildCombateOutput({
     estado: estadoRaw as CombateSanityOutput["estado"],
   };
 
-  if (ganador && estadoRaw !== "programado" && isReference(ganador)) {
+  if (ganador && estadoRaw === "finalizado" && isReference(ganador)) {
     output.ganador = ganador;
   }
 

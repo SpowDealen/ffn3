@@ -72,7 +72,15 @@ function hasImageValue(value: unknown): boolean {
     return value.trim().length > 0;
   }
 
-  return typeof value === "object";
+  if (typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>).length > 0;
+  }
+
+  return false;
+}
+
+function isValidRecord(value: string): boolean {
+  return /^[0-9]+-[0-9]+(-[0-9]+)?$/.test(value);
 }
 
 export function buildLuchadorOutput({
@@ -120,8 +128,17 @@ export function buildLuchadorOutput({
     );
   }
 
-  if (record && record.length > 40) {
-    addIssue(issues, "record", "El récord no puede superar 40 caracteres.");
+  if (record) {
+    if (record.length > 40) {
+      addIssue(issues, "record", "El récord no puede superar 40 caracteres.");
+    } else if (!isValidRecord(record)) {
+      addIssue(
+        issues,
+        "record",
+        "El récord debería tener formato tipo 27-3 o 27-3-1.",
+        "warning"
+      );
+    }
   }
 
   if (descripcion) {
@@ -140,17 +157,31 @@ export function buildLuchadorOutput({
         "La descripción no puede superar 2000 caracteres."
       );
     }
+
+    if (descripcion.length >= 20 && descripcion.length < 50) {
+      addIssue(
+        issues,
+        "descripcion",
+        "La descripción cumple el mínimo, pero sigue siendo pobre editorialmente.",
+        "warning"
+      );
+    }
   }
 
-  if (
-    rankingDisciplina !== undefined &&
-    (rankingDisciplina < 1 || rankingDisciplina > 999)
-  ) {
-    addIssue(
-      issues,
-      "rankingDisciplina",
-      "El ranking editorial debe estar entre 1 y 999."
-    );
+  if (rankingDisciplina !== undefined) {
+    if (!Number.isInteger(rankingDisciplina)) {
+      addIssue(
+        issues,
+        "rankingDisciplina",
+        "El ranking editorial debe ser un número entero."
+      );
+    } else if (rankingDisciplina < 1 || rankingDisciplina > 999) {
+      addIssue(
+        issues,
+        "rankingDisciplina",
+        "El ranking editorial debe estar entre 1 y 999."
+      );
+    }
   }
 
   if (ordenDestacadoHome !== undefined) {
@@ -174,6 +205,15 @@ export function buildLuchadorOutput({
       issues,
       "ordenDestacadoHome",
       "Si el luchador está destacado en inicio, debes indicar su orden."
+    );
+  }
+
+  if (!destacadoHome && ordenDestacadoHome !== undefined) {
+    addIssue(
+      issues,
+      "ordenDestacadoHome",
+      "Hay orden en home, pero el luchador no está marcado como destacado.",
+      "warning"
     );
   }
 
@@ -212,6 +252,21 @@ export function buildLuchadorOutput({
 
   if (!slug.current.trim()) {
     addIssue(issues, "slug", "No se pudo generar un slug válido.");
+  }
+
+  if (
+    !hasImageValue(imagen) &&
+    !apodo &&
+    !nacionalidad &&
+    !record &&
+    !descripcion
+  ) {
+    addIssue(
+      issues,
+      "descripcion",
+      "La ficha del luchador cumple lo mínimo, pero está demasiado pelada editorialmente.",
+      "warning"
+    );
   }
 
   if (issues.some((issue) => issue.severity === "error")) {

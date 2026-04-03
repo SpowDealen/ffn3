@@ -63,7 +63,11 @@ function hasImageValue(value: unknown): boolean {
     return value.trim().length > 0;
   }
 
-  return typeof value === "object";
+  if (typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>).length > 0;
+  }
+
+  return false;
 }
 
 function isValidIsoDateTime(value: string): boolean {
@@ -77,6 +81,10 @@ function isValidIsoDateTime(value: string): boolean {
 
 function isEventoEstado(value: string): value is EventoSanityOutput["estado"] {
   return EVENTO_ESTADOS.includes(value as EventoSanityOutput["estado"]);
+}
+
+function isValidHoraLocal(value: string): boolean {
+  return /^\d{1,2}:\d{2}$/.test(value);
 }
 
 export function buildEventoOutput({
@@ -114,18 +122,30 @@ export function buildEventoOutput({
     }
   }
 
+  let fechaDate: Date | null = null;
+
   if (!fecha) {
     addIssue(issues, "fecha", "La fecha es obligatoria.");
   } else if (!isValidIsoDateTime(fecha)) {
     addIssue(issues, "fecha", "La fecha debe ser un datetime válido.");
+  } else {
+    fechaDate = new Date(fecha);
   }
 
-  if (horaLocal && horaLocal.length > 60) {
-    addIssue(
-      issues,
-      "horaLocal",
-      "La hora local no puede superar 60 caracteres."
-    );
+  if (horaLocal) {
+    if (horaLocal.length > 60) {
+      addIssue(
+        issues,
+        "horaLocal",
+        "La hora local no puede superar 60 caracteres."
+      );
+    } else if (!isValidHoraLocal(horaLocal)) {
+      addIssue(
+        issues,
+        "horaLocal",
+        "La hora local debe tener formato 22:00."
+      );
+    }
   }
 
   if (ciudad && ciudad.length > 100) {
@@ -156,12 +176,22 @@ export function buildEventoOutput({
     );
   }
 
-  if (descripcionCorta && descripcionCorta.length > 280) {
-    addIssue(
-      issues,
-      "descripcionCorta",
-      "La descripción corta no puede superar 280 caracteres."
-    );
+  if (descripcionCorta) {
+    if (descripcionCorta.length < 20) {
+      addIssue(
+        issues,
+        "descripcionCorta",
+        "La descripción corta debe tener al menos 20 caracteres."
+      );
+    }
+
+    if (descripcionCorta.length > 280) {
+      addIssue(
+        issues,
+        "descripcionCorta",
+        "La descripción corta no puede superar 280 caracteres."
+      );
+    }
   }
 
   if (descripcion) {
@@ -230,6 +260,42 @@ export function buildEventoOutput({
       issues,
       "estado",
       "El estado debe ser uno de estos valores: proximo, celebrado o cancelado."
+    );
+  }
+
+  if (fechaDate && isEventoEstado(estadoRaw)) {
+    const now = new Date();
+
+    if (estadoRaw === "proximo" && fechaDate.getTime() < now.getTime()) {
+      addIssue(
+        issues,
+        "estado",
+        "El evento figura como próximo, pero su fecha ya está en el pasado.",
+        "warning"
+      );
+    }
+
+    if (estadoRaw === "celebrado" && fechaDate.getTime() > now.getTime()) {
+      addIssue(
+        issues,
+        "estado",
+        "El evento figura como celebrado, pero su fecha aún está en el futuro.",
+        "warning"
+      );
+    }
+  }
+
+  if (
+    !descripcion &&
+    !descripcionCorta &&
+    !cartelPrincipal &&
+    !dondeVer
+  ) {
+    addIssue(
+      issues,
+      "descripcion",
+      "El evento está demasiado pelado: conviene añadir descripción, descripción corta, cartel principal o dónde ver.",
+      "warning"
     );
   }
 

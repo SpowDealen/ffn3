@@ -84,10 +84,11 @@ export type SchemaFieldDefinition = {
 export type AuxiliaryInputDefinition = {
   name: string;
   label: string;
-  kind: "string" | "text" | "boolean";
+  kind: "string" | "text" | "boolean" | "reference";
   description?: string;
   rows?: number;
   placeholder?: string;
+  referenceTo?: ReferenceTarget;
 };
 
 export type ContentTypeDefinition = {
@@ -161,7 +162,12 @@ export type FormValue =
 
 export type ContentFormState = Record<string, FormValue>;
 
-export type AuxiliaryFormValue = string | boolean | null | undefined;
+export type AuxiliaryFormValue =
+  | string
+  | boolean
+  | ReferenceValue
+  | null
+  | undefined;
 
 export type AuxiliaryFormState = Record<string, AuxiliaryFormValue>;
 

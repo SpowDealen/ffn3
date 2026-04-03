@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import {
   contentTypeOptions,
@@ -61,6 +61,8 @@ const DEFAULT_CONTENT_TYPE: ContentTypeId = "noticia";
 const API_BASE_URL = (
   import.meta.env.VITE_FFN3_API_BASE_URL?.trim() || "http://localhost:3000"
 ).replace(/\/$/, "");
+
+const AUTO_REFRESH_MS = 120_000;
 
 const FIELDS_THAT_TRIGGER_CLEANUP = new Set([
   "disciplina",
@@ -150,7 +152,7 @@ function getBooleanValue(
   return typeof value === "boolean" ? value : false;
 }
 
-function getReferenceValue(value: FormValue): string {
+function getReferenceValue(value: unknown): string {
   if (typeof value === "string") {
     return value.trim();
   }
@@ -163,7 +165,7 @@ function getReferenceValue(value: FormValue): string {
   return "";
 }
 
-function getReferenceArrayValues(value: FormValue): string[] {
+function getReferenceArrayValues(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -262,9 +264,7 @@ function toReferenceValue(ref: string): { _type: "reference"; _ref: string } {
   };
 }
 
-function pickFirstReference(
-  ...values: Array<FormValue | undefined>
-): string | undefined {
+function pickFirstReference(...values: unknown[]): string | undefined {
   for (const value of values) {
     const ref = getReferenceValue(value);
     if (ref) {
@@ -275,20 +275,33 @@ function pickFirstReference(
   return undefined;
 }
 
-function getActiveFilterContext(form: ContentFormState): ReferenceFilterContext {
-  const selectedDisciplineRef = pickFirstReference(form.disciplina);
+function getActiveFilterContext(
+  form: ContentFormState,
+  auxiliary?: AuxiliaryFormState
+): ReferenceFilterContext {
+  const selectedDisciplineRef = pickFirstReference(
+    form.disciplina,
+    auxiliary?.disciplina
+  );
 
   const selectedOrganizationRef = pickFirstReference(
     form.organizacion,
-    form.organizacionRelacionada
+    form.organizacionRelacionada,
+    auxiliary?.organizacion,
+    auxiliary?.organizacionRelacionada
   );
 
   const selectedEventRef = pickFirstReference(
     form.evento,
-    form.eventoRelacionado
+    form.eventoRelacionado,
+    auxiliary?.evento,
+    auxiliary?.eventoRelacionado
   );
 
-  const selectedCategoriaPesoRef = pickFirstReference(form.categoriaPeso);
+  const selectedCategoriaPesoRef = pickFirstReference(
+    form.categoriaPeso,
+    auxiliary?.categoriaPeso
+  );
 
   return {
     selectedDisciplineRef,
@@ -355,9 +368,8 @@ function getLuchadorOptions(params: {
   return options.filter((option) => {
     const matchesDiscipline =
       !filters.selectedDisciplineRef ||
-      !option.disciplineIds ||
-      option.disciplineIds.length === 0 ||
-      option.disciplineIds.includes(filters.selectedDisciplineRef);
+      (Array.isArray(option.disciplineIds) &&
+        option.disciplineIds.includes(filters.selectedDisciplineRef));
 
     const matchesOrganization =
       !filters.selectedOrganizationRef ||
@@ -367,9 +379,8 @@ function getLuchadorOptions(params: {
 
     const matchesEvent =
       !filters.selectedEventRef ||
-      !option.eventIds ||
-      option.eventIds.length === 0 ||
-      option.eventIds.includes(filters.selectedEventRef);
+      (Array.isArray(option.eventIds) &&
+        option.eventIds.includes(filters.selectedEventRef));
 
     const matchesCategoriaPeso =
       !filters.selectedCategoriaPesoRef ||
@@ -445,19 +456,14 @@ function getFilteredReferenceEntityOptionsFromApiData(params: {
   switch (target) {
     case "disciplina":
       return getDisciplineOptions(referenceData);
-
     case "organizacion":
       return getOrganizacionOptions({ filters, referenceData });
-
     case "evento":
       return getEventoOptions({ filters, referenceData });
-
     case "luchador":
       return getLuchadorOptions({ filters, referenceData });
-
     case "categoriaPeso":
       return getCategoriaPesoOptions({ filters, referenceData });
-
     default:
       return [];
   }
@@ -499,10 +505,11 @@ function sanitizeReferenceFieldValue(
 
 function sanitizeReferenceFieldByConfig(
   form: ContentFormState,
+  auxiliary: AuxiliaryFormState,
   config: ReferenceFieldConfig,
   referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>
 ): FormValue {
-  const filters = getActiveFilterContext(form);
+  const filters = getActiveFilterContext(form, auxiliary);
   const allowedValues = getAllowedReferenceValueSet(
     config.target,
     filters,
@@ -518,6 +525,7 @@ function sanitizeReferenceFieldByConfig(
 
 function clearInvalidDependentReferences(
   nextForm: ContentFormState,
+  auxiliary: AuxiliaryFormState,
   referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>
 ): ContentFormState {
   const sanitized: ContentFormState = { ...nextForm };
@@ -530,6 +538,7 @@ function clearInvalidDependentReferences(
 
       sanitized[config.fieldName] = sanitizeReferenceFieldByConfig(
         sanitized,
+        auxiliary,
         config,
         referenceData
       );
@@ -578,7 +587,9 @@ function getReferenceEmptyStateMessage(
     case "evento":
       return "No hay eventos para el filtro actual.";
     case "luchador":
-      return "No hay luchadores para el filtro actual.";
+      return filterContext?.selectedEventRef
+        ? "No hay luchadores vinculados a ese evento."
+        : "No hay luchadores para el filtro actual.";
     case "categoriaPeso":
       return "No hay categorías para esa disciplina.";
     default:
@@ -617,9 +628,53 @@ export default function PanelIA(): ReactElement {
   );
 
   const filterContext = useMemo<ReferenceFilterContext>(
-    () => getActiveFilterContext(form),
-    [form]
+    () => getActiveFilterContext(form, auxiliary),
+    [form, auxiliary]
   );
+
+  const canSaveDraft = Boolean(result?.ok && result.output) && !isSavingDraft;
+
+  const resetDerivedUiState = useCallback((): void => {
+    setResult(null);
+    setSaveDraftStatus({
+      type: "idle",
+      message: "",
+    });
+  }, []);
+
+  const reloadReferenceEntities = useCallback(async (): Promise<void> => {
+    try {
+      setIsLoadingReferences(true);
+      setReferenceLoadError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/reference-entities`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const payload = (await response.json()) as ReferenceEntitiesApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          "message" in payload && payload.message
+            ? payload.message
+            : "No se pudieron cargar las referencias."
+        );
+      }
+
+      setReferenceData(payload.data);
+      setForm((prev) => clearInvalidDependentReferences(prev, auxiliary, payload.data));
+    } catch (error) {
+      setReferenceLoadError(
+        error instanceof Error
+          ? error.message
+          : "Error desconocido cargando referencias."
+      );
+      setReferenceData(EMPTY_REFERENCE_DATA);
+    } finally {
+      setIsLoadingReferences(false);
+    }
+  }, [auxiliary]);
 
   useEffect(() => {
     const nextState = getInitialFormState(contentType);
@@ -633,50 +688,32 @@ export default function PanelIA(): ReactElement {
   }, [contentType]);
 
   useEffect(() => {
-    let isCancelled = false;
+    void reloadReferenceEntities();
+  }, [reloadReferenceEntities]);
 
-    async function loadReferenceEntities(): Promise<void> {
-      try {
-        setIsLoadingReferences(true);
-        setReferenceLoadError("");
-
-        const response = await fetch(`${API_BASE_URL}/api/reference-entities`);
-        const payload = (await response.json()) as ReferenceEntitiesApiResponse;
-
-        if (!response.ok || !payload.ok) {
-          throw new Error(
-            "message" in payload && payload.message
-              ? payload.message
-              : "No se pudieron cargar las referencias."
-          );
-        }
-
-        if (!isCancelled) {
-          setReferenceData(payload.data);
-          setForm((prev) => clearInvalidDependentReferences(prev, payload.data));
-        }
-      } catch (error) {
-        if (!isCancelled) {
-          setReferenceLoadError(
-            error instanceof Error
-              ? error.message
-              : "Error desconocido cargando referencias."
-          );
-          setReferenceData(EMPTY_REFERENCE_DATA);
-        }
-      } finally {
-        if (!isCancelled) {
-          setIsLoadingReferences(false);
-        }
+  useEffect(() => {
+    function handleVisibilityChange(): void {
+      if (document.visibilityState === "visible") {
+        void reloadReferenceEntities();
       }
     }
 
-    void loadReferenceEntities();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      isCancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [reloadReferenceEntities]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void reloadReferenceEntities();
+    }, AUTO_REFRESH_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [reloadReferenceEntities]);
 
   const visibleSchemaFields = useMemo(
     () => definition.schemaFields.filter((field) => !shouldHideField(field, form)),
@@ -695,42 +732,35 @@ export default function PanelIA(): ReactElement {
       case "boolean":
         nextValue = typeof rawValue === "boolean" ? rawValue : false;
         break;
-
       case "number":
         nextValue =
           typeof rawValue === "string" && rawValue.trim() !== ""
             ? Number(rawValue)
             : undefined;
         break;
-
       case "slug":
         nextValue = {
           current: typeof rawValue === "string" ? rawValue : "",
         };
         break;
-
       case "reference":
         nextValue =
           typeof rawValue === "string" && rawValue.trim()
             ? toReferenceValue(rawValue.trim())
             : undefined;
         break;
-
       case "referenceArray":
         nextValue =
           typeof rawValue === "string"
             ? parseReferenceArrayInput(rawValue).map(toReferenceValue)
             : [];
         break;
-
       case "portableText":
         nextValue = typeof rawValue === "string" ? rawValue : "";
         break;
-
       case "image":
         nextValue = typeof rawValue === "string" ? rawValue.trim() : "";
         break;
-
       case "datetime":
       case "string":
       case "text":
@@ -739,6 +769,8 @@ export default function PanelIA(): ReactElement {
         break;
     }
 
+    resetDerivedUiState();
+
     setForm((prev) => {
       const nextForm = {
         ...prev,
@@ -746,7 +778,7 @@ export default function PanelIA(): ReactElement {
       };
 
       return FIELDS_THAT_TRIGGER_CLEANUP.has(name)
-        ? clearInvalidDependentReferences(nextForm, referenceData)
+        ? clearInvalidDependentReferences(nextForm, auxiliary, referenceData)
         : nextForm;
     });
   }
@@ -756,6 +788,8 @@ export default function PanelIA(): ReactElement {
     refValue: string,
     checked: boolean
   ): void {
+    resetDerivedUiState();
+
     setForm((prev) => {
       const currentValues = getReferenceArrayValues(prev[field.name]);
 
@@ -768,19 +802,40 @@ export default function PanelIA(): ReactElement {
         [field.name]: nextValues.map(toReferenceValue),
       };
 
-      return clearInvalidDependentReferences(nextForm, referenceData);
+      return clearInvalidDependentReferences(nextForm, auxiliary, referenceData);
     });
   }
 
   function updateAuxiliaryField(
     name: string,
-    kind: "string" | "text" | "boolean",
+    kind: "string" | "text" | "boolean" | "reference",
     rawValue: string | boolean
   ): void {
-    setAuxiliary((prev) => ({
-      ...prev,
-      [name]: kind === "boolean" ? Boolean(rawValue) : String(rawValue),
-    }));
+    resetDerivedUiState();
+
+    setAuxiliary((prev) => {
+      const nextValue =
+        kind === "boolean"
+          ? Boolean(rawValue)
+          : kind === "reference"
+          ? typeof rawValue === "string" && rawValue.trim()
+            ? toReferenceValue(rawValue.trim())
+            : undefined
+          : String(rawValue);
+
+      const nextAuxiliary = {
+        ...prev,
+        [name]: nextValue,
+      };
+
+      if (FIELDS_THAT_TRIGGER_CLEANUP.has(name)) {
+        setForm((currentForm) =>
+          clearInvalidDependentReferences(currentForm, nextAuxiliary, referenceData)
+        );
+      }
+
+      return nextAuxiliary;
+    });
   }
 
   function handleBuild(): void {
@@ -839,6 +894,8 @@ export default function PanelIA(): ReactElement {
             response.documentId ? ` (${response.documentId})` : ""
           }.`,
       });
+
+      await reloadReferenceEntities();
     } catch (error) {
       setSaveDraftStatus({
         type: "error",
@@ -881,6 +938,67 @@ export default function PanelIA(): ReactElement {
           </option>
           {referenceOptions.map((option) => (
             <option key={`${field.name}-${option.value}`} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+
+        {!isLoadingReferences && referenceOptions.length === 0 ? (
+          <p style={styles.inlineEmptyState}>
+            {getReferenceEmptyStateMessage(referenceTarget, filterContext)}
+          </p>
+        ) : null}
+      </>
+    );
+  }
+
+  function renderAuxiliaryReferenceSelect(input: {
+    name: string;
+    label: string;
+    referenceTo?: ReferenceTarget;
+  }): ReactElement {
+    const referenceTarget = input.referenceTo;
+
+    if (!referenceTarget) {
+      return (
+        <input
+          type="text"
+          value={getReferenceValue(auxiliary[input.name])}
+          onChange={(event) =>
+            updateAuxiliaryField(input.name, "reference", event.target.value)
+          }
+          style={styles.input}
+          placeholder="ID de referencia de Sanity"
+        />
+      );
+    }
+
+    const referenceOptions = getFilteredReferenceEntityOptionsFromApiData({
+      target: referenceTarget,
+      filters: filterContext,
+      referenceData,
+    });
+
+    const currentValue = getReferenceValue(auxiliary[input.name]);
+    const disabled = isLoadingReferences || referenceOptions.length === 0;
+
+    return (
+      <>
+        <select
+          value={currentValue}
+          onChange={(event) =>
+            updateAuxiliaryField(input.name, "reference", event.target.value)
+          }
+          style={styles.input}
+          disabled={disabled}
+        >
+          <option value="">
+            {isLoadingReferences
+              ? "Cargando referencias..."
+              : getReferencePlaceholder(referenceTarget)}
+          </option>
+          {referenceOptions.map((option) => (
+            <option key={`${input.name}-${option.value}`} value={option.value}>
               {option.label}
             </option>
           ))}
@@ -1140,12 +1258,18 @@ export default function PanelIA(): ReactElement {
                 onClick={() => {
                   void handleSaveDraft();
                 }}
-                style={styles.secondaryButton}
-                disabled={isSavingDraft}
+                style={canSaveDraft ? styles.secondaryButton : styles.buttonDisabled}
+                disabled={!canSaveDraft}
               >
                 {isSavingDraft ? "Guardando..." : "Guardar borrador"}
               </button>
             </div>
+
+            {isLoadingReferences ? (
+              <div style={styles.feedbackNeutral}>
+                Actualizando referencias desde Sanity...
+              </div>
+            ) : null}
 
             {referenceLoadError ? (
               <div style={styles.feedbackError}>{referenceLoadError}</div>
@@ -1213,6 +1337,11 @@ export default function PanelIA(): ReactElement {
                         }
                       />
                       <span>{input.label}</span>
+                    </label>
+                  ) : input.kind === "reference" ? (
+                    <label style={styles.label}>
+                      <span>{input.label}</span>
+                      {renderAuxiliaryReferenceSelect(input)}
                     </label>
                   ) : (
                     <label style={styles.label}>
@@ -1482,6 +1611,25 @@ const styles: Record<string, CSSProperties> = {
     color: "#f5f7fa",
     fontWeight: 700,
     cursor: "pointer",
+  },
+  buttonDisabled: {
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 14,
+    padding: "12px 16px",
+    background: "rgba(255,255,255,0.04)",
+    color: "rgba(245,247,250,0.45)",
+    fontWeight: 700,
+    cursor: "not-allowed",
+    opacity: 0.7,
+  },
+  feedbackNeutral: {
+    borderRadius: 14,
+    padding: "12px 14px",
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    color: "#dbe4ee",
+    fontSize: 13,
+    lineHeight: 1.4,
   },
   feedbackSuccess: {
     borderRadius: 14,

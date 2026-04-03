@@ -70,6 +70,15 @@ export function buildDisciplinaOutput({
         "La descripción no puede superar 800 caracteres."
       );
     }
+
+    if (descripcion.length >= 10 && descripcion.length < 30) {
+      addIssue(
+        issues,
+        "descripcion",
+        "La descripción cumple el mínimo, pero sigue siendo demasiado pobre editorialmente.",
+        "warning"
+      );
+    }
   }
 
   if (!slug.current.trim()) {

@@ -108,6 +108,31 @@ function addIssue(
   issues.push({ field, message, severity });
 }
 
+function isValidIsoDateTime(value: string): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime());
+}
+
+function hasImageValue(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  if (typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>).length > 0;
+  }
+
+  return false;
+}
+
 export function buildNoticiaOutput({
   form,
 }: BuildNoticiaOutputParams): BuildOutputResult<NoticiaSanityOutput> {
@@ -143,16 +168,35 @@ export function buildNoticiaOutput({
 
   if (!extracto) {
     addIssue(issues, "extracto", "El extracto es obligatorio.");
-  } else if (extracto.length < 20) {
-    addIssue(issues, "extracto", "El extracto debe tener al menos 20 caracteres.");
+  } else {
+    if (extracto.length < 20) {
+      addIssue(issues, "extracto", "El extracto debe tener al menos 20 caracteres.");
+    }
+
+    if (extracto.length > 220) {
+      addIssue(issues, "extracto", "El extracto no puede superar 220 caracteres.");
+    }
   }
 
   if (!contenidoTextoPlano) {
     addIssue(issues, "contenido", "El contenido es obligatorio.");
+  } else if (contenidoTextoPlano.length < 40) {
+    addIssue(
+      issues,
+      "contenido",
+      "El contenido es demasiado corto para una noticia útil.",
+      "warning"
+    );
   }
 
   if (!fechaPublicacion) {
     addIssue(issues, "fechaPublicacion", "La fecha de publicación es obligatoria.");
+  } else if (!isValidIsoDateTime(fechaPublicacion)) {
+    addIssue(
+      issues,
+      "fechaPublicacion",
+      "La fecha de publicación debe ser un datetime válido."
+    );
   }
 
   if (!disciplina) {
@@ -170,6 +214,37 @@ export function buildNoticiaOutput({
 
   if (!slug.current.trim()) {
     addIssue(issues, "slug", "No se pudo generar un slug válido.");
+  }
+
+  if (eventoRelacionado && luchadoresRelacionados.length === 0) {
+    addIssue(
+      issues,
+      "luchadoresRelacionados",
+      "Hay un evento relacionado, pero no has añadido luchadores relacionados.",
+      "warning"
+    );
+  }
+
+  if (
+    !organizacionRelacionada &&
+    !eventoRelacionado &&
+    luchadoresRelacionados.length === 0
+  ) {
+    addIssue(
+      issues,
+      "organizacionRelacionada",
+      "La noticia no tiene ninguna relación editorial extra: ni organización, ni evento, ni luchadores.",
+      "warning"
+    );
+  }
+
+  if (!hasImageValue(imagenPrincipal) && destacada) {
+    addIssue(
+      issues,
+      "imagenPrincipal",
+      "La noticia está marcada como destacada, pero no tiene imagen principal.",
+      "warning"
+    );
   }
 
   if (issues.some((issue) => issue.severity === "error")) {
@@ -191,7 +266,7 @@ export function buildNoticiaOutput({
     destacada,
   };
 
-  if (imagenPrincipal) {
+  if (hasImageValue(imagenPrincipal)) {
     output.imagenPrincipal = imagenPrincipal;
   }
 

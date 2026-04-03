@@ -769,6 +769,14 @@ export const contentTypes: ContentTypeDefinition[] = [
     ],
     auxiliaryInputs: [
       {
+        name: "disciplina",
+        label: "Disciplina",
+        kind: "reference",
+        referenceTo: "disciplina",
+        description:
+          "Solo se usa en el laboratorio para filtrar evento, categoría y luchadores. No se guarda en el documento final.",
+      },
+      {
         name: "contextoPrevio",
         label: "Contexto previo",
         kind: "text",
