@@ -21,7 +21,7 @@ function getString(value: unknown): string {
 
 function getReferenceInput(value: unknown): ReferenceInput | null {
   if (typeof value === "string") {
-    return value;
+    return value.trim();
   }
 
   if (value && typeof value === "object") {
@@ -84,7 +84,16 @@ function isEventoEstado(value: string): value is EventoSanityOutput["estado"] {
 }
 
 function isValidHoraLocal(value: string): boolean {
-  return /^\d{1,2}:\d{2}$/.test(value);
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+
+  if (!match) {
+    return false;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
 }
 
 export function buildEventoOutput({
@@ -133,17 +142,11 @@ export function buildEventoOutput({
   }
 
   if (horaLocal) {
-    if (horaLocal.length > 60) {
+    if (!isValidHoraLocal(horaLocal)) {
       addIssue(
         issues,
         "horaLocal",
-        "La hora local no puede superar 60 caracteres."
-      );
-    } else if (!isValidHoraLocal(horaLocal)) {
-      addIssue(
-        issues,
-        "horaLocal",
-        "La hora local debe tener formato 22:00."
+        "La hora local debe tener formato válido, por ejemplo 22:00."
       );
     }
   }
@@ -221,7 +224,12 @@ export function buildEventoOutput({
   }
 
   if (!hasImageValue(imagen)) {
-    addIssue(issues, "imagen", "La imagen es obligatoria.");
+    addIssue(
+      issues,
+      "imagen",
+      "El evento no tiene imagen. Puede guardarse como borrador, pero conviene añadir una antes de publicar.",
+      "warning"
+    );
   }
 
   let organizacion: EventoSanityOutput["organizacion"] | null = null;
@@ -283,18 +291,31 @@ export function buildEventoOutput({
         "warning"
       );
     }
+
+    if (estadoRaw === "cancelado" && dondeVer) {
+      addIssue(
+        issues,
+        "dondeVer",
+        "El evento está cancelado, pero mantiene información de emisión. Revísalo por si no tiene sentido.",
+        "warning"
+      );
+    }
   }
 
-  if (
-    !descripcion &&
-    !descripcionCorta &&
-    !cartelPrincipal &&
-    !dondeVer
-  ) {
+  if (!descripcion && !descripcionCorta && !cartelPrincipal && !dondeVer) {
     addIssue(
       issues,
       "descripcion",
       "El evento está demasiado pelado: conviene añadir descripción, descripción corta, cartel principal o dónde ver.",
+      "warning"
+    );
+  }
+
+  if (estadoRaw === "celebrado" && !descripcion && !notas) {
+    addIssue(
+      issues,
+      "descripcion",
+      "El evento ya figura como celebrado. Conviene añadir una descripción, notas o contexto posterior al evento.",
       "warning"
     );
   }

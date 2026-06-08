@@ -365,6 +365,14 @@ function getLuchadorOptions(params: {
   const { filters, referenceData } = params;
   const options = referenceData.luchador ?? [];
 
+  const hasFightersLinkedToSelectedEvent =
+    Boolean(filters.selectedEventRef) &&
+    options.some(
+      (option) =>
+        Array.isArray(option.eventIds) &&
+        option.eventIds.includes(filters.selectedEventRef as string)
+    );
+
   return options.filter((option) => {
     const matchesDiscipline =
       !filters.selectedDisciplineRef ||
@@ -379,6 +387,7 @@ function getLuchadorOptions(params: {
 
     const matchesEvent =
       !filters.selectedEventRef ||
+      !hasFightersLinkedToSelectedEvent ||
       (Array.isArray(option.eventIds) &&
         option.eventIds.includes(filters.selectedEventRef));
 

@@ -25,24 +25,28 @@ function getNumber(value: unknown): number | undefined {
 
 function getReferenceInput(value: unknown): ReferenceInput | null {
   if (typeof value === "string") {
-    return value;
+    const trimmedValue = value.trim();
+    return trimmedValue ? trimmedValue : null;
   }
 
   if (value && typeof value === "object") {
     const candidate = value as { _ref?: unknown; _type?: unknown };
 
-    if (
-      typeof candidate._ref === "string" ||
-      typeof candidate._ref === "undefined" ||
-      candidate._ref === null
-    ) {
+    if (typeof candidate._ref === "string") {
+      const trimmedRef = candidate._ref.trim();
+
+      if (!trimmedRef) {
+        return null;
+      }
+
       return {
-        _ref:
-          typeof candidate._ref === "string" || candidate._ref === null
-            ? candidate._ref
-            : undefined,
+        _ref: trimmedRef,
         _type: typeof candidate._type === "string" ? candidate._type : undefined,
       };
+    }
+
+    if (candidate._ref === null || typeof candidate._ref === "undefined") {
+      return null;
     }
   }
 
@@ -62,6 +66,36 @@ function isUnidadValida(
   value: string
 ): value is CategoriaPesoSanityOutput["unidad"] {
   return UNIDADES_VALIDAS.includes(value as CategoriaPesoSanityOutput["unidad"]);
+}
+
+function addPesoEditorialWarnings(
+  issues: ValidationIssue[],
+  limitePeso: number,
+  unidad: CategoriaPesoSanityOutput["unidad"]
+): void {
+  if (unidad === "lb") {
+    if (limitePeso < 90 || limitePeso > 350) {
+      addIssue(
+        issues,
+        "limitePeso",
+        "El límite de peso en lb parece fuera de un rango habitual para categorías de combate. Revísalo.",
+        "warning"
+      );
+    }
+
+    return;
+  }
+
+  if (unidad === "kg") {
+    if (limitePeso < 40 || limitePeso > 160) {
+      addIssue(
+        issues,
+        "limitePeso",
+        "El límite de peso en kg parece fuera de un rango habitual para categorías de combate. Revísalo.",
+        "warning"
+      );
+    }
+  }
 }
 
 export function buildCategoriaPesoOutput({
@@ -130,6 +164,14 @@ export function buildCategoriaPesoOutput({
     addIssue(issues, "unidad", "La unidad es obligatoria.");
   } else if (!isUnidadValida(unidadRaw)) {
     addIssue(issues, "unidad", "La unidad debe ser lb o kg.");
+  }
+
+  if (
+    limitePeso !== undefined &&
+    limitePeso > 0 &&
+    isUnidadValida(unidadRaw)
+  ) {
+    addPesoEditorialWarnings(issues, limitePeso, unidadRaw);
   }
 
   if (descripcion) {

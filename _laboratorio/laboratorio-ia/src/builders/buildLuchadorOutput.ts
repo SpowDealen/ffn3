@@ -30,24 +30,28 @@ function getNumber(value: unknown): number | undefined {
 
 function getReferenceInput(value: unknown): ReferenceInput | null {
   if (typeof value === "string") {
-    return value;
+    const trimmedValue = value.trim();
+    return trimmedValue ? trimmedValue : null;
   }
 
   if (value && typeof value === "object") {
     const candidate = value as { _ref?: unknown; _type?: unknown };
 
-    if (
-      typeof candidate._ref === "string" ||
-      typeof candidate._ref === "undefined" ||
-      candidate._ref === null
-    ) {
+    if (typeof candidate._ref === "string") {
+      const trimmedRef = candidate._ref.trim();
+
+      if (!trimmedRef) {
+        return null;
+      }
+
       return {
-        _ref:
-          typeof candidate._ref === "string" || candidate._ref === null
-            ? candidate._ref
-            : undefined,
+        _ref: trimmedRef,
         _type: typeof candidate._type === "string" ? candidate._type : undefined,
       };
+    }
+
+    if (candidate._ref === null || typeof candidate._ref === "undefined") {
+      return null;
     }
   }
 
@@ -204,7 +208,8 @@ export function buildLuchadorOutput({
     addIssue(
       issues,
       "ordenDestacadoHome",
-      "Si el luchador está destacado en inicio, debes indicar su orden."
+      "El luchador está destacado en inicio, pero no tiene orden. Puede guardarse como borrador, pero conviene completarlo antes de publicar.",
+      "warning"
     );
   }
 
@@ -213,6 +218,15 @@ export function buildLuchadorOutput({
       issues,
       "ordenDestacadoHome",
       "Hay orden en home, pero el luchador no está marcado como destacado.",
+      "warning"
+    );
+  }
+
+  if (!hasImageValue(imagen)) {
+    addIssue(
+      issues,
+      "imagen",
+      "El luchador no tiene imagen. Puede guardarse como borrador, pero conviene añadir una antes de publicar.",
       "warning"
     );
   }
@@ -250,17 +264,20 @@ export function buildLuchadorOutput({
     getReferenceInput(form.categoriaPeso)
   ) as LuchadorSanityOutput["categoriaPeso"] | undefined;
 
+  if (!categoriaPeso) {
+    addIssue(
+      issues,
+      "categoriaPeso",
+      "El luchador no tiene categoría de peso. Puede guardarse como borrador, pero conviene completarla para que las páginas relacionadas funcionen mejor.",
+      "warning"
+    );
+  }
+
   if (!slug.current.trim()) {
     addIssue(issues, "slug", "No se pudo generar un slug válido.");
   }
 
-  if (
-    !hasImageValue(imagen) &&
-    !apodo &&
-    !nacionalidad &&
-    !record &&
-    !descripcion
-  ) {
+  if (!apodo && !nacionalidad && !record && !descripcion) {
     addIssue(
       issues,
       "descripcion",

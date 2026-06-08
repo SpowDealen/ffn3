@@ -10,6 +10,11 @@ type BuildOrganizacionOutputParams = {
   form: ContentFormState;
 };
 
+type ReferenceValue = {
+  _type: "reference";
+  _ref: string;
+};
+
 function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -22,35 +27,45 @@ function getNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function getReferenceArrayValues(value: unknown): Array<{
-  _type: "reference";
-  _ref: string;
-}> {
+function getReferenceValue(value: unknown): ReferenceValue | null {
+  if (typeof value === "string") {
+    const ref = value.trim();
+
+    if (ref) {
+      return {
+        _type: "reference",
+        _ref: ref,
+      };
+    }
+  }
+
+  if (
+    value &&
+    typeof value === "object" &&
+    "_ref" in value &&
+    typeof (value as { _ref?: unknown })._ref === "string"
+  ) {
+    const ref = ((value as { _ref?: string })._ref || "").trim();
+
+    if (ref) {
+      return {
+        _type: "reference",
+        _ref: ref,
+      };
+    }
+  }
+
+  return null;
+}
+
+function getReferenceArrayValues(value: unknown): ReferenceValue[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
   return value
-    .map((item) => {
-      if (
-        item &&
-        typeof item === "object" &&
-        "_ref" in item &&
-        typeof (item as { _ref?: unknown })._ref === "string"
-      ) {
-        const ref = ((item as { _ref?: string })._ref || "").trim();
-
-        if (ref) {
-          return {
-            _type: "reference" as const,
-            _ref: ref,
-          };
-        }
-      }
-
-      return null;
-    })
-    .filter((item): item is { _type: "reference"; _ref: string } => Boolean(item));
+    .map((item) => getReferenceValue(item))
+    .filter((item): item is ReferenceValue => Boolean(item));
 }
 
 function getStringArrayFromTextarea(value: unknown): string[] {
@@ -129,7 +144,21 @@ export function buildOrganizacionOutput({
   }
 
   if (!hasImageValue(logo)) {
-    addIssue(issues, "logo", "El logo es obligatorio.");
+    addIssue(
+      issues,
+      "logo",
+      "La organización no tiene logo. Puede guardarse como borrador, pero conviene añadirlo antes de publicar.",
+      "warning"
+    );
+  }
+
+  if (!hasImageValue(banner)) {
+    addIssue(
+      issues,
+      "banner",
+      "La organización no tiene banner. Puede guardarse como borrador, pero la ficha pública quedará más pobre.",
+      "warning"
+    );
   }
 
   if (!descripcionCorta) {
@@ -205,22 +234,22 @@ export function buildOrganizacionOutput({
         "anioFundacion",
         "El año de fundación debe ser un número entero."
       );
-    }
+    } else {
+      if (anioFundacion < 1900) {
+        addIssue(
+          issues,
+          "anioFundacion",
+          "El año de fundación no puede ser inferior a 1900."
+        );
+      }
 
-    if (anioFundacion < 1900) {
-      addIssue(
-        issues,
-        "anioFundacion",
-        "El año de fundación no puede ser inferior a 1900."
-      );
-    }
-
-    if (anioFundacion > currentYear) {
-      addIssue(
-        issues,
-        "anioFundacion",
-        `El año de fundación no puede superar ${currentYear}.`
-      );
+      if (anioFundacion > currentYear) {
+        addIssue(
+          issues,
+          "anioFundacion",
+          `El año de fundación no puede superar ${currentYear}.`
+        );
+      }
     }
   }
 
@@ -270,7 +299,10 @@ export function buildOrganizacionOutput({
     }
   }
 
-  const uniqueDatosCuriosos = new Set(datosCuriosos.map((item) => item.toLowerCase()));
+  const uniqueDatosCuriosos = new Set(
+    datosCuriosos.map((item) => item.toLowerCase())
+  );
+
   if (uniqueDatosCuriosos.size !== datosCuriosos.length) {
     addIssue(
       issues,
@@ -280,20 +312,13 @@ export function buildOrganizacionOutput({
   }
 
   if (disciplinas.length === 0) {
-    addIssue(
-      issues,
-      "disciplinas",
-      "Debes indicar al menos una disciplina."
-    );
+    addIssue(issues, "disciplinas", "Debes indicar al menos una disciplina.");
   }
 
   const uniqueDisciplinaRefs = new Set(disciplinas.map((item) => item._ref));
+
   if (uniqueDisciplinaRefs.size !== disciplinas.length) {
-    addIssue(
-      issues,
-      "disciplinas",
-      "Las disciplinas no deben repetirse."
-    );
+    addIssue(issues, "disciplinas", "Las disciplinas no deben repetirse.");
   }
 
   if (sitioWeb && !isValidUrl(sitioWeb)) {
@@ -315,6 +340,15 @@ export function buildOrganizacionOutput({
       issues,
       "descripcion",
       "La organización cumple lo mínimo, pero está demasiado pelada de contexto institucional.",
+      "warning"
+    );
+  }
+
+  if (activa === false) {
+    addIssue(
+      issues,
+      "activa",
+      "La organización está marcada como inactiva. Revísalo si debería aparecer como organización principal.",
       "warning"
     );
   }

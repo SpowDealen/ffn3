@@ -55,30 +55,39 @@ export function buildDisciplinaOutput({
   if (!descripcion) {
     addIssue(issues, "descripcion", "La descripción es obligatoria.");
   } else {
-    if (descripcion.length < 10) {
+    if (descripcion.length < 20) {
       addIssue(
         issues,
         "descripcion",
-        "La descripción debe tener al menos 10 caracteres."
+        "La descripción debe tener al menos 20 caracteres."
       );
     }
 
-    if (descripcion.length > 800) {
+    if (descripcion.length > 1200) {
       addIssue(
         issues,
         "descripcion",
-        "La descripción no puede superar 800 caracteres."
+        "La descripción no puede superar 1200 caracteres."
       );
     }
 
-    if (descripcion.length >= 10 && descripcion.length < 30) {
+    if (descripcion.length >= 20 && descripcion.length < 60) {
       addIssue(
         issues,
         "descripcion",
-        "La descripción cumple el mínimo, pero sigue siendo demasiado pobre editorialmente.",
+        "La descripción cumple el mínimo, pero sigue siendo pobre editorialmente.",
         "warning"
       );
     }
+  }
+
+  if (activa === false) {
+    addIssue(
+      issues,
+      "activa",
+      "La disciplina está marcada como inactiva. Revísalo si debe aparecer en la web pública.",
+      "warning"
+    );
   }
 
   if (!slug.current.trim()) {

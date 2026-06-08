@@ -21,6 +21,17 @@ function getBoolean(value: unknown, fallback = false): boolean {
 }
 
 function getReferenceValue(value: unknown): ReferenceValue | undefined {
+  if (typeof value === "string") {
+    const ref = value.trim();
+
+    if (ref) {
+      return {
+        _type: "reference",
+        _ref: ref,
+      };
+    }
+  }
+
   if (
     value &&
     typeof value === "object" &&
@@ -74,7 +85,8 @@ function createPortableTextFromString(value: string): PortableTextValue {
 
 function getPortableTextValue(value: unknown): PortableTextValue {
   if (typeof value === "string") {
-    return createPortableTextFromString(value.trim());
+    const trimmedValue = value.trim();
+    return trimmedValue ? createPortableTextFromString(trimmedValue) : [];
   }
 
   if (Array.isArray(value)) {
@@ -145,7 +157,9 @@ export function buildNoticiaOutput({
   const fechaPublicacion = getString(form.fechaPublicacion);
   const disciplina = getReferenceValue(form.disciplina);
   const organizacionRelacionada = getReferenceValue(form.organizacionRelacionada);
-  const luchadoresRelacionados = getReferenceArrayValues(form.luchadoresRelacionados);
+  const luchadoresRelacionados = getReferenceArrayValues(
+    form.luchadoresRelacionados
+  );
   const eventoRelacionado = getReferenceValue(form.eventoRelacionado);
   const destacada = getBoolean(form.destacada, false);
   const imagenPrincipal = form.imagenPrincipal;
@@ -170,7 +184,11 @@ export function buildNoticiaOutput({
     addIssue(issues, "extracto", "El extracto es obligatorio.");
   } else {
     if (extracto.length < 20) {
-      addIssue(issues, "extracto", "El extracto debe tener al menos 20 caracteres.");
+      addIssue(
+        issues,
+        "extracto",
+        "El extracto debe tener al menos 20 caracteres."
+      );
     }
 
     if (extracto.length > 220) {
@@ -180,17 +198,31 @@ export function buildNoticiaOutput({
 
   if (!contenidoTextoPlano) {
     addIssue(issues, "contenido", "El contenido es obligatorio.");
-  } else if (contenidoTextoPlano.length < 40) {
-    addIssue(
-      issues,
-      "contenido",
-      "El contenido es demasiado corto para una noticia útil.",
-      "warning"
-    );
+  } else {
+    if (contenidoTextoPlano.length < 40) {
+      addIssue(
+        issues,
+        "contenido",
+        "El contenido es demasiado corto para una noticia útil.",
+        "warning"
+      );
+    }
+
+    if (contenidoTextoPlano.length > 12000) {
+      addIssue(
+        issues,
+        "contenido",
+        "El contenido es demasiado largo para este flujo del laboratorio."
+      );
+    }
   }
 
   if (!fechaPublicacion) {
-    addIssue(issues, "fechaPublicacion", "La fecha de publicación es obligatoria.");
+    addIssue(
+      issues,
+      "fechaPublicacion",
+      "La fecha de publicación es obligatoria."
+    );
   } else if (!isValidIsoDateTime(fechaPublicacion)) {
     addIssue(
       issues,
@@ -203,7 +235,10 @@ export function buildNoticiaOutput({
     addIssue(issues, "disciplina", "La disciplina es obligatoria.");
   }
 
-  const uniqueFighterRefs = new Set(luchadoresRelacionados.map((item) => item._ref));
+  const uniqueFighterRefs = new Set(
+    luchadoresRelacionados.map((item) => item._ref)
+  );
+
   if (uniqueFighterRefs.size !== luchadoresRelacionados.length) {
     addIssue(
       issues,
@@ -214,6 +249,15 @@ export function buildNoticiaOutput({
 
   if (!slug.current.trim()) {
     addIssue(issues, "slug", "No se pudo generar un slug válido.");
+  }
+
+  if (titulo && extracto && titulo.toLowerCase() === extracto.toLowerCase()) {
+    addIssue(
+      issues,
+      "extracto",
+      "El extracto no debería ser exactamente igual que el título.",
+      "warning"
+    );
   }
 
   if (eventoRelacionado && luchadoresRelacionados.length === 0) {
@@ -238,11 +282,29 @@ export function buildNoticiaOutput({
     );
   }
 
+  if (!hasImageValue(imagenPrincipal)) {
+    addIssue(
+      issues,
+      "imagenPrincipal",
+      "La noticia no tiene imagen principal. Puede guardarse como borrador, pero conviene añadir una antes de publicar.",
+      "warning"
+    );
+  }
+
   if (!hasImageValue(imagenPrincipal) && destacada) {
     addIssue(
       issues,
       "imagenPrincipal",
       "La noticia está marcada como destacada, pero no tiene imagen principal.",
+      "warning"
+    );
+  }
+
+  if (destacada && contenidoTextoPlano.length > 0 && contenidoTextoPlano.length < 80) {
+    addIssue(
+      issues,
+      "contenido",
+      "La noticia está marcada como destacada, pero el contenido todavía es demasiado pobre.",
       "warning"
     );
   }
@@ -262,7 +324,7 @@ export function buildNoticiaOutput({
     extracto,
     contenido,
     fechaPublicacion,
-    disciplina: disciplina!,
+    disciplina: disciplina as ReferenceValue,
     destacada,
   };
 
