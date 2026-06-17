@@ -356,6 +356,67 @@ type UfcBatchResolveApiResponse =
       error?: string;
     };
 
+
+type BkfcFightCardItem = {
+  id: string;
+  section: "principal" | "preliminar";
+  sectionLabel: "Main Card" | "Prelims";
+  order: number;
+  redFighter: string;
+  blueFighter: string;
+  weightClass?: string;
+  titleFight: boolean;
+  status: "programado" | "finalizado" | "cancelado";
+  winnerName?: string;
+  method?: string;
+  round?: number;
+  time?: string;
+};
+
+type BkfcOfficialEventItem = {
+  id: string;
+  name: string;
+  headline?: string;
+  mainEvent?: string;
+  startDate?: string;
+  endDate?: string;
+  venue?: string;
+  city?: string;
+  region?: string;
+  country?: string;
+  locationText?: string;
+  watchText?: string;
+  description?: string;
+  sourceUrl: string;
+  canonicalUrl: string;
+  imageUrl?: string;
+  status: "proximo" | "celebrado" | "cancelado";
+  fightCard?: BkfcFightCardItem[];
+};
+
+type BkfcOfficialEventsApiResponse =
+  | {
+      ok: true;
+      source: "bkfc";
+      fetchedAt: string;
+      count: number;
+      items: BkfcOfficialEventItem[];
+    }
+  | {
+      ok: false;
+      source?: "bkfc";
+      fetchedAt?: string;
+      count?: number;
+      items?: BkfcOfficialEventItem[];
+      error?: string;
+    };
+
+type BkfcEventResolution = UfcEventResolution;
+type BkfcEventResolutionSuccess = Extract<
+  BkfcEventResolution,
+  { ok: true }
+>;
+
 type TransformEventApiResponse =
   | {
       ok: true;
@@ -1182,6 +1243,26 @@ export default function PanelIA(): ReactElement {
   const [showAllUfcEventBatchItems, setShowAllUfcEventBatchItems] =
     useState(false);
 
+  const [bkfcEventItems, setBkfcEventItems] = useState<
+    BkfcOfficialEventItem[]
+  >([]);
+  const [selectedBkfcEventId, setSelectedBkfcEventId] = useState("");
+  const [isLoadingBkfcEvents, setIsLoadingBkfcEvents] = useState(false);
+  const [bkfcEventsFetchedAt, setBkfcEventsFetchedAt] = useState("");
+  const [bkfcSourceStatus, setBkfcSourceStatus] =
+    useState<OfficialSourceStatus>({
+      type: "idle",
+      message: "",
+    });
+  const [bkfcEventResolution, setBkfcEventResolution] =
+    useState<BkfcEventResolution | null>(null);
+  const [isResolvingBkfcEvent, setIsResolvingBkfcEvent] = useState(false);
+  const [isCreatingBkfcEvent, setIsCreatingBkfcEvent] = useState(false);
+  const [isCreatingBkfcFighters, setIsCreatingBkfcFighters] = useState(false);
+  const [isCreatingBkfcFights, setIsCreatingBkfcFights] = useState(false);
+  const [isPreparingFullBkfcCard, setIsPreparingFullBkfcCard] =
+    useState(false);
+
   const [isLoadingReferences, setIsLoadingReferences] = useState(false);
   const [referenceLoadError, setReferenceLoadError] = useState("");
 
@@ -1203,6 +1284,20 @@ export default function PanelIA(): ReactElement {
       null,
     [officialEventItems, selectedOfficialEventId]
   );
+
+  const selectedBkfcEvent = useMemo(
+    () =>
+      bkfcEventItems.find((item) => item.id === selectedBkfcEventId) ?? null,
+    [bkfcEventItems, selectedBkfcEventId]
+  );
+
+  const isBkfcBusy =
+    isLoadingBkfcEvents ||
+    isResolvingBkfcEvent ||
+    isCreatingBkfcEvent ||
+    isCreatingBkfcFighters ||
+    isCreatingBkfcFights ||
+    isPreparingFullBkfcCard;
 
   const canCreateMissingUfcFighters =
     Boolean(
@@ -2457,6 +2552,484 @@ export default function PanelIA(): ReactElement {
     reloadReferenceEntities,
     requestUfcEventResolution,
     selectedOfficialEvent,
+  ]);
+
+  const reloadOfficialBkfcEvents = useCallback(async (): Promise<void> => {
+    try {
+      setIsLoadingBkfcEvents(true);
+      setBkfcSourceStatus({ type: "idle", message: "" });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/bkfc/events?refresh=${Date.now()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        }
+      );
+
+      const payload = (await response.json()) as BkfcOfficialEventsApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron cargar los eventos oficiales de BKFC."
+        );
+      }
+
+      setBkfcEventItems(payload.items);
+      setBkfcEventsFetchedAt(payload.fetchedAt);
+      setBkfcEventResolution(null);
+      setSelectedBkfcEventId((currentId) =>
+        payload.items.some((item) => item.id === currentId) ? currentId : ""
+      );
+      setBkfcSourceStatus({
+        type: "success",
+        message: `${payload.count} eventos oficiales de BKFC cargados.`,
+      });
+    } catch (error) {
+      setBkfcEventItems([]);
+      setSelectedBkfcEventId("");
+      setBkfcEventsFetchedAt("");
+      setBkfcEventResolution(null);
+      setBkfcSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido cargando los eventos oficiales de BKFC.",
+      });
+    } finally {
+      setIsLoadingBkfcEvents(false);
+    }
+  }, []);
+
+  const requestBkfcEventResolution = useCallback(
+    async (
+      targetEvent: BkfcOfficialEventItem
+    ): Promise<BkfcEventResolutionSuccess> => {
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/bkfc/events/resolve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ event: targetEvent }),
+        }
+      );
+
+      const payload = (await response.json()) as BkfcEventResolution;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudo resolver la cartelera BKFC contra Sanity."
+        );
+      }
+
+      return payload;
+    },
+    []
+  );
+
+  const resolveSelectedBkfcEvent = useCallback(
+    async (
+      eventOverride?: BkfcOfficialEventItem
+    ): Promise<BkfcEventResolutionSuccess | null> => {
+      const targetEvent = eventOverride ?? selectedBkfcEvent;
+
+      if (!targetEvent) {
+        setBkfcSourceStatus({
+          type: "error",
+          message: "Selecciona primero un evento oficial de BKFC.",
+        });
+        return null;
+      }
+
+      try {
+        setIsResolvingBkfcEvent(true);
+        setBkfcSourceStatus({ type: "idle", message: "" });
+
+        const resolution = await requestBkfcEventResolution(targetEvent);
+        setBkfcEventResolution(resolution);
+        setBkfcSourceStatus({
+          type: "success",
+          message: resolution.event.found
+            ? `${resolution.counts.readyFights} combates listos, ${resolution.counts.existingFights} existentes y ${resolution.counts.pendingFights} pendientes.`
+            : "Cartelera analizada. El evento todavía no existe en Sanity.",
+        });
+
+        return resolution;
+      } catch (error) {
+        setBkfcEventResolution(null);
+        setBkfcSourceStatus({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Error desconocido resolviendo la cartelera BKFC.",
+        });
+        return null;
+      } finally {
+        setIsResolvingBkfcEvent(false);
+      }
+    },
+    [requestBkfcEventResolution, selectedBkfcEvent]
+  );
+
+  const runBkfcBulkAction = useCallback(
+    async (
+      path:
+        | "create-event"
+        | "create-fighters"
+        | "create-fights",
+      targetEvent?: BkfcOfficialEventItem
+    ): Promise<UfcBulkActionResponse | Record<string, unknown>> => {
+      const body = {
+        confirm: true,
+        event: targetEvent,
+      };
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/bkfc/events/${path}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(body),
+        }
+      );
+
+      const payload = (await response.json()) as
+        | UfcBulkActionResponse
+        | Record<string, unknown>;
+
+      if (!response.ok || !("ok" in payload) || payload.ok !== true) {
+        const error =
+          "error" in payload && typeof payload.error === "string"
+            ? payload.error
+            : `No se pudo completar la acción BKFC: ${path}.`;
+        throw new Error(error);
+      }
+
+      return payload;
+    },
+    []
+  );
+
+  const createSelectedBkfcEvent = useCallback(async (): Promise<void> => {
+    if (!selectedBkfcEvent) {
+      setBkfcSourceStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de BKFC.",
+      });
+      return;
+    }
+
+    try {
+      setIsCreatingBkfcEvent(true);
+      setBkfcSourceStatus({
+        type: "success",
+        message: "Transformando y guardando el evento BKFC como borrador...",
+      });
+
+      await runBkfcBulkAction("create-event", selectedBkfcEvent);
+      await reloadReferenceEntities();
+      const resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+      setBkfcEventResolution(resolution);
+      setBkfcSourceStatus({
+        type: "success",
+        message: resolution.event.found
+          ? "Evento BKFC creado y reconocido correctamente en Sanity."
+          : "El evento se creó, pero aún no aparece en la resolución.",
+      });
+    } catch (error) {
+      setBkfcSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido creando el evento BKFC.",
+      });
+    } finally {
+      setIsCreatingBkfcEvent(false);
+    }
+  }, [
+    reloadReferenceEntities,
+    requestBkfcEventResolution,
+    runBkfcBulkAction,
+    selectedBkfcEvent,
+  ]);
+
+  const createMissingBkfcFighters = useCallback(async (): Promise<void> => {
+    if (!selectedBkfcEvent) {
+      setBkfcSourceStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de BKFC.",
+      });
+      return;
+    }
+
+    try {
+      setIsCreatingBkfcFighters(true);
+      const payload = (await runBkfcBulkAction(
+        "create-fighters",
+        selectedBkfcEvent
+      )) as UfcBulkActionResponse;
+
+      await reloadReferenceEntities();
+      const resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+      setBkfcEventResolution(resolution);
+      setBkfcSourceStatus({
+        type: "success",
+        message:
+          payload.ok && "summary" in payload
+            ? `${payload.summary.created} luchadores creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`
+            : "Luchadores BKFC procesados.",
+      });
+    } catch (error) {
+      setBkfcSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido creando luchadores BKFC.",
+      });
+    } finally {
+      setIsCreatingBkfcFighters(false);
+    }
+  }, [
+    reloadReferenceEntities,
+    requestBkfcEventResolution,
+    runBkfcBulkAction,
+    selectedBkfcEvent,
+  ]);
+
+  const createBkfcFights = useCallback(async (): Promise<void> => {
+    if (!selectedBkfcEvent) {
+      setBkfcSourceStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de BKFC.",
+      });
+      return;
+    }
+
+    try {
+      setIsCreatingBkfcFights(true);
+      const payload = (await runBkfcBulkAction(
+        "create-fights",
+        selectedBkfcEvent
+      )) as UfcBulkActionResponse;
+
+      await reloadReferenceEntities();
+      const resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+      setBkfcEventResolution(resolution);
+      setBkfcSourceStatus({
+        type: "success",
+        message:
+          payload.ok && "summary" in payload
+            ? `${payload.summary.created} combates creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`
+            : "Combates BKFC procesados.",
+      });
+    } catch (error) {
+      setBkfcSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido creando combates BKFC.",
+      });
+    } finally {
+      setIsCreatingBkfcFights(false);
+    }
+  }, [
+    reloadReferenceEntities,
+    requestBkfcEventResolution,
+    runBkfcBulkAction,
+    selectedBkfcEvent,
+  ]);
+
+  const prepareFullBkfcCard = useCallback(async (): Promise<void> => {
+    if (!selectedBkfcEvent) {
+      setBkfcSourceStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de BKFC.",
+      });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Se preparará la cartelera de “${selectedBkfcEvent.name}”: evento, luchadores y combates con categorías ya resueltas. Las categorías pendientes se omitirán. ¿Continuar?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsPreparingFullBkfcCard(true);
+      setBkfcSourceStatus({
+        type: "success",
+        message: "Paso 1 de 4: analizando la cartelera BKFC...",
+      });
+
+      let resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+      setBkfcEventResolution(resolution);
+
+      if (!resolution.event.found) {
+        setBkfcSourceStatus({
+          type: "success",
+          message: "Paso 2 de 4: creando el evento BKFC...",
+        });
+        await runBkfcBulkAction("create-event", selectedBkfcEvent);
+        await reloadReferenceEntities();
+        resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+        setBkfcEventResolution(resolution);
+      }
+
+      if (resolution.counts.missingFighters > 0) {
+        setBkfcSourceStatus({
+          type: "success",
+          message: `Paso 3 de 4: creando ${resolution.counts.missingFighters} luchadores faltantes...`,
+        });
+        await runBkfcBulkAction("create-fighters", selectedBkfcEvent);
+        await reloadReferenceEntities();
+        resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+        setBkfcEventResolution(resolution);
+      }
+
+      if (resolution.counts.pendingFights > 0) {
+        setBkfcSourceStatus({
+          type: "success",
+          message: `Paso 4 de 4: creando ${resolution.counts.pendingFights} combates con categorías resueltas...`,
+        });
+        await runBkfcBulkAction("create-fights", selectedBkfcEvent);
+        await reloadReferenceEntities();
+        resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+        setBkfcEventResolution(resolution);
+      }
+
+      setBkfcSourceStatus({
+        type: "success",
+        message: `Cartelera BKFC preparada: ${resolution.counts.existingFighters} luchadores, ${resolution.counts.existingFights} combates existentes y ${resolution.counts.pendingFights} combates pendientes. Se han omitido ${resolution.counts.unresolvedCategories} categorías sin resolver.`,
+      });
+    } catch (error) {
+      setBkfcSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido preparando la cartelera BKFC.",
+      });
+    } finally {
+      setIsPreparingFullBkfcCard(false);
+    }
+  }, [
+    reloadReferenceEntities,
+    requestBkfcEventResolution,
+    runBkfcBulkAction,
+    selectedBkfcEvent,
+  ]);
+
+  const applySelectedBkfcEventToForm = useCallback((): void => {
+    if (!selectedBkfcEvent) {
+      setBkfcSourceStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de BKFC.",
+      });
+      return;
+    }
+
+    if (contentType !== "evento") {
+      setBkfcSourceStatus({
+        type: "error",
+        message: "Selecciona el tipo de contenido Evento.",
+      });
+      return;
+    }
+
+    const disciplineOption = findReferenceByLabel(
+      referenceData.disciplina,
+      "Bare Knuckle"
+    );
+    const organizationOption = findReferenceByLabel(
+      referenceData.organizacion,
+      "BKFC"
+    );
+    const eventDate = toDateTimeLocalValue(selectedBkfcEvent.startDate);
+
+    resetDerivedUiState();
+
+    setForm((currentForm) => {
+      const nextForm: ContentFormState = {
+        ...currentForm,
+        nombre: selectedBkfcEvent.name,
+        ciudad: selectedBkfcEvent.city || "",
+        pais: selectedBkfcEvent.country || "",
+        recinto: selectedBkfcEvent.venue || "",
+        cartelPrincipal: selectedBkfcEvent.mainEvent || "",
+        dondeVer: selectedBkfcEvent.watchText || "",
+        descripcionCorta: selectedBkfcEvent.description || "",
+        descripcion: selectedBkfcEvent.description || "",
+        estado: selectedBkfcEvent.status,
+      };
+
+      if (eventDate) {
+        nextForm.fecha = eventDate;
+      }
+
+      if (selectedBkfcEvent.imageUrl) {
+        nextForm.imagen = selectedBkfcEvent.imageUrl;
+      }
+
+      if (disciplineOption) {
+        nextForm.disciplina = toReferenceValue(disciplineOption.value);
+      }
+
+      if (organizationOption) {
+        nextForm.organizacion = toReferenceValue(organizationOption.value);
+      }
+
+      return clearInvalidDependentReferences(
+        nextForm,
+        auxiliary,
+        referenceData
+      );
+    });
+
+    setAuxiliary((currentAuxiliary) => ({
+      ...currentAuxiliary,
+      tipoEvento: "Evento oficial BKFC",
+      importanciaEditorial:
+        selectedBkfcEvent.description ||
+        "Evento oficial de BKFC pendiente de revisión editorial.",
+      combateEstelarTexto: selectedBkfcEvent.mainEvent || "",
+      contextoCartelera: selectedBkfcEvent.description || "",
+      clavesNarrativas: createEventEditorialInstructions(
+        selectedBkfcEvent as unknown as UfcOfficialEventItem
+      ).replace(/UFC/g, "BKFC"),
+      publicoObjetivo: "Aficionados a los deportes de combate",
+      tono: "informativo, directo y editorial",
+    }));
+
+    setBkfcSourceStatus({
+      type: "success",
+      message:
+        disciplineOption && organizationOption
+          ? "Evento BKFC cargado en el formulario con sus referencias."
+          : "Evento BKFC cargado. Revisa las referencias Bare Knuckle y BKFC.",
+    });
+  }, [
+    auxiliary,
+    contentType,
+    referenceData,
+    resetDerivedUiState,
+    selectedBkfcEvent,
   ]);
 
   const applyOfficialEventToForm = useCallback((): void => {
@@ -4812,6 +5385,391 @@ export default function PanelIA(): ReactElement {
             ) : (
               <p style={styles.emptyText}>
                 Pulsa “Cargar eventos UFC” para consultar la fuente oficial.
+              </p>
+            )}
+          </section>
+        ) : null}
+
+        {contentType === "evento" ? (
+          <section style={styles.sourceCard}>
+            <div style={styles.sourceHeader}>
+              <div>
+                <p style={styles.sourceEyebrow}>Segundo conector oficial</p>
+                <h2 style={styles.sectionTitle}>Bandeja de eventos BKFC</h2>
+                <p style={styles.metaText}>
+                  Carga eventos oficiales, crea el evento desde el laboratorio y
+                  prepara luchadores y combates con categorías ya resueltas.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void reloadOfficialBkfcEvents();
+                }}
+                style={
+                  isLoadingBkfcEvents
+                    ? styles.buttonDisabled
+                    : styles.secondaryButton
+                }
+                disabled={isBkfcBusy}
+              >
+                {isLoadingBkfcEvents
+                  ? "Actualizando eventos..."
+                  : bkfcEventItems.length > 0
+                  ? "Actualizar eventos BKFC"
+                  : "Cargar eventos BKFC"}
+              </button>
+            </div>
+
+            {bkfcEventsFetchedAt ? (
+              <p style={styles.metaText}>
+                Última lectura:{" "}
+                {new Date(bkfcEventsFetchedAt).toLocaleString("es-ES")}
+              </p>
+            ) : null}
+
+            {bkfcSourceStatus.type !== "idle" ? (
+              <div
+                style={
+                  bkfcSourceStatus.type === "success"
+                    ? styles.feedbackSuccess
+                    : styles.feedbackError
+                }
+              >
+                {bkfcSourceStatus.message}
+              </div>
+            ) : null}
+
+            {bkfcEventItems.length > 0 ? (
+              <div style={styles.sourceLayout}>
+                <div style={styles.sourceList}>
+                  {bkfcEventItems.map((item) => {
+                    const isSelected = item.id === selectedBkfcEventId;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedBkfcEventId(item.id);
+                          setBkfcEventResolution(null);
+                          setBkfcSourceStatus({
+                            type: "idle",
+                            message: "",
+                          });
+                        }}
+                        style={
+                          isSelected
+                            ? styles.sourceItemSelected
+                            : styles.sourceItem
+                        }
+                      >
+                        <span style={styles.sourceItemTitle}>{item.name}</span>
+
+                        {item.mainEvent ? (
+                          <span style={styles.sourceItemSummary}>
+                            {item.mainEvent}
+                          </span>
+                        ) : null}
+
+                        <span style={styles.sourceItemMeta}>
+                          {item.startDate
+                            ? new Date(item.startDate).toLocaleString("es-ES")
+                            : "Fecha no disponible"}
+                          {" · "}
+                          {item.status}
+                          {" · "}
+                          {item.fightCard?.length ?? 0} combates
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={styles.sourcePreview}>
+                  {selectedBkfcEvent ? (
+                    <>
+                      {selectedBkfcEvent.imageUrl ? (
+                        <img
+                          src={selectedBkfcEvent.imageUrl}
+                          alt=""
+                          style={styles.sourceImage}
+                        />
+                      ) : null}
+
+                      <div style={styles.sourcePreviewContent}>
+                        <p style={styles.sourceEyebrow}>Evento BKFC seleccionado</p>
+                        <h3 style={styles.sourcePreviewTitle}>
+                          {selectedBkfcEvent.name}
+                        </h3>
+
+                        <p style={styles.sourcePreviewSummary}>
+                          {[
+                            selectedBkfcEvent.mainEvent,
+                            selectedBkfcEvent.locationText,
+                            selectedBkfcEvent.watchText,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+
+                        <div style={styles.sourcePreviewActions}>
+                          <button
+                            type="button"
+                            onClick={applySelectedBkfcEventToForm}
+                            style={styles.secondaryButton}
+                            disabled={isBkfcBusy}
+                          >
+                            Pasar al formulario
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void createSelectedBkfcEvent();
+                            }}
+                            style={
+                              isCreatingBkfcEvent
+                                ? styles.buttonDisabled
+                                : styles.button
+                            }
+                            disabled={
+                              isBkfcBusy ||
+                              Boolean(bkfcEventResolution?.ok &&
+                                bkfcEventResolution.event.found)
+                            }
+                          >
+                            {isCreatingBkfcEvent
+                              ? "Creando evento..."
+                              : bkfcEventResolution?.ok &&
+                                bkfcEventResolution.event.found
+                              ? "Evento ya creado"
+                              : "Crear evento en Sanity"}
+                          </button>
+
+                          <a
+                            href={selectedBkfcEvent.canonicalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={styles.sourceLink}
+                          >
+                            Abrir fuente oficial
+                          </a>
+                        </div>
+
+                        <div style={styles.automationCard}>
+                          <div style={styles.automationHeader}>
+                            <div>
+                              <p style={styles.sourceEyebrow}>
+                                Automatización BKFC
+                              </p>
+                              <h4 style={styles.automationTitle}>
+                                Preparar cartelera completa
+                              </h4>
+                            </div>
+
+                            <div style={styles.automationTopActions}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void resolveSelectedBkfcEvent();
+                                }}
+                                style={
+                                  isResolvingBkfcEvent
+                                    ? styles.buttonDisabled
+                                    : styles.secondaryButton
+                                }
+                                disabled={isBkfcBusy}
+                              >
+                                {isResolvingBkfcEvent
+                                  ? "Analizando..."
+                                  : "Analizar cartelera"}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void prepareFullBkfcCard();
+                                }}
+                                style={
+                                  isPreparingFullBkfcCard
+                                    ? styles.buttonDisabled
+                                    : styles.button
+                                }
+                                disabled={isBkfcBusy}
+                              >
+                                {isPreparingFullBkfcCard
+                                  ? "Preparando..."
+                                  : "Preparar cartelera completa"}
+                              </button>
+                            </div>
+                          </div>
+
+                          {bkfcEventResolution?.ok ? (
+                            <>
+                              <div style={styles.automationStats}>
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Evento
+                                  </span>
+                                  <strong>
+                                    {bkfcEventResolution.event.found
+                                      ? "Encontrado"
+                                      : "Pendiente"}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Luchadores
+                                  </span>
+                                  <strong>
+                                    {bkfcEventResolution.counts.existingFighters}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Faltantes
+                                  </span>
+                                  <strong>
+                                    {bkfcEventResolution.counts.missingFighters}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Combates listos
+                                  </span>
+                                  <strong>
+                                    {bkfcEventResolution.counts.readyFights}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Combates existentes
+                                  </span>
+                                  <strong>
+                                    {bkfcEventResolution.counts.existingFights}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Categorías pendientes
+                                  </span>
+                                  <strong>
+                                    {
+                                      bkfcEventResolution.counts
+                                        .unresolvedCategories
+                                    }
+                                  </strong>
+                                </div>
+                              </div>
+
+                              {bkfcEventResolution.counts.unresolvedCategories >
+                              0 ? (
+                                <div style={styles.automationWarning}>
+                                  La fuente mantiene{" "}
+                                  {
+                                    bkfcEventResolution.counts
+                                      .unresolvedCategories
+                                  }{" "}
+                                  categoría sin resolver. Solo se crearán
+                                  relaciones seguras.
+                                </div>
+                              ) : null}
+
+                              <div style={styles.automationActions}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void createSelectedBkfcEvent();
+                                  }}
+                                  style={
+                                    !bkfcEventResolution.event.found &&
+                                    !isBkfcBusy
+                                      ? styles.secondaryButton
+                                      : styles.buttonDisabled
+                                  }
+                                  disabled={
+                                    bkfcEventResolution.event.found ||
+                                    isBkfcBusy
+                                  }
+                                >
+                                  Crear evento
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void createMissingBkfcFighters();
+                                  }}
+                                  style={
+                                    bkfcEventResolution.counts
+                                      .missingFighters > 0 && !isBkfcBusy
+                                      ? styles.secondaryButton
+                                      : styles.buttonDisabled
+                                  }
+                                  disabled={
+                                    bkfcEventResolution.counts
+                                      .missingFighters === 0 || isBkfcBusy
+                                  }
+                                >
+                                  {isCreatingBkfcFighters
+                                    ? "Creando luchadores..."
+                                    : `Crear luchadores (${bkfcEventResolution.counts.missingFighters})`}
+                                </button>
+
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void createBkfcFights();
+                                  }}
+                                  style={
+                                    bkfcEventResolution.event.found &&
+                                    bkfcEventResolution.counts.pendingFights >
+                                      0 &&
+                                    !isBkfcBusy
+                                      ? styles.button
+                                      : styles.buttonDisabled
+                                  }
+                                  disabled={
+                                    !bkfcEventResolution.event.found ||
+                                    bkfcEventResolution.counts.pendingFights ===
+                                      0 ||
+                                    isBkfcBusy
+                                  }
+                                >
+                                  {isCreatingBkfcFights
+                                    ? "Creando combates..."
+                                    : `Crear combates (${bkfcEventResolution.counts.pendingFights})`}
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <p style={styles.inlineEmptyState}>
+                              Analiza la cartelera para comprobar el evento,
+                              luchadores, categorías y combates disponibles.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <p style={styles.emptyText}>
+                      Selecciona un evento BKFC para revisar y preparar sus
+                      datos.
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p style={styles.emptyText}>
+                Pulsa “Cargar eventos BKFC” para consultar la fuente oficial.
               </p>
             )}
           </section>
