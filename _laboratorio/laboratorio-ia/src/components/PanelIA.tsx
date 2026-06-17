@@ -207,6 +207,13 @@ type UfcEventResolutionSuccess = Extract<
   { ok: true }
 >;
 
+type UfcBatchPreparationItem = {
+  eventId: string;
+  eventName: string;
+  status: "pendiente" | "procesando" | "completado" | "fallido";
+  message: string;
+};
+
 type UfcBulkActionResponse =
   | {
       ok: true;
@@ -242,6 +249,46 @@ type UfcOfficialEventsApiResponse =
       fetchedAt?: string;
       count?: number;
       items?: UfcOfficialEventItem[];
+      error?: string;
+    };
+
+type UfcBatchEventAnalysis = {
+  eventId: string;
+  eventName: string;
+  startDate?: string;
+  eventFound: boolean;
+  eventSanityId?: string;
+  fights: number;
+  readyFights: number;
+  existingFights: number;
+  pendingFights: number;
+  existingFighters: number;
+  missingFighters: number;
+  unresolvedCategories: number;
+  status:
+    | "completo"
+    | "evento_pendiente"
+    | "requiere_revision"
+    | "listo_para_preparar";
+  error?: string;
+};
+
+type UfcBatchResolveApiResponse =
+  | {
+      ok: true;
+      count: number;
+      summary: {
+        completed: number;
+        eventPending: number;
+        readyToPrepare: number;
+        requiresReview: number;
+        totalMissingFighters: number;
+        totalPendingFights: number;
+      };
+      items: UfcBatchEventAnalysis[];
+    }
+  | {
+      ok: false;
       error?: string;
     };
 
@@ -946,6 +993,20 @@ export default function PanelIA(): ReactElement {
       message: "",
     });
 
+  const [ufcBatchAnalysis, setUfcBatchAnalysis] = useState<
+    UfcBatchResolveApiResponse | null
+  >(null);
+  const [isAnalyzingUfcBatch, setIsAnalyzingUfcBatch] = useState(false);
+  const [ufcBatchStatus, setUfcBatchStatus] =
+    useState<OfficialSourceStatus>({
+      type: "idle",
+      message: "",
+    });
+  const [isPreparingUfcBatch, setIsPreparingUfcBatch] = useState(false);
+  const [ufcBatchPreparation, setUfcBatchPreparation] = useState<
+    UfcBatchPreparationItem[]
+  >([]);
+
   const [isLoadingReferences, setIsLoadingReferences] = useState(false);
   const [referenceLoadError, setReferenceLoadError] = useState("");
 
@@ -976,7 +1037,8 @@ export default function PanelIA(): ReactElement {
     ) &&
     !isCreatingUfcFighters &&
     !isResolvingUfcEvent &&
-    !isPreparingFullUfcCard;
+    !isPreparingFullUfcCard &&
+    !isPreparingUfcBatch;
 
   const canCreateUfcFights =
     Boolean(
@@ -987,7 +1049,8 @@ export default function PanelIA(): ReactElement {
     ) &&
     !isCreatingUfcFights &&
     !isResolvingUfcEvent &&
-    !isPreparingFullUfcCard;
+    !isPreparingFullUfcCard &&
+    !isPreparingUfcBatch;
 
   const filterContext = useMemo<ReferenceFilterContext>(
     () => getActiveFilterContext(form, auxiliary),
@@ -1119,6 +1182,12 @@ export default function PanelIA(): ReactElement {
 
       setOfficialEventItems(payload.items);
       setOfficialEventsFetchedAt(payload.fetchedAt);
+      setUfcBatchAnalysis(null);
+      setUfcBatchPreparation([]);
+      setUfcBatchStatus({
+        type: "idle",
+        message: "",
+      });
       setSelectedOfficialEventId((currentId) =>
         payload.items.some((item) => item.id === currentId) ? currentId : ""
       );
@@ -1142,6 +1211,70 @@ export default function PanelIA(): ReactElement {
       setIsLoadingOfficialEvents(false);
     }
   }, []);
+
+  const analyzeUpcomingUfcEvents = useCallback(async (): Promise<void> => {
+    const upcomingEvents = officialEventItems.filter(
+      (item) => item.status === "proximo" && (item.fightCard?.length ?? 0) > 0
+    );
+
+    if (upcomingEvents.length === 0) {
+      setUfcBatchStatus({
+        type: "error",
+        message:
+          "No hay próximos eventos UFC con cartelera disponible para analizar.",
+      });
+      return;
+    }
+
+    try {
+      setIsAnalyzingUfcBatch(true);
+      setUfcBatchStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/ufc/events/batch-resolve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            events: upcomingEvents,
+          }),
+        }
+      );
+
+      const payload = (await response.json()) as UfcBatchResolveApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron analizar los próximos eventos UFC."
+        );
+      }
+
+      setUfcBatchAnalysis(payload);
+      setUfcBatchStatus({
+        type: "success",
+        message: `${payload.count} eventos analizados: ${payload.summary.completed} completos, ${payload.summary.readyToPrepare} listos para preparar, ${payload.summary.eventPending} con evento pendiente y ${payload.summary.requiresReview} para revisión.`,
+      });
+    } catch (error) {
+      setUfcBatchAnalysis(null);
+      setUfcBatchStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido analizando los próximos eventos UFC.",
+      });
+    } finally {
+      setIsAnalyzingUfcBatch(false);
+    }
+  }, [officialEventItems]);
 
   const resolveSelectedUfcEvent = useCallback(
     async (eventOverride?: UfcOfficialEventItem): Promise<void> => {
@@ -1389,6 +1522,250 @@ export default function PanelIA(): ReactElement {
     },
     []
   );
+
+  const updateUfcBatchPreparationItem = useCallback(
+    (
+      eventId: string,
+      changes: Partial<UfcBatchPreparationItem>
+    ): void => {
+      setUfcBatchPreparation((current) =>
+        current.map((item) =>
+          item.eventId === eventId ? { ...item, ...changes } : item
+        )
+      );
+    },
+    []
+  );
+
+  const prepareAllEligibleUfcEvents =
+    useCallback(async (): Promise<void> => {
+      if (!ufcBatchAnalysis?.ok) {
+        setUfcBatchStatus({
+          type: "error",
+          message:
+            "Analiza primero los próximos eventos UFC antes de preparar el lote.",
+        });
+        return;
+      }
+
+      const eligibleAnalysisItems = ufcBatchAnalysis.items.filter(
+        (item) => item.status === "listo_para_preparar"
+      );
+
+      const eligibleEvents = eligibleAnalysisItems
+        .map((analysisItem) => {
+          const sourceEvent = officialEventItems.find(
+            (event) => event.id === analysisItem.eventId
+          );
+
+          return sourceEvent
+            ? {
+                analysis: analysisItem,
+                event: sourceEvent,
+              }
+            : null;
+        })
+        .filter(
+          (
+            item
+          ): item is {
+            analysis: UfcBatchEventAnalysis;
+            event: UfcOfficialEventItem;
+          } => item !== null
+        );
+
+      if (eligibleEvents.length === 0) {
+        setUfcBatchStatus({
+          type: "error",
+          message:
+            "No hay eventos aptos para preparar. Los completos, pendientes de crear o con categorías sin resolver se excluyen automáticamente.",
+        });
+        return;
+      }
+
+      const initialProgress: UfcBatchPreparationItem[] =
+        eligibleEvents.map(({ event }) => ({
+          eventId: event.id,
+          eventName: event.name,
+          status: "pendiente",
+          message: "En espera.",
+        }));
+
+      setUfcBatchPreparation(initialProgress);
+      setIsPreparingUfcBatch(true);
+
+      let completed = 0;
+      let failed = 0;
+      let createdFighters = 0;
+      let createdFights = 0;
+
+      try {
+        for (let index = 0; index < eligibleEvents.length; index += 1) {
+          const { event } = eligibleEvents[index];
+
+          updateUfcBatchPreparationItem(event.id, {
+            status: "procesando",
+            message: `Evento ${index + 1} de ${eligibleEvents.length}: analizando estado actual...`,
+          });
+
+          try {
+            let resolution = await requestUfcEventResolution(event);
+
+            if (!resolution.event.found) {
+              throw new Error(
+                "El evento dejó de estar disponible en Sanity."
+              );
+            }
+
+            if (resolution.counts.unresolvedCategories > 0) {
+              throw new Error(
+                `Hay ${resolution.counts.unresolvedCategories} categorías sin resolver.`
+              );
+            }
+
+            if (resolution.counts.missingFighters > 0) {
+              updateUfcBatchPreparationItem(event.id, {
+                message: `Creando ${resolution.counts.missingFighters} luchadores faltantes...`,
+              });
+
+              const fightersResponse = await fetch(
+                `${API_BASE_URL}/api/sources/ufc/events/create-fighters`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                  },
+                  body: JSON.stringify({
+                    confirm: true,
+                    event,
+                  }),
+                }
+              );
+
+              const fightersPayload =
+                (await fightersResponse.json()) as UfcBulkActionResponse;
+
+              if (!fightersResponse.ok || !fightersPayload.ok) {
+                throw new Error(
+                  !fightersPayload.ok && fightersPayload.error
+                    ? fightersPayload.error
+                    : "No se pudieron crear los luchadores faltantes."
+                );
+              }
+
+              if (fightersPayload.summary.failed > 0) {
+                throw new Error(
+                  `${fightersPayload.summary.failed} luchadores fallaron durante la creación.`
+                );
+              }
+
+              createdFighters += fightersPayload.summary.created;
+              resolution = await requestUfcEventResolution(event);
+            }
+
+            if (resolution.counts.missingFighters > 0) {
+              throw new Error(
+                `Todavía quedan ${resolution.counts.missingFighters} luchadores sin resolver.`
+              );
+            }
+
+            if (resolution.counts.pendingFights > 0) {
+              updateUfcBatchPreparationItem(event.id, {
+                message: `Creando ${resolution.counts.pendingFights} combates pendientes...`,
+              });
+
+              const fightsResponse = await fetch(
+                `${API_BASE_URL}/api/sources/ufc/events/create-fights`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                  },
+                  body: JSON.stringify({
+                    confirm: true,
+                    event,
+                  }),
+                }
+              );
+
+              const fightsPayload =
+                (await fightsResponse.json()) as UfcBulkActionResponse;
+
+              if (!fightsResponse.ok || !fightsPayload.ok) {
+                throw new Error(
+                  !fightsPayload.ok && fightsPayload.error
+                    ? fightsPayload.error
+                    : "No se pudieron crear los combates."
+                );
+              }
+
+              if (fightsPayload.summary.failed > 0) {
+                throw new Error(
+                  `${fightsPayload.summary.failed} combates fallaron durante la creación.`
+                );
+              }
+
+              createdFights += fightsPayload.summary.created;
+              resolution = await requestUfcEventResolution(event);
+            }
+
+            if (
+              resolution.counts.missingFighters > 0 ||
+              resolution.counts.pendingFights > 0
+            ) {
+              throw new Error(
+                `El evento conserva ${resolution.counts.missingFighters} luchadores y ${resolution.counts.pendingFights} combates pendientes.`
+              );
+            }
+
+            completed += 1;
+            updateUfcBatchPreparationItem(event.id, {
+              status: "completado",
+              message: `${resolution.counts.existingFighters} luchadores y ${resolution.counts.existingFights} combates relacionados.`,
+            });
+          } catch (error) {
+            failed += 1;
+            updateUfcBatchPreparationItem(event.id, {
+              status: "fallido",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Error desconocido preparando este evento.",
+            });
+          }
+        }
+
+        await reloadReferenceEntities();
+        await analyzeUpcomingUfcEvents();
+
+        setUfcBatchStatus({
+          type: failed === 0 ? "success" : "error",
+          message:
+            failed === 0
+              ? `Preparación masiva completada: ${completed} eventos, ${createdFighters} luchadores y ${createdFights} combates creados.`
+              : `Preparación masiva terminada: ${completed} eventos completados y ${failed} fallidos. Se crearon ${createdFighters} luchadores y ${createdFights} combates.`,
+        });
+      } catch (error) {
+        setUfcBatchStatus({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Error desconocido durante la preparación masiva.",
+        });
+      } finally {
+        setIsPreparingUfcBatch(false);
+      }
+    }, [
+      analyzeUpcomingUfcEvents,
+      officialEventItems,
+      reloadReferenceEntities,
+      requestUfcEventResolution,
+      ufcBatchAnalysis,
+      updateUfcBatchPreparationItem,
+    ]);
 
   const prepareFullUfcCard = useCallback(async (): Promise<void> => {
     if (!selectedOfficialEvent) {
@@ -2923,6 +3300,246 @@ export default function PanelIA(): ReactElement {
             ) : null}
 
             {officialEventItems.length > 0 ? (
+              <div style={styles.batchCard}>
+                <div style={styles.batchHeader}>
+                  <div>
+                    <p style={styles.sourceEyebrow}>Análisis masivo</p>
+                    <h3 style={styles.batchTitle}>
+                      Próximos eventos UFC
+                    </h3>
+                    <p style={styles.metaText}>
+                      Revisa de una sola vez qué eventos están completos,
+                      cuáles pueden prepararse y cuáles requieren crear primero
+                      su ficha en Sanity.
+                    </p>
+                  </div>
+
+                  <div style={styles.batchHeaderActions}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void analyzeUpcomingUfcEvents();
+                      }}
+                      style={
+                        isAnalyzingUfcBatch || isPreparingUfcBatch
+                          ? styles.buttonDisabled
+                          : styles.secondaryButton
+                      }
+                      disabled={isAnalyzingUfcBatch || isPreparingUfcBatch}
+                    >
+                      {isAnalyzingUfcBatch
+                        ? "Analizando próximos eventos..."
+                        : "Analizar próximos eventos"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void prepareAllEligibleUfcEvents();
+                      }}
+                      style={
+                        isPreparingUfcBatch ||
+                        !ufcBatchAnalysis?.ok ||
+                        ufcBatchAnalysis.summary.readyToPrepare === 0
+                          ? styles.buttonDisabled
+                          : styles.primaryButton
+                      }
+                      disabled={
+                        isPreparingUfcBatch ||
+                        isAnalyzingUfcBatch ||
+                        !ufcBatchAnalysis?.ok ||
+                        ufcBatchAnalysis.summary.readyToPrepare === 0
+                      }
+                    >
+                      {isPreparingUfcBatch
+                        ? "Preparando eventos aptos..."
+                        : "Preparar todos los aptos"}
+                    </button>
+                  </div>
+                </div>
+
+                {ufcBatchStatus.type !== "idle" ? (
+                  <div
+                    style={
+                      ufcBatchStatus.type === "success"
+                        ? styles.feedbackSuccess
+                        : styles.feedbackError
+                    }
+                  >
+                    {ufcBatchStatus.message}
+                  </div>
+                ) : null}
+
+                {ufcBatchPreparation.length > 0 ? (
+                  <div style={styles.batchProgressList}>
+                    {ufcBatchPreparation.map((item) => (
+                      <div
+                        key={item.eventId}
+                        style={styles.batchProgressItem}
+                      >
+                        <div style={styles.batchProgressText}>
+                          <strong>{item.eventName}</strong>
+                          <span style={styles.batchItemMeta}>
+                            {item.message}
+                          </span>
+                        </div>
+
+                        <span
+                          style={
+                            item.status === "completado"
+                              ? styles.batchStatusOk
+                              : item.status === "fallido"
+                              ? styles.batchStatusError
+                              : styles.batchStatusPending
+                          }
+                        >
+                          {item.status === "pendiente"
+                            ? "Pendiente"
+                            : item.status === "procesando"
+                            ? "Procesando"
+                            : item.status === "completado"
+                            ? "Completado"
+                            : "Fallido"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {ufcBatchAnalysis?.ok ? (
+                  <>
+                    <div style={styles.batchSummaryGrid}>
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>
+                          Completos
+                        </span>
+                        <strong>{ufcBatchAnalysis.summary.completed}</strong>
+                      </div>
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>
+                          Listos para preparar
+                        </span>
+                        <strong>
+                          {ufcBatchAnalysis.summary.readyToPrepare}
+                        </strong>
+                      </div>
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>
+                          Evento pendiente
+                        </span>
+                        <strong>
+                          {ufcBatchAnalysis.summary.eventPending}
+                        </strong>
+                      </div>
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>
+                          Requieren revisión
+                        </span>
+                        <strong>
+                          {ufcBatchAnalysis.summary.requiresReview}
+                        </strong>
+                      </div>
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>
+                          Luchadores faltantes
+                        </span>
+                        <strong>
+                          {ufcBatchAnalysis.summary.totalMissingFighters}
+                        </strong>
+                      </div>
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>
+                          Combates pendientes
+                        </span>
+                        <strong>
+                          {ufcBatchAnalysis.summary.totalPendingFights}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div style={styles.batchList}>
+                      {ufcBatchAnalysis.items.map((item) => {
+                        const sourceEvent = officialEventItems.find(
+                          (event) => event.id === item.eventId
+                        );
+
+                        return (
+                          <div key={item.eventId} style={styles.batchItem}>
+                            <div style={styles.batchItemMain}>
+                              <strong>{item.eventName}</strong>
+                              <span style={styles.batchItemMeta}>
+                                {item.eventFound
+                                  ? "Evento encontrado"
+                                  : "Evento pendiente"}
+                                {" · "}
+                                {item.existingFighters} luchadores existentes
+                                {" · "}
+                                {item.missingFighters} faltantes
+                                {" · "}
+                                {item.existingFights} combates existentes
+                                {" · "}
+                                {item.pendingFights} pendientes
+                                {" · "}
+                                {item.unresolvedCategories} categorías sin resolver
+                              </span>
+                              {item.error ? (
+                                <span style={styles.batchError}>
+                                  {item.error}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div style={styles.batchItemActions}>
+                              <span
+                                style={
+                                  item.status === "completo"
+                                    ? styles.batchStatusOk
+                                    : item.status === "requiere_revision"
+                                    ? styles.batchStatusError
+                                    : styles.batchStatusPending
+                                }
+                              >
+                                {item.status === "completo"
+                                  ? "Completo"
+                                  : item.status === "evento_pendiente"
+                                  ? "Crear evento"
+                                  : item.status === "listo_para_preparar"
+                                  ? "Listo para preparar"
+                                  : "Revisar"}
+                              </span>
+
+                              {sourceEvent ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedOfficialEventId(sourceEvent.id);
+                                    setUfcEventResolution(null);
+                                    setUfcAutomationStatus({
+                                      type: "idle",
+                                      message: "",
+                                    });
+                                  }}
+                                  style={
+                                    isPreparingUfcBatch
+                                      ? styles.buttonDisabled
+                                      : styles.secondaryButton
+                                  }
+                                  disabled={isPreparingUfcBatch}
+                                >
+                                  Seleccionar
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            {officialEventItems.length > 0 ? (
               <div style={styles.sourceLayout}>
                 <div style={styles.sourceList}>
                   {officialEventItems.map((item) => {
@@ -3759,6 +4376,122 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13,
     lineHeight: 1.6,
     opacity: 0.78,
+  },
+  batchCard: {
+    display: "grid",
+    gap: 14,
+    marginBottom: 18,
+    padding: 16,
+    borderRadius: 18,
+    background: "rgba(255,255,255,0.035)",
+    border: "1px solid rgba(255,255,255,0.1)",
+  },
+  batchHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 14,
+    flexWrap: "wrap",
+  },
+  batchTitle: {
+    margin: "4px 0 6px",
+    fontSize: 18,
+  },
+  batchHeaderActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  batchProgressList: {
+    display: "grid",
+    gap: 8,
+    padding: 12,
+    borderRadius: 14,
+    background: "rgba(0,0,0,0.18)",
+    border: "1px solid rgba(255,255,255,0.07)",
+  },
+  batchProgressItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    padding: "10px 12px",
+    borderRadius: 12,
+    background: "rgba(255,255,255,0.025)",
+    flexWrap: "wrap",
+  },
+  batchProgressText: {
+    display: "grid",
+    gap: 4,
+    minWidth: 0,
+    flex: "1 1 420px",
+  },
+  batchSummaryGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+    gap: 10,
+  },
+  batchList: {
+    display: "grid",
+    gap: 10,
+  },
+  batchItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 14,
+    alignItems: "center",
+    padding: 14,
+    borderRadius: 14,
+    background: "rgba(0,0,0,0.2)",
+    border: "1px solid rgba(255,255,255,0.07)",
+    flexWrap: "wrap",
+  },
+  batchItemMain: {
+    display: "grid",
+    gap: 5,
+    minWidth: 0,
+    flex: "1 1 520px",
+  },
+  batchItemMeta: {
+    fontSize: 12,
+    opacity: 0.72,
+    lineHeight: 1.5,
+  },
+  batchItemActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  batchStatusOk: {
+    padding: "6px 10px",
+    borderRadius: 999,
+    background: "rgba(34,197,94,0.14)",
+    border: "1px solid rgba(34,197,94,0.3)",
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  batchStatusPending: {
+    padding: "6px 10px",
+    borderRadius: 999,
+    background: "rgba(245,158,11,0.14)",
+    border: "1px solid rgba(245,158,11,0.3)",
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  batchStatusError: {
+    padding: "6px 10px",
+    borderRadius: 999,
+    background: "rgba(239,68,68,0.14)",
+    border: "1px solid rgba(239,68,68,0.3)",
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  batchError: {
+    fontSize: 12,
+    color: "#fca5a5",
+    lineHeight: 1.4,
   },
   automationCard: {
     display: "grid",
