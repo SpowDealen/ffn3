@@ -124,6 +124,39 @@ export const contentTypes: ContentTypeDefinition[] = [
         description: "Evento principal asociado a la noticia, si existe.",
       },
       {
+        name: "fuente",
+        label: "Fuente",
+        kind: "string",
+        sanityType: "string",
+        required: false,
+        description:
+          "Medio u organización de procedencia de la información.",
+        options: [
+          { label: "UFC", value: "ufc" },
+          { label: "BKFC", value: "bkfc" },
+          { label: "ONE Championship", value: "one" },
+          { label: "Otra", value: "otra" },
+        ],
+      },
+      {
+        name: "fuenteUrl",
+        label: "URL de la fuente original",
+        kind: "string",
+        sanityType: "url",
+        required: false,
+        description:
+          "URL canónica utilizada para detectar duplicados y conservar la trazabilidad editorial.",
+      },
+      {
+        name: "fuenteId",
+        label: "Identificador externo de la fuente",
+        kind: "string",
+        sanityType: "string",
+        required: false,
+        description:
+          "Identificador estable recibido desde el conector oficial.",
+      },
+      {
         name: "destacada",
         label: "Destacada",
         kind: "boolean",

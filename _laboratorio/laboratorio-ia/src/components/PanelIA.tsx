@@ -67,6 +67,46 @@ type UfcOfficialNewsItem = {
   imageUrl?: string;
 };
 
+type UfcNewsBatchPreparationItem = {
+  sourceId: string;
+  title: string;
+  status: "pendiente" | "procesando" | "completado" | "fallido";
+  message: string;
+};
+
+type UfcNewsBatchItem = {
+  sourceId: string;
+  title: string;
+  canonicalUrl: string;
+  publishedAt?: string;
+  status:
+    | "existente"
+    | "nueva_apta"
+    | "sin_contenido"
+    | "requiere_revision";
+  existingSanityId?: string;
+  existingTitle?: string;
+  matchStrategy?: "fuenteId" | "fuenteUrl" | "titulo";
+  reasons: string[];
+};
+
+type UfcNewsBatchResolveApiResponse =
+  | {
+      ok: true;
+      count: number;
+      summary: {
+        existing: number;
+        ready: number;
+        withoutContent: number;
+        requiresReview: number;
+      };
+      items: UfcNewsBatchItem[];
+    }
+  | {
+      ok: false;
+      error?: string;
+    };
+
 type UfcOfficialNewsApiResponse =
   | {
       ok: true;
@@ -1084,6 +1124,19 @@ export default function PanelIA(): ReactElement {
     });
   const [newsRelationsResolution, setNewsRelationsResolution] =
     useState<NewsRelationsResolution | null>(null);
+  const [ufcNewsBatchAnalysis, setUfcNewsBatchAnalysis] =
+    useState<UfcNewsBatchResolveApiResponse | null>(null);
+  const [isAnalyzingUfcNewsBatch, setIsAnalyzingUfcNewsBatch] =
+    useState(false);
+  const [ufcNewsBatchStatus, setUfcNewsBatchStatus] =
+    useState<OfficialSourceStatus>({
+      type: "idle",
+      message: "",
+    });
+  const [isPreparingUfcNewsBatch, setIsPreparingUfcNewsBatch] =
+    useState(false);
+  const [ufcNewsBatchPreparation, setUfcNewsBatchPreparation] =
+    useState<UfcNewsBatchPreparationItem[]>([]);
 
   const [officialEventItems, setOfficialEventItems] = useState<
     UfcOfficialEventItem[]
@@ -1249,6 +1302,12 @@ export default function PanelIA(): ReactElement {
       setOfficialNewsItems(payload.items);
       setOfficialNewsFetchedAt(payload.fetchedAt);
       setNewsRelationsResolution(null);
+      setUfcNewsBatchAnalysis(null);
+      setUfcNewsBatchPreparation([]);
+      setUfcNewsBatchStatus({
+        type: "idle",
+        message: "",
+      });
       setSelectedOfficialNewsId((currentId) =>
         payload.items.some((item) => item.id === currentId) ? currentId : ""
       );
@@ -1272,6 +1331,318 @@ export default function PanelIA(): ReactElement {
       setIsLoadingOfficialNews(false);
     }
   }, []);
+
+  const analyzeOfficialUfcNews = useCallback(async (): Promise<void> => {
+    if (officialNewsItems.length === 0) {
+      setUfcNewsBatchStatus({
+        type: "error",
+        message: "Carga primero las noticias oficiales de UFC.",
+      });
+      return;
+    }
+
+    try {
+      setIsAnalyzingUfcNewsBatch(true);
+      setUfcNewsBatchStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/ufc/news/batch-resolve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            items: officialNewsItems,
+          }),
+        }
+      );
+
+      const payload =
+        (await response.json()) as UfcNewsBatchResolveApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron analizar las noticias oficiales de UFC."
+        );
+      }
+
+      setUfcNewsBatchAnalysis(payload);
+      setUfcNewsBatchStatus({
+        type: "success",
+        message: `${payload.count} noticias analizadas: ${payload.summary.existing} existentes, ${payload.summary.ready} nuevas aptas, ${payload.summary.withoutContent} sin contenido suficiente y ${payload.summary.requiresReview} para revisión.`,
+      });
+    } catch (error) {
+      setUfcNewsBatchAnalysis(null);
+      setUfcNewsBatchStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido analizando noticias UFC.",
+      });
+    } finally {
+      setIsAnalyzingUfcNewsBatch(false);
+    }
+  }, [officialNewsItems]);
+
+  const updateUfcNewsBatchPreparationItem = useCallback(
+    (
+      sourceId: string,
+      changes: Partial<UfcNewsBatchPreparationItem>
+    ): void => {
+      setUfcNewsBatchPreparation((current) =>
+        current.map((item) =>
+          item.sourceId === sourceId ? { ...item, ...changes } : item
+        )
+      );
+    },
+    []
+  );
+
+  const prepareAllEligibleUfcNews =
+    useCallback(async (): Promise<void> => {
+      if (!ufcNewsBatchAnalysis?.ok) {
+        setUfcNewsBatchStatus({
+          type: "error",
+          message:
+            "Analiza primero las noticias oficiales UFC antes de preparar el lote.",
+        });
+        return;
+      }
+
+      const eligibleAnalysisItems = ufcNewsBatchAnalysis.items.filter(
+        (item) => item.status === "nueva_apta"
+      );
+
+      const eligibleNews = eligibleAnalysisItems
+        .map((analysisItem) => {
+          const sourceItem = officialNewsItems.find(
+            (item) => item.id === analysisItem.sourceId
+          );
+
+          return sourceItem
+            ? {
+                analysis: analysisItem,
+                sourceItem,
+              }
+            : null;
+        })
+        .filter(
+          (
+            item
+          ): item is {
+            analysis: UfcNewsBatchItem;
+            sourceItem: UfcOfficialNewsItem;
+          } => item !== null
+        );
+
+      if (eligibleNews.length === 0) {
+        setUfcNewsBatchStatus({
+          type: "error",
+          message:
+            "No hay noticias nuevas aptas. Las existentes, incompletas o inseguras se excluyen automáticamente.",
+        });
+        return;
+      }
+
+      setUfcNewsBatchPreparation(
+        eligibleNews.map(({ sourceItem }) => ({
+          sourceId: sourceItem.id,
+          title: sourceItem.title,
+          status: "pendiente",
+          message: "En espera.",
+        }))
+      );
+      setIsPreparingUfcNewsBatch(true);
+
+      let completed = 0;
+      let failed = 0;
+
+      try {
+        for (let index = 0; index < eligibleNews.length; index += 1) {
+          const { sourceItem } = eligibleNews[index];
+
+          updateUfcNewsBatchPreparationItem(sourceItem.id, {
+            status: "procesando",
+            message: `Noticia ${index + 1} de ${eligibleNews.length}: transformando al español...`,
+          });
+
+          try {
+            const transformResponse = await fetch(
+              `${API_BASE_URL}/api/transformar-noticia`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Accept: "application/json",
+                },
+                body: JSON.stringify({
+                  title: sourceItem.title,
+                  summary: sourceItem.summary,
+                  bodyText: sourceItem.bodyText,
+                  sourceUrl:
+                    sourceItem.canonicalUrl || sourceItem.sourceUrl,
+                }),
+              }
+            );
+
+            const transformPayload =
+              (await transformResponse.json()) as TransformNewsApiResponse;
+
+            if (!transformResponse.ok || !transformPayload.ok) {
+              throw new Error(
+                !transformPayload.ok && transformPayload.error
+                  ? transformPayload.error
+                  : "No se pudo transformar la noticia al español."
+              );
+            }
+
+            updateUfcNewsBatchPreparationItem(sourceItem.id, {
+              message: "Resolviendo relaciones editoriales reales...",
+            });
+
+            const relationResolution = resolveSuggestedNewsRelations({
+              suggestions: transformPayload.data.relacionesSugeridas,
+              referenceData,
+            });
+
+            const mmaOption = findReferenceByLabel(
+              referenceData.disciplina,
+              "MMA"
+            );
+            const ufcOption = findReferenceByLabel(
+              referenceData.organizacion,
+              "UFC"
+            );
+
+            const initialState = getInitialFormState("noticia");
+            const batchForm: ContentFormState = {
+              ...initialState.form,
+              titulo: transformPayload.data.titulo,
+              extracto: transformPayload.data.extracto,
+              contenido: transformPayload.data.contenido,
+              fechaPublicacion:
+                toDateTimeLocalValue(sourceItem.publishedAt) ||
+                new Date().toISOString(),
+              imagenPrincipal: sourceItem.imageUrl,
+              disciplina: relationResolution.resolved.disciplina
+                ? toReferenceValue(
+                    relationResolution.resolved.disciplina.value
+                  )
+                : mmaOption
+                ? toReferenceValue(mmaOption.value)
+                : undefined,
+              organizacionRelacionada:
+                relationResolution.resolved.organizacion
+                  ? toReferenceValue(
+                      relationResolution.resolved.organizacion.value
+                    )
+                  : ufcOption
+                  ? toReferenceValue(ufcOption.value)
+                  : undefined,
+              eventoRelacionado: relationResolution.resolved.evento
+                ? toReferenceValue(
+                    relationResolution.resolved.evento.value
+                  )
+                : undefined,
+              luchadoresRelacionados:
+                relationResolution.resolved.luchadores.map((fighter) =>
+                  toReferenceValue(fighter.value)
+                ),
+              fuente: "ufc",
+              fuenteUrl:
+                sourceItem.canonicalUrl || sourceItem.sourceUrl,
+              fuenteId: sourceItem.id,
+              destacada: false,
+            };
+
+            updateUfcNewsBatchPreparationItem(sourceItem.id, {
+              message: "Generando documento y validando campos...",
+            });
+
+            const buildResult = buildContentOutput({
+              contentType: "noticia",
+              form: batchForm,
+              auxiliary: initialState.auxiliary,
+            });
+
+            if (!buildResult.ok || !buildResult.output) {
+              const errors = buildResult.issues
+                .filter((issue) => issue.severity === "error")
+                .map((issue) => issue.message)
+                .join(" · ");
+
+              throw new Error(
+                errors || "El builder bloqueó el documento de noticia."
+              );
+            }
+
+            updateUfcNewsBatchPreparationItem(sourceItem.id, {
+              message: "Importando imagen y guardando borrador en Sanity...",
+            });
+
+            await saveDraft({
+              contentType: "noticia",
+              document: buildResult.output as Record<string, unknown>,
+            });
+
+            completed += 1;
+            updateUfcNewsBatchPreparationItem(sourceItem.id, {
+              status: "completado",
+              message: `${
+                relationResolution.resolved.luchadores.length
+              } luchadores, ${
+                relationResolution.resolved.evento ? 1 : 0
+              } evento y trazabilidad UFC guardados.`,
+            });
+          } catch (error) {
+            failed += 1;
+            updateUfcNewsBatchPreparationItem(sourceItem.id, {
+              status: "fallido",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Error desconocido preparando esta noticia.",
+            });
+          }
+        }
+
+        await reloadReferenceEntities();
+        await analyzeOfficialUfcNews();
+
+        setUfcNewsBatchStatus({
+          type: failed === 0 ? "success" : "error",
+          message:
+            failed === 0
+              ? `Preparación masiva completada: ${completed} noticias guardadas como borrador.`
+              : `Preparación masiva terminada: ${completed} noticias completadas y ${failed} fallidas.`,
+        });
+      } catch (error) {
+        setUfcNewsBatchStatus({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Error desconocido durante la preparación masiva de noticias.",
+        });
+      } finally {
+        setIsPreparingUfcNewsBatch(false);
+      }
+    }, [
+      analyzeOfficialUfcNews,
+      officialNewsItems,
+      referenceData,
+      reloadReferenceEntities,
+      ufcNewsBatchAnalysis,
+      updateUfcNewsBatchPreparationItem,
+    ]);
 
   const reloadOfficialUfcEvents = useCallback(async (): Promise<void> => {
     try {
@@ -2374,6 +2745,11 @@ export default function PanelIA(): ReactElement {
           titulo: payload.data.titulo,
           extracto: payload.data.extracto,
           contenido: payload.data.contenido,
+          fuente: "ufc",
+          fuenteUrl:
+            selectedOfficialNews.canonicalUrl ||
+            selectedOfficialNews.sourceUrl,
+          fuenteId: selectedOfficialNews.id,
           destacada: false,
         };
 
@@ -2453,8 +2829,8 @@ export default function PanelIA(): ReactElement {
         type: "success",
         message:
           unresolvedCount === 0
-            ? `Noticia transformada y relacionada automáticamente: ${resolvedRelationCount} referencias reales resueltas en Sanity.`
-            : `Noticia transformada: ${resolvedRelationCount} referencias resueltas y ${unresolvedCount} sugerencias pendientes de revisión.`,
+            ? `Noticia transformada y relacionada automáticamente: ${resolvedRelationCount} referencias reales resueltas y trazabilidad UFC añadida.`
+            : `Noticia transformada: ${resolvedRelationCount} referencias resueltas, ${unresolvedCount} sugerencias pendientes y trazabilidad UFC añadida.`,
       });
     } catch (error) {
       setOfficialSourceStatus({
@@ -2513,6 +2889,11 @@ export default function PanelIA(): ReactElement {
         titulo: selectedOfficialNews.title,
         extracto: createSourceExtract(selectedOfficialNews),
         contenido: officialBody,
+        fuente: "ufc",
+        fuenteUrl:
+          selectedOfficialNews.canonicalUrl ||
+          selectedOfficialNews.sourceUrl,
+        fuenteId: selectedOfficialNews.id,
         destacada: false,
       };
 
@@ -2560,7 +2941,7 @@ export default function PanelIA(): ReactElement {
       type: "success",
       message:
         missingRelations.length === 0
-          ? "Noticia oficial cargada y mapeada: título, extracto, contenido, fecha, imagen, MMA, UFC y auxiliares editoriales."
+          ? "Noticia oficial cargada y mapeada: contenido, relaciones y trazabilidad UFC listas para generar el output."
           : `Noticia cargada. Revisa manualmente estas referencias no encontradas en Sanity: ${missingRelations.join(
               ", "
             )}.`,
@@ -3261,6 +3642,236 @@ export default function PanelIA(): ReactElement {
                 Última consulta:{" "}
                 {new Date(officialNewsFetchedAt).toLocaleString("es-ES")}
               </p>
+            ) : null}
+
+            {officialNewsItems.length > 0 ? (
+              <div style={styles.batchCard}>
+                <div style={styles.batchHeader}>
+                  <div>
+                    <p style={styles.sourceEyebrow}>Análisis masivo</p>
+                    <h3 style={styles.batchTitle}>
+                      Noticias oficiales UFC
+                    </h3>
+                    <p style={styles.metaText}>
+                      Comprueba cuáles ya existen, cuáles son nuevas y aptas,
+                      y cuáles necesitan revisión antes de transformar.
+                    </p>
+                  </div>
+
+                  <div style={styles.batchHeaderActions}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void analyzeOfficialUfcNews();
+                      }}
+                      style={
+                        isAnalyzingUfcNewsBatch ||
+                        isPreparingUfcNewsBatch
+                          ? styles.buttonDisabled
+                          : styles.secondaryButton
+                      }
+                      disabled={
+                        isAnalyzingUfcNewsBatch ||
+                        isPreparingUfcNewsBatch
+                      }
+                    >
+                      {isAnalyzingUfcNewsBatch
+                        ? "Analizando noticias..."
+                        : "Analizar noticias UFC"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void prepareAllEligibleUfcNews();
+                      }}
+                      style={
+                        isPreparingUfcNewsBatch ||
+                        !ufcNewsBatchAnalysis?.ok ||
+                        ufcNewsBatchAnalysis.summary.ready === 0
+                          ? styles.buttonDisabled
+                          : styles.primaryButton
+                      }
+                      disabled={
+                        isPreparingUfcNewsBatch ||
+                        isAnalyzingUfcNewsBatch ||
+                        !ufcNewsBatchAnalysis?.ok ||
+                        ufcNewsBatchAnalysis.summary.ready === 0
+                      }
+                    >
+                      {isPreparingUfcNewsBatch
+                        ? "Preparando noticias nuevas..."
+                        : "Preparar todas las nuevas aptas"}
+                    </button>
+                  </div>
+                </div>
+
+                {ufcNewsBatchStatus.type !== "idle" ? (
+                  <div
+                    style={
+                      ufcNewsBatchStatus.type === "success"
+                        ? styles.feedbackSuccess
+                        : styles.feedbackError
+                    }
+                  >
+                    {ufcNewsBatchStatus.message}
+                  </div>
+                ) : null}
+
+                {ufcNewsBatchPreparation.length > 0 ? (
+                  <div style={styles.batchProgressList}>
+                    {ufcNewsBatchPreparation.map((item) => (
+                      <div
+                        key={item.sourceId}
+                        style={styles.batchProgressItem}
+                      >
+                        <div style={styles.batchProgressText}>
+                          <strong>{item.title}</strong>
+                          <span style={styles.batchItemMeta}>
+                            {item.message}
+                          </span>
+                        </div>
+
+                        <span
+                          style={
+                            item.status === "completado"
+                              ? styles.batchStatusOk
+                              : item.status === "fallido"
+                              ? styles.batchStatusError
+                              : styles.batchStatusPending
+                          }
+                        >
+                          {item.status === "pendiente"
+                            ? "Pendiente"
+                            : item.status === "procesando"
+                            ? "Procesando"
+                            : item.status === "completado"
+                            ? "Completado"
+                            : "Fallido"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {ufcNewsBatchAnalysis?.ok ? (
+                  <>
+                    <div style={styles.batchSummaryGrid}>
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>
+                          Ya existen
+                        </span>
+                        <strong>
+                          {ufcNewsBatchAnalysis.summary.existing}
+                        </strong>
+                      </div>
+
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>
+                          Nuevas aptas
+                        </span>
+                        <strong>
+                          {ufcNewsBatchAnalysis.summary.ready}
+                        </strong>
+                      </div>
+
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>
+                          Sin contenido
+                        </span>
+                        <strong>
+                          {ufcNewsBatchAnalysis.summary.withoutContent}
+                        </strong>
+                      </div>
+
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>
+                          Requieren revisión
+                        </span>
+                        <strong>
+                          {ufcNewsBatchAnalysis.summary.requiresReview}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div style={styles.batchList}>
+                      {ufcNewsBatchAnalysis.items.map((item) => {
+                        const sourceItem = officialNewsItems.find(
+                          (newsItem) => newsItem.id === item.sourceId
+                        );
+
+                        return (
+                          <div key={item.sourceId} style={styles.batchItem}>
+                            <div style={styles.batchItemMain}>
+                              <strong>{item.title}</strong>
+                              <span style={styles.batchItemMeta}>
+                                {item.status === "existente"
+                                  ? "Ya existe en Sanity"
+                                  : item.status === "nueva_apta"
+                                  ? "Nueva y apta para transformar"
+                                  : item.status === "sin_contenido"
+                                  ? "Sin contenido suficiente"
+                                  : "Requiere revisión"}
+                                {item.matchStrategy
+                                  ? ` · coincidencia por ${item.matchStrategy}`
+                                  : ""}
+                              </span>
+
+                              {item.reasons.length > 0 ? (
+                                <span style={styles.batchError}>
+                                  {item.reasons.join(" · ")}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div style={styles.batchItemActions}>
+                              <span
+                                style={
+                                  item.status === "existente"
+                                    ? styles.batchStatusOk
+                                    : item.status === "nueva_apta"
+                                    ? styles.batchStatusPending
+                                    : styles.batchStatusError
+                                }
+                              >
+                                {item.status === "existente"
+                                  ? "Existente"
+                                  : item.status === "nueva_apta"
+                                  ? "Nueva apta"
+                                  : item.status === "sin_contenido"
+                                  ? "Sin contenido"
+                                  : "Revisar"}
+                              </span>
+
+                              {sourceItem ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedOfficialNewsId(sourceItem.id);
+                                    setNewsRelationsResolution(null);
+                                    setOfficialSourceStatus({
+                                      type: "idle",
+                                      message: "",
+                                    });
+                                  }}
+                                  style={
+                                    isPreparingUfcNewsBatch
+                                      ? styles.buttonDisabled
+                                      : styles.secondaryButton
+                                  }
+                                  disabled={isPreparingUfcNewsBatch}
+                                >
+                                  Seleccionar
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : null}
+              </div>
             ) : null}
 
             {officialNewsItems.length > 0 ? (

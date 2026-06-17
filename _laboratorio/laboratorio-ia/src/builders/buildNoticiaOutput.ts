@@ -12,6 +12,14 @@ type BuildNoticiaOutputParams = {
   form: ContentFormState;
 };
 
+type NoticiaSanityOutputConFuente = NoticiaSanityOutput & {
+  fuente?: string;
+  fuenteUrl?: string;
+  fuenteId?: string;
+};
+
+const FUENTES_VALIDAS = ["ufc", "bkfc", "one", "otra"] as const;
+
 function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -129,6 +137,19 @@ function isValidIsoDateTime(value: string): boolean {
   return !Number.isNaN(date.getTime());
 }
 
+function isValidHttpUrl(value: string): boolean {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function hasImageValue(value: unknown): boolean {
   if (value === null || value === undefined) {
     return false;
@@ -163,6 +184,9 @@ export function buildNoticiaOutput({
   const eventoRelacionado = getReferenceValue(form.eventoRelacionado);
   const destacada = getBoolean(form.destacada, false);
   const imagenPrincipal = form.imagenPrincipal;
+  const fuente = getString(form.fuente).toLowerCase();
+  const fuenteUrl = getString(form.fuenteUrl);
+  const fuenteId = getString(form.fuenteId);
 
   const slug = hasValidSlugValue(form.slug)
     ? form.slug
@@ -192,7 +216,11 @@ export function buildNoticiaOutput({
     }
 
     if (extracto.length > 220) {
-      addIssue(issues, "extracto", "El extracto no puede superar 220 caracteres.");
+      addIssue(
+        issues,
+        "extracto",
+        "El extracto no puede superar 220 caracteres."
+      );
     }
   }
 
@@ -233,6 +261,45 @@ export function buildNoticiaOutput({
 
   if (!disciplina) {
     addIssue(issues, "disciplina", "La disciplina es obligatoria.");
+  }
+
+  if (
+    fuente &&
+    !FUENTES_VALIDAS.includes(
+      fuente as (typeof FUENTES_VALIDAS)[number]
+    )
+  ) {
+    addIssue(
+      issues,
+      "fuente",
+      "La fuente debe ser ufc, bkfc, one u otra."
+    );
+  }
+
+  if (fuenteUrl && !isValidHttpUrl(fuenteUrl)) {
+    addIssue(
+      issues,
+      "fuenteUrl",
+      "La URL de la fuente debe usar http o https."
+    );
+  }
+
+  if (fuente === "ufc" && !fuenteUrl) {
+    addIssue(
+      issues,
+      "fuenteUrl",
+      "Una noticia importada desde UFC debería conservar la URL canónica de la fuente.",
+      "warning"
+    );
+  }
+
+  if (fuente === "ufc" && !fuenteId) {
+    addIssue(
+      issues,
+      "fuenteId",
+      "Una noticia importada desde UFC debería conservar su identificador externo.",
+      "warning"
+    );
   }
 
   const uniqueFighterRefs = new Set(
@@ -300,7 +367,11 @@ export function buildNoticiaOutput({
     );
   }
 
-  if (destacada && contenidoTextoPlano.length > 0 && contenidoTextoPlano.length < 80) {
+  if (
+    destacada &&
+    contenidoTextoPlano.length > 0 &&
+    contenidoTextoPlano.length < 80
+  ) {
     addIssue(
       issues,
       "contenido",
@@ -317,7 +388,7 @@ export function buildNoticiaOutput({
     };
   }
 
-  const output: NoticiaSanityOutput = {
+  const output: NoticiaSanityOutputConFuente = {
     _type: "noticia",
     titulo,
     slug,
@@ -342,6 +413,18 @@ export function buildNoticiaOutput({
 
   if (eventoRelacionado) {
     output.eventoRelacionado = eventoRelacionado;
+  }
+
+  if (fuente) {
+    output.fuente = fuente;
+  }
+
+  if (fuenteUrl) {
+    output.fuenteUrl = fuenteUrl;
+  }
+
+  if (fuenteId) {
+    output.fuenteId = fuenteId;
   }
 
   return {
