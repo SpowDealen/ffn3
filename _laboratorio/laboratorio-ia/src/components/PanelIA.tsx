@@ -1137,6 +1137,8 @@ export default function PanelIA(): ReactElement {
     useState(false);
   const [ufcNewsBatchPreparation, setUfcNewsBatchPreparation] =
     useState<UfcNewsBatchPreparationItem[]>([]);
+  const [showAllUfcNewsBatchItems, setShowAllUfcNewsBatchItems] =
+    useState(false);
 
   const [officialEventItems, setOfficialEventItems] = useState<
     UfcOfficialEventItem[]
@@ -1177,6 +1179,8 @@ export default function PanelIA(): ReactElement {
   const [ufcBatchPreparation, setUfcBatchPreparation] = useState<
     UfcBatchPreparationItem[]
   >([]);
+  const [showAllUfcEventBatchItems, setShowAllUfcEventBatchItems] =
+    useState(false);
 
   const [isLoadingReferences, setIsLoadingReferences] = useState(false);
   const [referenceLoadError, setReferenceLoadError] = useState("");
@@ -1304,6 +1308,7 @@ export default function PanelIA(): ReactElement {
       setNewsRelationsResolution(null);
       setUfcNewsBatchAnalysis(null);
       setUfcNewsBatchPreparation([]);
+      setShowAllUfcNewsBatchItems(false);
       setUfcNewsBatchStatus({
         type: "idle",
         message: "",
@@ -1442,6 +1447,18 @@ export default function PanelIA(): ReactElement {
             sourceItem: UfcOfficialNewsItem;
           } => item !== null
         );
+
+      const confirmed = window.confirm(
+        `Se prepararán ${eligibleNews.length} noticias nuevas como borradores en Sanity. Las noticias existentes o inseguras se excluirán. ¿Continuar?`
+      );
+
+      if (!confirmed) {
+        setUfcNewsBatchStatus({
+          type: "idle",
+          message: "",
+        });
+        return;
+      }
 
       if (eligibleNews.length === 0) {
         setUfcNewsBatchStatus({
@@ -1674,6 +1691,7 @@ export default function PanelIA(): ReactElement {
       setOfficialEventsFetchedAt(payload.fetchedAt);
       setUfcBatchAnalysis(null);
       setUfcBatchPreparation([]);
+      setShowAllUfcEventBatchItems(false);
       setUfcBatchStatus({
         type: "idle",
         message: "",
@@ -2063,6 +2081,18 @@ export default function PanelIA(): ReactElement {
             event: UfcOfficialEventItem;
           } => item !== null
         );
+
+      const confirmed = window.confirm(
+        `Se prepararán ${eligibleEvents.length} eventos UFC aptos. Se crearán únicamente luchadores y combates pendientes. ¿Continuar?`
+      );
+
+      if (!confirmed) {
+        setUfcBatchStatus({
+          type: "idle",
+          message: "",
+        });
+        return;
+      }
 
       if (eligibleEvents.length === 0) {
         setUfcBatchStatus({
@@ -3701,13 +3731,14 @@ export default function PanelIA(): ReactElement {
                     >
                       {isPreparingUfcNewsBatch
                         ? "Preparando noticias nuevas..."
-                        : "Preparar todas las nuevas aptas"}
+                        : `Preparar ${ufcNewsBatchAnalysis?.ok ? ufcNewsBatchAnalysis.summary.ready : 0} nuevas aptas`}
                     </button>
                   </div>
                 </div>
 
                 {ufcNewsBatchStatus.type !== "idle" ? (
                   <div
+                    aria-live="polite"
                     style={
                       ufcNewsBatchStatus.type === "success"
                         ? styles.feedbackSuccess
@@ -3795,7 +3826,10 @@ export default function PanelIA(): ReactElement {
                     </div>
 
                     <div style={styles.batchList}>
-                      {ufcNewsBatchAnalysis.items.map((item) => {
+                      {(showAllUfcNewsBatchItems
+                        ? ufcNewsBatchAnalysis.items
+                        : ufcNewsBatchAnalysis.items.slice(0, 6)
+                      ).map((item) => {
                         const sourceItem = officialNewsItems.find(
                           (newsItem) => newsItem.id === item.sourceId
                         );
@@ -3869,6 +3903,20 @@ export default function PanelIA(): ReactElement {
                         );
                       })}
                     </div>
+
+                    {ufcNewsBatchAnalysis.items.length > 6 ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowAllUfcNewsBatchItems((current) => !current)
+                        }
+                        style={styles.tertiaryButton}
+                      >
+                        {showAllUfcNewsBatchItems
+                          ? "Mostrar menos noticias"
+                          : `Ver las ${ufcNewsBatchAnalysis.items.length} noticias analizadas`}
+                      </button>
+                    ) : null}
                   </>
                 ) : null}
               </div>
@@ -4212,13 +4260,14 @@ export default function PanelIA(): ReactElement {
                     >
                       {isPreparingUfcBatch
                         ? "Preparando eventos aptos..."
-                        : "Preparar todos los aptos"}
+                        : `Preparar ${ufcBatchAnalysis?.ok ? ufcBatchAnalysis.summary.readyToPrepare : 0} eventos aptos`}
                     </button>
                   </div>
                 </div>
 
                 {ufcBatchStatus.type !== "idle" ? (
                   <div
+                    aria-live="polite"
                     style={
                       ufcBatchStatus.type === "success"
                         ? styles.feedbackSuccess
@@ -4317,7 +4366,10 @@ export default function PanelIA(): ReactElement {
                     </div>
 
                     <div style={styles.batchList}>
-                      {ufcBatchAnalysis.items.map((item) => {
+                      {(showAllUfcEventBatchItems
+                        ? ufcBatchAnalysis.items
+                        : ufcBatchAnalysis.items.slice(0, 6)
+                      ).map((item) => {
                         const sourceEvent = officialEventItems.find(
                           (event) => event.id === item.eventId
                         );
@@ -4393,6 +4445,20 @@ export default function PanelIA(): ReactElement {
                         );
                       })}
                     </div>
+
+                    {ufcBatchAnalysis.items.length > 6 ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowAllUfcEventBatchItems((current) => !current)
+                        }
+                        style={styles.tertiaryButton}
+                      >
+                        {showAllUfcEventBatchItems
+                          ? "Mostrar menos eventos"
+                          : `Ver los ${ufcBatchAnalysis.items.length} eventos analizados`}
+                      </button>
+                    ) : null}
                   </>
                 ) : null}
               </div>
@@ -5275,6 +5341,19 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13,
     lineHeight: 1.6,
     opacity: 0.78,
+  },
+  tertiaryButton: {
+    justifySelf: "start",
+    border: "none",
+    background: "transparent",
+    padding: "4px 0",
+    color: "inherit",
+    fontSize: 13,
+    fontWeight: 700,
+    textDecoration: "underline",
+    textUnderlineOffset: 4,
+    cursor: "pointer",
+    opacity: 0.82,
   },
   batchCard: {
     display: "grid",
