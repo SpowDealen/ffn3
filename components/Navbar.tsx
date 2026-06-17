@@ -37,15 +37,39 @@ function isItemActive(pathname: string, item: NavItem) {
 
 export default function Navbar() {
   const pathname = usePathname();
+
+  const [isMobileNav, setIsMobileNav] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileNoticiasOpen, setMobileNoticiasOpen] = useState(false);
   const [desktopNoticiasOpen, setDesktopNoticiasOpen] = useState(false);
+
+  useEffect(() => {
+    const checkViewport = () => {
+      setIsMobileNav(window.innerWidth <= 1180);
+    };
+
+    checkViewport();
+    window.addEventListener("resize", checkViewport);
+
+    return () => {
+      window.removeEventListener("resize", checkViewport);
+    };
+  }, []);
 
   useEffect(() => {
     setMobileOpen(false);
     setMobileNoticiasOpen(false);
     setDesktopNoticiasOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!isMobileNav) {
+      setMobileOpen(false);
+      setMobileNoticiasOpen(false);
+    }
+
+    setDesktopNoticiasOpen(false);
+  }, [isMobileNav]);
 
   const activeMap = useMemo(() => {
     return navItems.reduce<Record<string, boolean>>((acc, item) => {
@@ -70,13 +94,12 @@ export default function Navbar() {
         style={{
           maxWidth: "1440px",
           margin: "0 auto",
-          padding: "0 20px",
+          padding: isMobileNav ? "0 16px" : "0 20px",
         }}
       >
         <div
-          className="ffn-navbar-row"
           style={{
-            minHeight: "76px",
+            minHeight: isMobileNav ? "68px" : "76px",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -85,17 +108,22 @@ export default function Navbar() {
         >
           <Link
             href="/"
-            onClick={() => setMobileOpen(false)}
-            className="ffn-navbar-brand"
+            onClick={() => {
+              setMobileOpen(false);
+              setMobileNoticiasOpen(false);
+            }}
             style={{
               color: "var(--ffn-text, #f5f7fb)",
               textDecoration: "none",
               fontWeight: 800,
-              letterSpacing: "0.08em",
+              letterSpacing: isMobileNav ? "0.07em" : "0.08em",
               textTransform: "uppercase",
-              fontSize: "0.95rem",
+              fontSize: isMobileNav ? "0.82rem" : "0.95rem",
               whiteSpace: "nowrap",
-              flexShrink: 0,
+              flexShrink: 1,
+              maxWidth: isMobileNav ? "calc(100vw - 110px)" : "none",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}
           >
             Full Fight News
@@ -106,168 +134,177 @@ export default function Navbar() {
             style={{
               display: "flex",
               alignItems: "center",
+              justifyContent: "flex-end",
               gap: "10px",
               minWidth: 0,
+              flexShrink: 0,
             }}
           >
-            <div
-              className="ffn-navbar-desktop"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-            >
-              {navItems.map((item) => {
-                const active = activeMap[item.label];
+            {!isMobileNav && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                {navItems.map((item) => {
+                  const active = activeMap[item.label];
 
-                if (item.children?.length) {
-                  return (
-                    <div
-                      key={item.label}
-                      style={{
-                        position: "relative",
-                        paddingBottom: "14px",
-                        marginBottom: "-14px",
-                      }}
-                      onMouseEnter={() => setDesktopNoticiasOpen(true)}
-                      onMouseLeave={() => setDesktopNoticiasOpen(false)}
-                    >
-                      <Link
-                        href={item.href || "#"}
-                        aria-expanded={desktopNoticiasOpen}
+                  if (item.children?.length) {
+                    return (
+                      <div
+                        key={item.label}
                         style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          padding: "12px 14px",
-                          borderRadius: "999px",
-                          textDecoration: "none",
-                          color: active
-                            ? "var(--ffn-text, #f5f7fb)"
-                            : "var(--ffn-text-soft, rgba(245,247,251,0.72))",
-                          background: active
-                            ? "rgba(255,255,255,0.08)"
-                            : "transparent",
-                          border: active
-                            ? "1px solid rgba(255,255,255,0.14)"
-                            : "1px solid transparent",
-                          fontWeight: 600,
-                          fontSize: "0.95rem",
-                          transition: "all 0.2s ease",
-                          whiteSpace: "nowrap",
+                          position: "relative",
+                          paddingBottom: "14px",
+                          marginBottom: "-14px",
                         }}
+                        onMouseEnter={() => setDesktopNoticiasOpen(true)}
+                        onMouseLeave={() => setDesktopNoticiasOpen(false)}
                       >
-                        {item.label}
-                        <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>▾</span>
-                      </Link>
-
-                      {desktopNoticiasOpen && (
-                        <div
+                        <Link
+                          href={item.href || "#"}
+                          aria-expanded={desktopNoticiasOpen}
                           style={{
-                            position: "absolute",
-                            top: "100%",
-                            left: 0,
-                            minWidth: "220px",
-                            padding: "10px",
-                            borderRadius: "18px",
-                            background: "rgba(18, 18, 26, 0.98)",
-                            border: "1px solid rgba(255,255,255,0.1)",
-                            boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            padding: "12px 14px",
+                            borderRadius: "999px",
+                            textDecoration: "none",
+                            color: active
+                              ? "var(--ffn-text, #f5f7fb)"
+                              : "var(--ffn-text-soft, rgba(245,247,251,0.72))",
+                            background: active
+                              ? "rgba(255,255,255,0.08)"
+                              : "transparent",
+                            border: active
+                              ? "1px solid rgba(255,255,255,0.14)"
+                              : "1px solid transparent",
+                            fontWeight: 600,
+                            fontSize: "0.95rem",
+                            transition: "all 0.2s ease",
+                            whiteSpace: "nowrap",
                           }}
                         >
-                          {item.children.map((child) => {
-                            const childActive =
-                              pathname === child.href || pathname.startsWith(`${child.href}/`);
+                          {item.label}
+                          <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>▾</span>
+                        </Link>
 
-                            return (
-                              <Link
-                                key={child.href}
-                                href={child.href}
-                                style={{
-                                  display: "block",
-                                  padding: "12px 14px",
-                                  borderRadius: "12px",
-                                  textDecoration: "none",
-                                  color: childActive
-                                    ? "var(--ffn-text, #f5f7fb)"
-                                    : "var(--ffn-text-soft, rgba(245,247,251,0.72))",
-                                  background: childActive
-                                    ? "rgba(255,255,255,0.08)"
-                                    : "transparent",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {child.label}
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
+                        {desktopNoticiasOpen && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: "100%",
+                              left: 0,
+                              minWidth: "220px",
+                              padding: "10px",
+                              borderRadius: "18px",
+                              background: "rgba(18, 18, 26, 0.98)",
+                              border: "1px solid rgba(255,255,255,0.1)",
+                              boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+                            }}
+                          >
+                            {item.children.map((child) => {
+                              const childActive =
+                                pathname === child.href ||
+                                pathname.startsWith(`${child.href}/`);
+
+                              return (
+                                <Link
+                                  key={child.href}
+                                  href={child.href}
+                                  style={{
+                                    display: "block",
+                                    padding: "12px 14px",
+                                    borderRadius: "12px",
+                                    textDecoration: "none",
+                                    color: childActive
+                                      ? "var(--ffn-text, #f5f7fb)"
+                                      : "var(--ffn-text-soft, rgba(245,247,251,0.72))",
+                                    background: childActive
+                                      ? "rgba(255,255,255,0.08)"
+                                      : "transparent",
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {child.label}
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href || "#"}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        padding: "12px 14px",
+                        borderRadius: "999px",
+                        textDecoration: "none",
+                        color: active
+                          ? "var(--ffn-text, #f5f7fb)"
+                          : "var(--ffn-text-soft, rgba(245,247,251,0.72))",
+                        background: active ? "rgba(255,255,255,0.08)" : "transparent",
+                        border: active
+                          ? "1px solid rgba(255,255,255,0.14)"
+                          : "1px solid transparent",
+                        fontWeight: 600,
+                        fontSize: "0.95rem",
+                        transition: "all 0.2s ease",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {item.label}
+                    </Link>
                   );
-                }
+                })}
+              </div>
+            )}
 
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href || "#"}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      padding: "12px 14px",
-                      borderRadius: "999px",
-                      textDecoration: "none",
-                      color: active
-                        ? "var(--ffn-text, #f5f7fb)"
-                        : "var(--ffn-text-soft, rgba(245,247,251,0.72))",
-                      background: active ? "rgba(255,255,255,0.08)" : "transparent",
-                      border: active
-                        ? "1px solid rgba(255,255,255,0.14)"
-                        : "1px solid transparent",
-                      fontWeight: 600,
-                      fontSize: "0.95rem",
-                      transition: "all 0.2s ease",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-
-            <button
-              type="button"
-              aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
-              aria-expanded={mobileOpen}
-              onClick={() => setMobileOpen((prev) => !prev)}
-              className="ffn-navbar-mobile-button"
-              style={{
-                display: "none",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "46px",
-                height: "46px",
-                borderRadius: "14px",
-                border: "1px solid rgba(255,255,255,0.1)",
-                background: "rgba(255,255,255,0.05)",
-                color: "var(--ffn-text, #f5f7fb)",
-                fontSize: "1.2rem",
-                cursor: "pointer",
-                flexShrink: 0,
-              }}
-            >
-              {mobileOpen ? "✕" : "☰"}
-            </button>
+            {isMobileNav && (
+              <button
+                type="button"
+                aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
+                aria-expanded={mobileOpen}
+                aria-controls="ffn-mobile-menu"
+                onClick={() => setMobileOpen((prev) => !prev)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "14px",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: mobileOpen
+                    ? "rgba(255,255,255,0.1)"
+                    : "rgba(255,255,255,0.05)",
+                  color: "var(--ffn-text, #f5f7fb)",
+                  fontSize: "1.25rem",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                  lineHeight: 1,
+                }}
+              >
+                {mobileOpen ? "✕" : "☰"}
+              </button>
+            )}
           </nav>
         </div>
 
-        {mobileOpen && (
+        {isMobileNav && mobileOpen && (
           <div
-            className="ffn-navbar-mobile-panel"
+            id="ffn-mobile-menu"
             style={{
-              display: "none",
+              display: "block",
               padding: "0 0 18px",
             }}
           >
@@ -277,13 +314,17 @@ export default function Navbar() {
                 gap: "10px",
                 padding: "12px",
                 borderRadius: "24px",
-                background: "rgba(255,255,255,0.03)",
+                background: "rgba(255,255,255,0.035)",
                 border: "1px solid rgba(255,255,255,0.08)",
+                boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
               }}
             >
               <Link
                 href="/"
-                onClick={() => setMobileOpen(false)}
+                onClick={() => {
+                  setMobileOpen(false);
+                  setMobileNoticiasOpen(false);
+                }}
                 style={mobileLinkStyle(pathname === "/")}
               >
                 Inicio
@@ -293,14 +334,14 @@ export default function Navbar() {
                 type="button"
                 aria-expanded={mobileNoticiasOpen}
                 onClick={() => setMobileNoticiasOpen((prev) => !prev)}
-                style={{
-                  ...mobileButtonStyle(
-                    pathname.startsWith("/noticias") || pathname.startsWith("/resultados")
-                  ),
-                }}
+                style={mobileButtonStyle(
+                  pathname.startsWith("/noticias") || pathname.startsWith("/resultados")
+                )}
               >
                 <span>Noticias</span>
-                <span>{mobileNoticiasOpen ? "−" : "+"}</span>
+                <span style={{ fontSize: "1.15rem", lineHeight: 1 }}>
+                  {mobileNoticiasOpen ? "−" : "+"}
+                </span>
               </button>
 
               {mobileNoticiasOpen && (
@@ -308,7 +349,8 @@ export default function Navbar() {
                   style={{
                     display: "grid",
                     gap: "8px",
-                    paddingLeft: "10px",
+                    paddingLeft: "12px",
+                    paddingRight: "2px",
                   }}
                 >
                   <Link
@@ -321,6 +363,7 @@ export default function Navbar() {
                   >
                     Noticias
                   </Link>
+
                   <Link
                     href="/resultados"
                     onClick={() => {
@@ -336,7 +379,10 @@ export default function Navbar() {
 
               <Link
                 href="/disciplinas"
-                onClick={() => setMobileOpen(false)}
+                onClick={() => {
+                  setMobileOpen(false);
+                  setMobileNoticiasOpen(false);
+                }}
                 style={mobileLinkStyle(pathname.startsWith("/disciplinas"))}
               >
                 Disciplinas
@@ -344,7 +390,10 @@ export default function Navbar() {
 
               <Link
                 href="/organizaciones"
-                onClick={() => setMobileOpen(false)}
+                onClick={() => {
+                  setMobileOpen(false);
+                  setMobileNoticiasOpen(false);
+                }}
                 style={mobileLinkStyle(pathname.startsWith("/organizaciones"))}
               >
                 Organizaciones
@@ -352,7 +401,10 @@ export default function Navbar() {
 
               <Link
                 href="/eventos"
-                onClick={() => setMobileOpen(false)}
+                onClick={() => {
+                  setMobileOpen(false);
+                  setMobileNoticiasOpen(false);
+                }}
                 style={mobileLinkStyle(pathname.startsWith("/eventos"))}
               >
                 Eventos
@@ -361,50 +413,6 @@ export default function Navbar() {
           </div>
         )}
       </div>
-
-      <style jsx>{`
-        @media (max-width: 980px) {
-          .ffn-navbar-desktop {
-            display: none !important;
-          }
-
-          .ffn-navbar-mobile-button {
-            display: inline-flex !important;
-          }
-
-          .ffn-navbar-mobile-panel {
-            display: block !important;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .ffn-navbar-row {
-            min-height: 70px !important;
-            gap: 14px !important;
-          }
-
-          .ffn-navbar-brand {
-            font-size: 0.8rem !important;
-            letter-spacing: 0.07em !important;
-            max-width: calc(100vw - 110px);
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-        }
-
-        @media (max-width: 420px) {
-          .ffn-navbar-brand {
-            font-size: 0.74rem !important;
-            max-width: calc(100vw - 96px);
-          }
-
-          .ffn-navbar-mobile-button {
-            width: 42px !important;
-            height: 42px !important;
-            border-radius: 12px !important;
-          }
-        }
-      `}</style>
     </header>
   );
 }
@@ -441,6 +449,7 @@ function mobileButtonStyle(active: boolean) {
     border: "1px solid rgba(255,255,255,0.08)",
     fontWeight: 600,
     cursor: "pointer",
+    fontSize: "1rem",
   } as const;
 }
 

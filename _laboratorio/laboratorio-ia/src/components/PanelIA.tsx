@@ -56,11 +56,229 @@ type ReferenceEntitiesApiResponse =
       message?: string;
     };
 
+type UfcOfficialNewsItem = {
+  id: string;
+  title: string;
+  summary?: string;
+  bodyText?: string;
+  sourceUrl: string;
+  canonicalUrl: string;
+  publishedAt?: string;
+  imageUrl?: string;
+};
+
+type UfcOfficialNewsApiResponse =
+  | {
+      ok: true;
+      source: "ufc";
+      fetchedAt: string;
+      count: number;
+      items: UfcOfficialNewsItem[];
+    }
+  | {
+      ok: false;
+      source?: "ufc";
+      fetchedAt?: string;
+      count?: number;
+      items?: UfcOfficialNewsItem[];
+      error?: string;
+    };
+
+type OfficialSourceStatus =
+  | {
+      type: "idle";
+      message: "";
+    }
+  | {
+      type: "success";
+      message: string;
+    }
+  | {
+      type: "error";
+      message: string;
+    };
+
+type TransformNewsApiResponse =
+  | {
+      ok: true;
+      data: {
+        titulo: string;
+        extracto: string;
+        contenido: string;
+      };
+    }
+  | {
+      ok: false;
+      error?: string;
+    };
+
+type UfcFightCardItem = {
+  id: string;
+  section: "principal" | "preliminar";
+  sectionLabel: "Main Card" | "Prelims" | "Early Prelims";
+  order: number;
+  redFighter: string;
+  blueFighter: string;
+  weightClass: string;
+  titleFight: boolean;
+  status: "programado" | "finalizado" | "cancelado";
+  winnerName?: string;
+  method?: string;
+  round?: number;
+  time?: string;
+};
+
+type UfcOfficialEventItem = {
+  id: string;
+  name: string;
+  headline?: string;
+  mainEvent?: string;
+  startDate?: string;
+  endDate?: string;
+  venue?: string;
+  city?: string;
+  region?: string;
+  country?: string;
+  locationText?: string;
+  watchText?: string;
+  description?: string;
+  sourceUrl: string;
+  canonicalUrl: string;
+  imageUrl?: string;
+  status: "proximo" | "celebrado" | "cancelado";
+  fightCard?: UfcFightCardItem[];
+};
+
+type UfcResolutionFight = {
+  sourceFightId: string;
+  readyToCreate: boolean;
+  blockingReasons: string[];
+};
+
+type UfcEventResolution =
+  | {
+      ok: true;
+      event: {
+        sourceName: string;
+        found: boolean;
+        sanityId?: string;
+        sanityName?: string;
+        matchStrategy?: string;
+      };
+      discipline: {
+        found: boolean;
+        sanityId?: string;
+        sanityName?: string;
+      };
+      organization: {
+        found: boolean;
+        sanityId?: string;
+        sanityName?: string;
+      };
+      counts: {
+        fights: number;
+        readyFights: number;
+        existingFights: number;
+        pendingFights: number;
+        existingFighters: number;
+        missingFighters: number;
+        resolvedCategories: number;
+        unresolvedCategories: number;
+      };
+      missingFighters: Array<{
+        sourceName: string;
+        normalizedName: string;
+        found: false;
+      }>;
+      unresolvedCategories: Array<{
+        sourceLabel: string;
+        normalizedLabel: string;
+        found: false;
+      }>;
+      fights: UfcResolutionFight[];
+    }
+  | {
+      ok: false;
+      error?: string;
+    };
+
+type UfcEventResolutionSuccess = Extract<
+  UfcEventResolution,
+  { ok: true }
+>;
+
+type UfcBulkActionResponse =
+  | {
+      ok: true;
+      summary: {
+        candidates: number;
+        created: number;
+        skipped: number;
+        failed: number;
+      };
+    }
+  | {
+      ok: false;
+      error?: string;
+      summary?: {
+        candidates: number;
+        created: number;
+        skipped: number;
+        failed: number;
+      };
+    };
+
+type UfcOfficialEventsApiResponse =
+  | {
+      ok: true;
+      source: "ufc";
+      fetchedAt: string;
+      count: number;
+      items: UfcOfficialEventItem[];
+    }
+  | {
+      ok: false;
+      source?: "ufc";
+      fetchedAt?: string;
+      count?: number;
+      items?: UfcOfficialEventItem[];
+      error?: string;
+    };
+
+type TransformEventApiResponse =
+  | {
+      ok: true;
+      data: {
+        nombre: string;
+        horaLocal: string;
+        ciudad: string;
+        pais: string;
+        recinto: string;
+        cartelPrincipal: string;
+        dondeVer: string;
+        descripcionCorta: string;
+        descripcion: string;
+        notas: string;
+      };
+    }
+  | {
+      ok: false;
+      error?: string;
+    };
+
 const DEFAULT_CONTENT_TYPE: ContentTypeId = "noticia";
 
+function getDefaultApiBaseUrl(): string {
+  if (typeof window === "undefined") {
+    return "http://localhost:3000";
+  }
+
+  return `${window.location.protocol}//${window.location.hostname}:3000`;
+}
+
 const API_BASE_URL = (
-  import.meta.env.VITE_FFN3_API_BASE_URL?.trim() || "http://localhost:3000"
-).replace(/\/$/, "");
+  import.meta.env.VITE_FFN3_API_BASE_URL?.trim() || getDefaultApiBaseUrl()
+).replace(/\/+$/, "");
 
 const AUTO_REFRESH_MS = 120_000;
 
@@ -122,6 +340,65 @@ const EMPTY_REFERENCE_DATA: Record<ReferenceTarget, ReferenceEntityOption[]> = {
 
 function prettyJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
+}
+
+function toDateTimeLocalValue(value: string | undefined): string {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const pad = (part: number): string => String(part).padStart(2, "0");
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate()
+  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function createSourceExtract(item: UfcOfficialNewsItem): string {
+  const sourceText = item.summary?.trim() || item.bodyText?.trim() || "";
+
+  if (sourceText.length <= 220) {
+    return sourceText;
+  }
+
+  return `${sourceText.slice(0, 217).trimEnd()}...`;
+}
+
+function findReferenceByLabel(
+  options: ReferenceEntityOption[],
+  expectedLabel: string
+): ReferenceEntityOption | undefined {
+  const normalizedExpectedLabel = expectedLabel.trim().toLocaleLowerCase("es");
+
+  return options.find(
+    (option) => option.label.trim().toLocaleLowerCase("es") === normalizedExpectedLabel
+  );
+}
+
+function createEditorialInstructions(item: UfcOfficialNewsItem): string {
+  return [
+    "Reescribe la información en español con estilo periodístico propio de Full Fight News.",
+    "No traduzcas de forma literal ni copies frases extensas de la fuente.",
+    "Conserva todos los hechos, nombres, fechas y declaraciones relevantes sin inventar datos.",
+    "Atribuye la información a UFC cuando corresponda.",
+    `Fuente oficial: ${item.canonicalUrl || item.sourceUrl}`,
+  ].join("\n");
+}
+
+function createEventEditorialInstructions(item: UfcOfficialEventItem): string {
+  return [
+    "Redacta una ficha de evento en español con estilo editorial propio de Full Fight News.",
+    "Conserva nombre, fecha, recinto, ubicación, cartel principal y plataforma oficial.",
+    "No inventes combates, horarios, ubicaciones ni datos que no aparezcan en la fuente.",
+    "Usa español de España y evita lenguaje promocional.",
+    `Fuente oficial: ${item.canonicalUrl || item.sourceUrl}`,
+  ].join("\n");
 }
 
 function getTextAreaRows(kind: FieldKind, rows?: number): number {
@@ -628,6 +905,47 @@ export default function PanelIA(): ReactElement {
     Record<ReferenceTarget, ReferenceEntityOption[]>
   >(EMPTY_REFERENCE_DATA);
 
+
+  const [officialNewsItems, setOfficialNewsItems] = useState<UfcOfficialNewsItem[]>(
+    []
+  );
+  const [selectedOfficialNewsId, setSelectedOfficialNewsId] = useState("");
+  const [isLoadingOfficialNews, setIsLoadingOfficialNews] = useState(false);
+  const [isTransformingOfficialNews, setIsTransformingOfficialNews] =
+    useState(false);
+  const [officialNewsFetchedAt, setOfficialNewsFetchedAt] = useState("");
+  const [officialSourceStatus, setOfficialSourceStatus] =
+    useState<OfficialSourceStatus>({
+      type: "idle",
+      message: "",
+    });
+
+  const [officialEventItems, setOfficialEventItems] = useState<
+    UfcOfficialEventItem[]
+  >([]);
+  const [selectedOfficialEventId, setSelectedOfficialEventId] = useState("");
+  const [isLoadingOfficialEvents, setIsLoadingOfficialEvents] = useState(false);
+  const [isTransformingOfficialEvent, setIsTransformingOfficialEvent] =
+    useState(false);
+  const [officialEventsFetchedAt, setOfficialEventsFetchedAt] = useState("");
+  const [officialEventSourceStatus, setOfficialEventSourceStatus] =
+    useState<OfficialSourceStatus>({
+      type: "idle",
+      message: "",
+    });
+
+  const [ufcEventResolution, setUfcEventResolution] =
+    useState<UfcEventResolution | null>(null);
+  const [isResolvingUfcEvent, setIsResolvingUfcEvent] = useState(false);
+  const [isCreatingUfcFighters, setIsCreatingUfcFighters] = useState(false);
+  const [isCreatingUfcFights, setIsCreatingUfcFights] = useState(false);
+  const [isPreparingFullUfcCard, setIsPreparingFullUfcCard] = useState(false);
+  const [ufcAutomationStatus, setUfcAutomationStatus] =
+    useState<OfficialSourceStatus>({
+      type: "idle",
+      message: "",
+    });
+
   const [isLoadingReferences, setIsLoadingReferences] = useState(false);
   const [referenceLoadError, setReferenceLoadError] = useState("");
 
@@ -635,6 +953,41 @@ export default function PanelIA(): ReactElement {
     () => getContentTypeDefinition(contentType),
     [contentType]
   );
+
+
+  const selectedOfficialNews = useMemo(
+    () =>
+      officialNewsItems.find((item) => item.id === selectedOfficialNewsId) ?? null,
+    [officialNewsItems, selectedOfficialNewsId]
+  );
+
+  const selectedOfficialEvent = useMemo(
+    () =>
+      officialEventItems.find((item) => item.id === selectedOfficialEventId) ??
+      null,
+    [officialEventItems, selectedOfficialEventId]
+  );
+
+  const canCreateMissingUfcFighters =
+    Boolean(
+      selectedOfficialEvent &&
+        ufcEventResolution?.ok &&
+        ufcEventResolution.counts.missingFighters > 0
+    ) &&
+    !isCreatingUfcFighters &&
+    !isResolvingUfcEvent &&
+    !isPreparingFullUfcCard;
+
+  const canCreateUfcFights =
+    Boolean(
+      selectedOfficialEvent &&
+        ufcEventResolution?.ok &&
+        ufcEventResolution.event.found &&
+        ufcEventResolution.counts.pendingFights > 0
+    ) &&
+    !isCreatingUfcFights &&
+    !isResolvingUfcEvent &&
+    !isPreparingFullUfcCard;
 
   const filterContext = useMemo<ReferenceFilterContext>(
     () => getActiveFilterContext(form, auxiliary),
@@ -685,6 +1038,1018 @@ export default function PanelIA(): ReactElement {
     }
   }, [auxiliary]);
 
+
+  const reloadOfficialUfcNews = useCallback(async (): Promise<void> => {
+    try {
+      setIsLoadingOfficialNews(true);
+      setOfficialSourceStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/ufc/news?refresh=${Date.now()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        }
+      );
+
+      const payload = (await response.json()) as UfcOfficialNewsApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron cargar las noticias oficiales de UFC."
+        );
+      }
+
+      setOfficialNewsItems(payload.items);
+      setOfficialNewsFetchedAt(payload.fetchedAt);
+      setSelectedOfficialNewsId((currentId) =>
+        payload.items.some((item) => item.id === currentId) ? currentId : ""
+      );
+
+      setOfficialSourceStatus({
+        type: "success",
+        message: `${payload.count} noticias oficiales de UFC cargadas.`,
+      });
+    } catch (error) {
+      setOfficialNewsItems([]);
+      setSelectedOfficialNewsId("");
+      setOfficialNewsFetchedAt("");
+      setOfficialSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido cargando las noticias oficiales de UFC.",
+      });
+    } finally {
+      setIsLoadingOfficialNews(false);
+    }
+  }, []);
+
+  const reloadOfficialUfcEvents = useCallback(async (): Promise<void> => {
+    try {
+      setIsLoadingOfficialEvents(true);
+      setOfficialEventSourceStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/ufc/events?refresh=${Date.now()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        }
+      );
+
+      const payload = (await response.json()) as UfcOfficialEventsApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron cargar los eventos oficiales de UFC."
+        );
+      }
+
+      setOfficialEventItems(payload.items);
+      setOfficialEventsFetchedAt(payload.fetchedAt);
+      setSelectedOfficialEventId((currentId) =>
+        payload.items.some((item) => item.id === currentId) ? currentId : ""
+      );
+
+      setOfficialEventSourceStatus({
+        type: "success",
+        message: `${payload.count} eventos oficiales de UFC cargados.`,
+      });
+    } catch (error) {
+      setOfficialEventItems([]);
+      setSelectedOfficialEventId("");
+      setOfficialEventsFetchedAt("");
+      setOfficialEventSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido cargando los eventos oficiales de UFC.",
+      });
+    } finally {
+      setIsLoadingOfficialEvents(false);
+    }
+  }, []);
+
+  const resolveSelectedUfcEvent = useCallback(
+    async (eventOverride?: UfcOfficialEventItem): Promise<void> => {
+      const targetEvent = eventOverride ?? selectedOfficialEvent;
+
+      if (!targetEvent) {
+        setUfcAutomationStatus({
+          type: "error",
+          message: "Selecciona primero un evento oficial de UFC.",
+        });
+        return;
+      }
+
+      try {
+        setIsResolvingUfcEvent(true);
+        setUfcAutomationStatus({
+          type: "idle",
+          message: "",
+        });
+
+        const response = await fetch(
+          `${API_BASE_URL}/api/sources/ufc/events/resolve`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              event: targetEvent,
+            }),
+          }
+        );
+
+        const payload = (await response.json()) as UfcEventResolution;
+
+        if (!response.ok || !payload.ok) {
+          throw new Error(
+            !payload.ok && payload.error
+              ? payload.error
+              : "No se pudo resolver la cartelera contra Sanity."
+          );
+        }
+
+        setUfcEventResolution(payload);
+
+        setUfcAutomationStatus({
+          type: "success",
+          message: payload.event.found
+            ? `${payload.counts.readyFights} combates resueltos: ${payload.counts.existingFights} ya existen y ${payload.counts.pendingFights} quedan pendientes de crear.`
+            : `Cartelera analizada. Falta crear o localizar el evento en Sanity.`,
+        });
+      } catch (error) {
+        setUfcEventResolution(null);
+        setUfcAutomationStatus({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Error desconocido resolviendo la cartelera.",
+        });
+      } finally {
+        setIsResolvingUfcEvent(false);
+      }
+    },
+    [selectedOfficialEvent]
+  );
+
+  const createMissingUfcFighters = useCallback(async (): Promise<void> => {
+    if (!selectedOfficialEvent) {
+      setUfcAutomationStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de UFC.",
+      });
+      return;
+    }
+
+    try {
+      setIsCreatingUfcFighters(true);
+      setUfcAutomationStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/ufc/events/create-fighters`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            confirm: true,
+            event: selectedOfficialEvent,
+          }),
+        }
+      );
+
+      const payload = (await response.json()) as UfcBulkActionResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron crear los luchadores faltantes."
+        );
+      }
+
+      setUfcAutomationStatus({
+        type: "success",
+        message: `${payload.summary.created} luchadores creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`,
+      });
+
+      await reloadReferenceEntities();
+      await resolveSelectedUfcEvent(selectedOfficialEvent);
+
+      setUfcAutomationStatus({
+        type: "success",
+        message: `${payload.summary.created} luchadores creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`,
+      });
+    } catch (error) {
+      setUfcAutomationStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido creando luchadores.",
+      });
+    } finally {
+      setIsCreatingUfcFighters(false);
+    }
+  }, [
+    reloadReferenceEntities,
+    resolveSelectedUfcEvent,
+    selectedOfficialEvent,
+  ]);
+
+  const createUfcFights = useCallback(async (): Promise<void> => {
+    if (!selectedOfficialEvent) {
+      setUfcAutomationStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de UFC.",
+      });
+      return;
+    }
+
+    try {
+      setIsCreatingUfcFights(true);
+      setUfcAutomationStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/ufc/events/create-fights`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            confirm: true,
+            event: selectedOfficialEvent,
+          }),
+        }
+      );
+
+      const payload = (await response.json()) as UfcBulkActionResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron crear los combates."
+        );
+      }
+
+      setUfcAutomationStatus({
+        type: "success",
+        message: `${payload.summary.created} combates creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`,
+      });
+
+      await reloadReferenceEntities();
+      await resolveSelectedUfcEvent(selectedOfficialEvent);
+
+      setUfcAutomationStatus({
+        type: "success",
+        message: `${payload.summary.created} combates creados, ${payload.summary.skipped} ya existentes y ${payload.summary.failed} fallidos.`,
+      });
+    } catch (error) {
+      setUfcAutomationStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido creando combates.",
+      });
+    } finally {
+      setIsCreatingUfcFights(false);
+    }
+  }, [
+    reloadReferenceEntities,
+    resolveSelectedUfcEvent,
+    selectedOfficialEvent,
+  ]);
+
+  const requestUfcEventResolution = useCallback(
+    async (
+      targetEvent: UfcOfficialEventItem
+    ): Promise<UfcEventResolutionSuccess> => {
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/ufc/events/resolve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            event: targetEvent,
+          }),
+        }
+      );
+
+      const payload = (await response.json()) as UfcEventResolution;
+
+      if (!response.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudo resolver la cartelera contra Sanity."
+        );
+      }
+
+      if (!payload.ok) {
+        throw new Error(
+          payload.error ||
+            "No se pudo resolver la cartelera contra Sanity."
+        );
+      }
+
+      return payload;
+    },
+    []
+  );
+
+  const prepareFullUfcCard = useCallback(async (): Promise<void> => {
+    if (!selectedOfficialEvent) {
+      setUfcAutomationStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de UFC.",
+      });
+      return;
+    }
+
+    try {
+      setIsPreparingFullUfcCard(true);
+      setUfcAutomationStatus({
+        type: "success",
+        message: "Paso 1 de 4: analizando la cartelera oficial...",
+      });
+
+      let resolution = await requestUfcEventResolution(
+        selectedOfficialEvent
+      );
+
+      setUfcEventResolution(resolution);
+
+      if (!resolution.event.found) {
+        setUfcAutomationStatus({
+          type: "error",
+          message:
+            "El evento todavía no existe en Sanity. Transfórmalo, genera el output y guárdalo como borrador. Después vuelve a pulsar “Preparar cartelera completa”.",
+        });
+        return;
+      }
+
+      if (resolution.counts.unresolvedCategories > 0) {
+        setUfcAutomationStatus({
+          type: "error",
+          message: `El flujo se ha detenido: hay ${resolution.counts.unresolvedCategories} categorías de peso sin resolver. Revísalas antes de crear luchadores o combates.`,
+        });
+        return;
+      }
+
+      if (resolution.counts.missingFighters > 0) {
+        setUfcAutomationStatus({
+          type: "success",
+          message: `Paso 2 de 4: creando ${resolution.counts.missingFighters} luchadores faltantes...`,
+        });
+
+        const fightersResponse = await fetch(
+          `${API_BASE_URL}/api/sources/ufc/events/create-fighters`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              confirm: true,
+              event: selectedOfficialEvent,
+            }),
+          }
+        );
+
+        const fightersPayload =
+          (await fightersResponse.json()) as UfcBulkActionResponse;
+
+        if (!fightersResponse.ok || !fightersPayload.ok) {
+          throw new Error(
+            !fightersPayload.ok && fightersPayload.error
+              ? fightersPayload.error
+              : "No se pudieron crear los luchadores faltantes."
+          );
+        }
+
+        if (fightersPayload.summary.failed > 0) {
+          throw new Error(
+            `Se crearon ${fightersPayload.summary.created} luchadores, pero ${fightersPayload.summary.failed} fallaron. Revisa el resultado antes de continuar.`
+          );
+        }
+
+        await reloadReferenceEntities();
+
+        setUfcAutomationStatus({
+          type: "success",
+          message:
+            "Paso 3 de 4: actualizando relaciones después de crear luchadores...",
+        });
+
+        resolution = await requestUfcEventResolution(
+          selectedOfficialEvent
+        );
+
+        setUfcEventResolution(resolution);
+      }
+
+      if (resolution.counts.missingFighters > 0) {
+        setUfcAutomationStatus({
+          type: "error",
+          message: `El flujo se ha detenido: todavía quedan ${resolution.counts.missingFighters} luchadores sin resolver.`,
+        });
+        return;
+      }
+
+      if (resolution.counts.pendingFights > 0) {
+        setUfcAutomationStatus({
+          type: "success",
+          message: `Paso 4 de 4: creando ${resolution.counts.pendingFights} combates pendientes...`,
+        });
+
+        const fightsResponse = await fetch(
+          `${API_BASE_URL}/api/sources/ufc/events/create-fights`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              confirm: true,
+              event: selectedOfficialEvent,
+            }),
+          }
+        );
+
+        const fightsPayload =
+          (await fightsResponse.json()) as UfcBulkActionResponse;
+
+        if (!fightsResponse.ok || !fightsPayload.ok) {
+          throw new Error(
+            !fightsPayload.ok && fightsPayload.error
+              ? fightsPayload.error
+              : "No se pudieron crear los combates."
+          );
+        }
+
+        if (fightsPayload.summary.failed > 0) {
+          throw new Error(
+            `Se crearon ${fightsPayload.summary.created} combates, pero ${fightsPayload.summary.failed} fallaron. Revisa el resultado antes de continuar.`
+          );
+        }
+
+        await reloadReferenceEntities();
+
+        resolution = await requestUfcEventResolution(
+          selectedOfficialEvent
+        );
+
+        setUfcEventResolution(resolution);
+      }
+
+      setUfcAutomationStatus({
+        type: "success",
+        message:
+          resolution.counts.pendingFights === 0 &&
+          resolution.counts.missingFighters === 0
+            ? `Cartelera completa preparada: ${resolution.counts.existingFighters} luchadores relacionados, ${resolution.counts.existingFights} combates existentes y 0 pendientes.`
+            : `Proceso completado con ${resolution.counts.pendingFights} combates y ${resolution.counts.missingFighters} luchadores todavía pendientes.`,
+      });
+    } catch (error) {
+      setUfcAutomationStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido preparando la cartelera completa.",
+      });
+    } finally {
+      setIsPreparingFullUfcCard(false);
+    }
+  }, [
+    reloadReferenceEntities,
+    requestUfcEventResolution,
+    selectedOfficialEvent,
+  ]);
+
+  const applyOfficialEventToForm = useCallback((): void => {
+    if (!selectedOfficialEvent) {
+      setOfficialEventSourceStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de UFC.",
+      });
+      return;
+    }
+
+    if (contentType !== "evento") {
+      setOfficialEventSourceStatus({
+        type: "error",
+        message:
+          "Selecciona el tipo de contenido Evento antes de pasar la fuente al formulario.",
+      });
+      return;
+    }
+
+    const mmaOption = findReferenceByLabel(referenceData.disciplina, "MMA");
+    const ufcOption = findReferenceByLabel(referenceData.organizacion, "UFC");
+    const eventDate = toDateTimeLocalValue(selectedOfficialEvent.startDate);
+
+    resetDerivedUiState();
+
+    setForm((currentForm) => {
+      const nextForm: ContentFormState = {
+        ...currentForm,
+        nombre: selectedOfficialEvent.name,
+        ciudad: selectedOfficialEvent.city || "",
+        pais: selectedOfficialEvent.country || "",
+        recinto: selectedOfficialEvent.venue || "",
+        cartelPrincipal: selectedOfficialEvent.mainEvent || "",
+        dondeVer: selectedOfficialEvent.watchText || "",
+        descripcionCorta: selectedOfficialEvent.description || "",
+        descripcion: selectedOfficialEvent.description || "",
+        estado: selectedOfficialEvent.status,
+      };
+
+      if (eventDate) {
+        nextForm.fecha = eventDate;
+      }
+
+      if (selectedOfficialEvent.imageUrl) {
+        nextForm.imagen = selectedOfficialEvent.imageUrl;
+      }
+
+      if (mmaOption) {
+        nextForm.disciplina = toReferenceValue(mmaOption.value);
+      }
+
+      if (ufcOption) {
+        nextForm.organizacion = toReferenceValue(ufcOption.value);
+      }
+
+      return clearInvalidDependentReferences(
+        nextForm,
+        auxiliary,
+        referenceData
+      );
+    });
+
+    setAuxiliary((currentAuxiliary) => ({
+      ...currentAuxiliary,
+      tipoEvento: selectedOfficialEvent.name.startsWith("UFC ")
+        ? "Evento oficial UFC"
+        : "Evento de deportes de combate",
+      importanciaEditorial:
+        selectedOfficialEvent.description ||
+        "Evento oficial de UFC pendiente de revisión editorial.",
+      combateEstelarTexto: selectedOfficialEvent.mainEvent || "",
+      contextoCartelera: selectedOfficialEvent.description || "",
+      clavesNarrativas: createEventEditorialInstructions(selectedOfficialEvent),
+      publicoObjetivo: "Aficionados a los deportes de combate",
+      tono: "informativo, directo y editorial",
+    }));
+
+    const missingRelations: string[] = [];
+
+    if (!mmaOption) {
+      missingRelations.push("MMA");
+    }
+
+    if (!ufcOption) {
+      missingRelations.push("UFC");
+    }
+
+    setOfficialEventSourceStatus({
+      type: "success",
+      message:
+        missingRelations.length === 0
+          ? "Evento oficial cargado en el formulario con fecha, imagen, MMA y UFC."
+          : `Evento cargado. Revisa manualmente estas referencias no encontradas en Sanity: ${missingRelations.join(
+              ", "
+            )}.`,
+    });
+  }, [
+    auxiliary,
+    contentType,
+    referenceData,
+    resetDerivedUiState,
+    selectedOfficialEvent,
+  ]);
+
+  const transformOfficialEventToSpanish =
+    useCallback(async (): Promise<void> => {
+      if (!selectedOfficialEvent) {
+        setOfficialEventSourceStatus({
+          type: "error",
+          message: "Selecciona primero un evento oficial de UFC.",
+        });
+        return;
+      }
+
+      if (contentType !== "evento") {
+        setOfficialEventSourceStatus({
+          type: "error",
+          message:
+            "Selecciona el tipo de contenido Evento antes de transformar la fuente.",
+        });
+        return;
+      }
+
+      try {
+        setIsTransformingOfficialEvent(true);
+        setOfficialEventSourceStatus({
+          type: "idle",
+          message: "",
+        });
+
+        const response = await fetch(`${API_BASE_URL}/api/transformar-evento`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(selectedOfficialEvent),
+        });
+
+        const payload = (await response.json()) as TransformEventApiResponse;
+
+        if (!response.ok || !payload.ok) {
+          throw new Error(
+            !payload.ok && payload.error
+              ? payload.error
+              : "No se pudo transformar el evento al español."
+          );
+        }
+
+        const mmaOption = findReferenceByLabel(referenceData.disciplina, "MMA");
+        const ufcOption = findReferenceByLabel(
+          referenceData.organizacion,
+          "UFC"
+        );
+        const eventDate = toDateTimeLocalValue(selectedOfficialEvent.startDate);
+
+        resetDerivedUiState();
+
+        setForm((currentForm) => {
+          const nextForm: ContentFormState = {
+            ...currentForm,
+            nombre: payload.data.nombre,
+            horaLocal: payload.data.horaLocal,
+            ciudad: payload.data.ciudad,
+            pais: payload.data.pais,
+            recinto: payload.data.recinto,
+            cartelPrincipal: payload.data.cartelPrincipal,
+            dondeVer: payload.data.dondeVer,
+            descripcionCorta: payload.data.descripcionCorta,
+            descripcion: payload.data.descripcion,
+            notas: payload.data.notas,
+            estado: selectedOfficialEvent.status,
+          };
+
+          if (eventDate) {
+            nextForm.fecha = eventDate;
+          }
+
+          if (selectedOfficialEvent.imageUrl) {
+            nextForm.imagen = selectedOfficialEvent.imageUrl;
+          }
+
+          if (mmaOption) {
+            nextForm.disciplina = toReferenceValue(mmaOption.value);
+          }
+
+          if (ufcOption) {
+            nextForm.organizacion = toReferenceValue(ufcOption.value);
+          }
+
+          return clearInvalidDependentReferences(
+            nextForm,
+            auxiliary,
+            referenceData
+          );
+        });
+
+        setAuxiliary((currentAuxiliary) => ({
+          ...currentAuxiliary,
+          tipoEvento: "Evento oficial UFC",
+          importanciaEditorial: payload.data.descripcionCorta,
+          combateEstelarTexto: payload.data.cartelPrincipal,
+          contextoCartelera: payload.data.descripcion,
+          clavesNarrativas: createEventEditorialInstructions(
+            selectedOfficialEvent
+          ),
+          publicoObjetivo: "Aficionados a los deportes de combate",
+          tono: "informativo, directo y editorial",
+        }));
+
+        const missingRelations: string[] = [];
+
+        if (!mmaOption) {
+          missingRelations.push("MMA");
+        }
+
+        if (!ufcOption) {
+          missingRelations.push("UFC");
+        }
+
+        setOfficialEventSourceStatus({
+          type: "success",
+          message:
+            missingRelations.length === 0
+              ? "Evento transformado al español y cargado en el formulario con fecha, imagen, MMA y UFC."
+              : `Evento transformado. Revisa manualmente estas referencias no encontradas en Sanity: ${missingRelations.join(
+                  ", "
+                )}.`,
+        });
+      } catch (error) {
+        setOfficialEventSourceStatus({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Error desconocido transformando el evento al español.",
+        });
+      } finally {
+        setIsTransformingOfficialEvent(false);
+      }
+    }, [
+      auxiliary,
+      contentType,
+      referenceData,
+      resetDerivedUiState,
+      selectedOfficialEvent,
+    ]);
+
+  const transformOfficialNewsToSpanish = useCallback(async (): Promise<void> => {
+    if (!selectedOfficialNews) {
+      setOfficialSourceStatus({
+        type: "error",
+        message: "Selecciona primero una noticia oficial de UFC.",
+      });
+      return;
+    }
+
+    if (contentType !== "noticia") {
+      setOfficialSourceStatus({
+        type: "error",
+        message:
+          "Selecciona el tipo de contenido Noticia antes de transformar la fuente.",
+      });
+      return;
+    }
+
+    try {
+      setIsTransformingOfficialNews(true);
+      setOfficialSourceStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(`${API_BASE_URL}/api/transformar-noticia`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          title: selectedOfficialNews.title,
+          summary: selectedOfficialNews.summary,
+          bodyText: selectedOfficialNews.bodyText,
+          sourceUrl:
+            selectedOfficialNews.canonicalUrl || selectedOfficialNews.sourceUrl,
+        }),
+      });
+
+      const payload = (await response.json()) as TransformNewsApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudo transformar la noticia al español."
+        );
+      }
+
+      const mmaOption = findReferenceByLabel(referenceData.disciplina, "MMA");
+      const ufcOption = findReferenceByLabel(referenceData.organizacion, "UFC");
+      const publicationDate = toDateTimeLocalValue(
+        selectedOfficialNews.publishedAt
+      );
+
+      resetDerivedUiState();
+
+      setForm((currentForm) => {
+        const nextForm: ContentFormState = {
+          ...currentForm,
+          titulo: payload.data.titulo,
+          extracto: payload.data.extracto,
+          contenido: payload.data.contenido,
+          destacada: false,
+        };
+
+        if (publicationDate) {
+          nextForm.fechaPublicacion = publicationDate;
+        }
+
+        if (selectedOfficialNews.imageUrl) {
+          nextForm.imagenPrincipal = selectedOfficialNews.imageUrl;
+        }
+
+        if (mmaOption) {
+          nextForm.disciplina = toReferenceValue(mmaOption.value);
+        }
+
+        if (ufcOption) {
+          nextForm.organizacionRelacionada = toReferenceValue(ufcOption.value);
+        }
+
+        return clearInvalidDependentReferences(
+          nextForm,
+          auxiliary,
+          referenceData
+        );
+      });
+
+      setAuxiliary((currentAuxiliary) => ({
+        ...currentAuxiliary,
+        anguloEditorial:
+          "Noticia reescrita en español desde una fuente oficial de UFC con enfoque propio de Full Fight News.",
+        hechoPrincipal: payload.data.extracto,
+        contextoPrevio:
+          selectedOfficialNews.bodyText?.trim() ||
+          selectedOfficialNews.summary?.trim() ||
+          selectedOfficialNews.title,
+        tono: "informativo, directo y periodístico",
+        seoObjetivo: payload.data.titulo,
+        instruccionesRedaccion: createEditorialInstructions(
+          selectedOfficialNews
+        ),
+      }));
+
+      const missingRelations: string[] = [];
+
+      if (!mmaOption) {
+        missingRelations.push("MMA");
+      }
+
+      if (!ufcOption) {
+        missingRelations.push("UFC");
+      }
+
+      setOfficialSourceStatus({
+        type: "success",
+        message:
+          missingRelations.length === 0
+            ? "Noticia transformada al español y cargada en el formulario con imagen, fecha, MMA y UFC."
+            : `Noticia transformada al español. Revisa manualmente estas referencias no encontradas en Sanity: ${missingRelations.join(
+                ", "
+              )}.`,
+      });
+    } catch (error) {
+      setOfficialSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido transformando la noticia al español.",
+      });
+    } finally {
+      setIsTransformingOfficialNews(false);
+    }
+  }, [
+    auxiliary,
+    contentType,
+    referenceData,
+    resetDerivedUiState,
+    selectedOfficialNews,
+  ]);
+
+  const applyOfficialNewsToForm = useCallback((): void => {
+    if (!selectedOfficialNews) {
+      setOfficialSourceStatus({
+        type: "error",
+        message: "Selecciona primero una noticia oficial de UFC.",
+      });
+      return;
+    }
+
+    if (contentType !== "noticia") {
+      setOfficialSourceStatus({
+        type: "error",
+        message: "Selecciona el tipo de contenido Noticia antes de pasar la fuente al formulario.",
+      });
+      return;
+    }
+
+    const mmaOption = findReferenceByLabel(referenceData.disciplina, "MMA");
+    const ufcOption = findReferenceByLabel(referenceData.organizacion, "UFC");
+    const officialSummary =
+      selectedOfficialNews.summary?.trim() ||
+      createSourceExtract(selectedOfficialNews) ||
+      selectedOfficialNews.title;
+    const officialBody =
+      selectedOfficialNews.bodyText?.trim() ||
+      selectedOfficialNews.summary?.trim() ||
+      selectedOfficialNews.title;
+    const publicationDate = toDateTimeLocalValue(selectedOfficialNews.publishedAt);
+
+    resetDerivedUiState();
+
+    setForm((currentForm) => {
+      const nextForm: ContentFormState = {
+        ...currentForm,
+        titulo: selectedOfficialNews.title,
+        extracto: createSourceExtract(selectedOfficialNews),
+        contenido: officialBody,
+        destacada: false,
+      };
+
+      if (publicationDate) {
+        nextForm.fechaPublicacion = publicationDate;
+      }
+
+      if (selectedOfficialNews.imageUrl) {
+        nextForm.imagenPrincipal = selectedOfficialNews.imageUrl;
+      }
+
+      if (mmaOption) {
+        nextForm.disciplina = toReferenceValue(mmaOption.value);
+      }
+
+      if (ufcOption) {
+        nextForm.organizacionRelacionada = toReferenceValue(ufcOption.value);
+      }
+
+      return clearInvalidDependentReferences(nextForm, auxiliary, referenceData);
+    });
+
+    setAuxiliary((currentAuxiliary) => ({
+      ...currentAuxiliary,
+      anguloEditorial:
+        "Reescritura informativa en español a partir de una fuente oficial de UFC, con enfoque propio de Full Fight News.",
+      hechoPrincipal: officialSummary,
+      contextoPrevio: officialBody,
+      tono: "informativo, directo y periodístico",
+      seoObjetivo: selectedOfficialNews.title,
+      instruccionesRedaccion: createEditorialInstructions(selectedOfficialNews),
+    }));
+
+    const missingRelations: string[] = [];
+
+    if (!mmaOption) {
+      missingRelations.push("MMA");
+    }
+
+    if (!ufcOption) {
+      missingRelations.push("UFC");
+    }
+
+    setOfficialSourceStatus({
+      type: "success",
+      message:
+        missingRelations.length === 0
+          ? "Noticia oficial cargada y mapeada: título, extracto, contenido, fecha, imagen, MMA, UFC y auxiliares editoriales."
+          : `Noticia cargada. Revisa manualmente estas referencias no encontradas en Sanity: ${missingRelations.join(
+              ", "
+            )}.`,
+    });
+  }, [
+    auxiliary,
+    contentType,
+    referenceData,
+    resetDerivedUiState,
+    selectedOfficialNews,
+  ]);
+
   useEffect(() => {
     const nextState = getInitialFormState(contentType);
     setForm(nextState.form);
@@ -694,6 +2059,27 @@ export default function PanelIA(): ReactElement {
       type: "idle",
       message: "",
     });
+
+    if (contentType !== "noticia") {
+      setSelectedOfficialNewsId("");
+      setOfficialSourceStatus({
+        type: "idle",
+        message: "",
+      });
+    }
+
+    if (contentType !== "evento") {
+      setSelectedOfficialEventId("");
+      setOfficialEventSourceStatus({
+        type: "idle",
+        message: "",
+      });
+      setUfcEventResolution(null);
+      setUfcAutomationStatus({
+        type: "idle",
+        message: "",
+      });
+    }
   }, [contentType]);
 
   useEffect(() => {
@@ -1303,6 +2689,592 @@ export default function PanelIA(): ReactElement {
           <p style={styles.metaText}>{definition.description}</p>
         </section>
 
+        {contentType === "noticia" ? (
+          <section style={styles.sourceCard}>
+            <div style={styles.sourceHeader}>
+              <div>
+                <p style={styles.sourceEyebrow}>Fuente oficial conectada</p>
+                <h2 style={styles.sectionTitle}>Bandeja de noticias UFC</h2>
+                <p style={styles.metaText}>
+                  Selecciona una noticia oficial, pásala al formulario y edítala
+                  antes de generar el borrador de Full Fight News.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void reloadOfficialUfcNews();
+                }}
+                style={
+                  isLoadingOfficialNews
+                    ? styles.buttonDisabled
+                    : styles.secondaryButton
+                }
+                disabled={isLoadingOfficialNews}
+              >
+                {isLoadingOfficialNews
+                  ? "Actualizando UFC..."
+                  : officialNewsItems.length > 0
+                  ? "Actualizar noticias UFC"
+                  : "Cargar noticias UFC"}
+              </button>
+            </div>
+
+            {officialSourceStatus.type !== "idle" ? (
+              <div
+                style={
+                  officialSourceStatus.type === "success"
+                    ? styles.feedbackSuccess
+                    : styles.feedbackError
+                }
+              >
+                {officialSourceStatus.message}
+              </div>
+            ) : null}
+
+            {officialNewsFetchedAt ? (
+              <p style={styles.sourceTimestamp}>
+                Última consulta:{" "}
+                {new Date(officialNewsFetchedAt).toLocaleString("es-ES")}
+              </p>
+            ) : null}
+
+            {officialNewsItems.length > 0 ? (
+              <div style={styles.sourceLayout}>
+                <div style={styles.sourceList}>
+                  {officialNewsItems.map((item) => {
+                    const isSelected = item.id === selectedOfficialNewsId;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedOfficialNewsId(item.id);
+                          setOfficialSourceStatus({
+                            type: "idle",
+                            message: "",
+                          });
+                        }}
+                        style={
+                          isSelected
+                            ? styles.sourceItemSelected
+                            : styles.sourceItem
+                        }
+                      >
+                        <span style={styles.sourceItemTitle}>{item.title}</span>
+
+                        {item.summary ? (
+                          <span style={styles.sourceItemSummary}>
+                            {item.summary}
+                          </span>
+                        ) : null}
+
+                        <span style={styles.sourceItemMeta}>
+                          {item.publishedAt
+                            ? new Date(item.publishedAt).toLocaleString("es-ES")
+                            : "Fecha no disponible"}
+                          {" · "}
+                          {item.bodyText
+                            ? "Contenido completo"
+                            : "Sin cuerpo completo"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={styles.sourcePreview}>
+                  {selectedOfficialNews ? (
+                    <>
+                      {selectedOfficialNews.imageUrl ? (
+                        <img
+                          src={selectedOfficialNews.imageUrl}
+                          alt=""
+                          style={styles.sourceImage}
+                        />
+                      ) : null}
+
+                      <div style={styles.sourcePreviewContent}>
+                        <p style={styles.sourceEyebrow}>Noticia seleccionada</p>
+                        <h3 style={styles.sourcePreviewTitle}>
+                          {selectedOfficialNews.title}
+                        </h3>
+
+                        {selectedOfficialNews.summary ? (
+                          <p style={styles.sourcePreviewSummary}>
+                            {selectedOfficialNews.summary}
+                          </p>
+                        ) : null}
+
+                        <div style={styles.sourcePreviewActions}>
+                          <button
+                            type="button"
+                            onClick={applyOfficialNewsToForm}
+                            style={styles.button}
+                            disabled={isTransformingOfficialNews}
+                          >
+                            Pasar al formulario
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void transformOfficialNewsToSpanish();
+                            }}
+                            style={
+                              isTransformingOfficialNews
+                                ? styles.buttonDisabled
+                                : styles.secondaryButton
+                            }
+                            disabled={isTransformingOfficialNews}
+                          >
+                            {isTransformingOfficialNews
+                              ? "Transformando..."
+                              : "Transformar a español"}
+                          </button>
+
+                          <a
+                            href={selectedOfficialNews.canonicalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={styles.sourceLink}
+                          >
+                            Abrir fuente oficial
+                          </a>
+                        </div>
+
+                        <p style={styles.sourceBodyPreview}>
+                          {selectedOfficialNews.bodyText
+                            ? `${selectedOfficialNews.bodyText.slice(0, 900)}${
+                                selectedOfficialNews.bodyText.length > 900
+                                  ? "..."
+                                  : ""
+                              }`
+                            : "Esta noticia no contiene un cuerpo completo fiable. Se usará el resumen disponible y podrás completar el contenido manualmente."}
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <p style={styles.emptyText}>
+                      Selecciona una noticia de la bandeja para revisar sus datos.
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p style={styles.emptyText}>
+                Pulsa “Cargar noticias UFC” para consultar la fuente oficial.
+              </p>
+            )}
+          </section>
+        ) : null}
+
+        {contentType === "evento" ? (
+          <section style={styles.sourceCard}>
+            <div style={styles.sourceHeader}>
+              <div>
+                <p style={styles.sourceEyebrow}>Fuente oficial conectada</p>
+                <h2 style={styles.sectionTitle}>Bandeja de eventos UFC</h2>
+                <p style={styles.metaText}>
+                  Selecciona un evento oficial, revisa sus datos y transfórmalo
+                  al español antes de generar el borrador.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void reloadOfficialUfcEvents();
+                }}
+                style={
+                  isLoadingOfficialEvents
+                    ? styles.buttonDisabled
+                    : styles.secondaryButton
+                }
+                disabled={isLoadingOfficialEvents}
+              >
+                {isLoadingOfficialEvents
+                  ? "Actualizando eventos..."
+                  : officialEventItems.length > 0
+                  ? "Actualizar eventos UFC"
+                  : "Cargar eventos UFC"}
+              </button>
+            </div>
+
+            {officialEventSourceStatus.type !== "idle" ? (
+              <div
+                style={
+                  officialEventSourceStatus.type === "success"
+                    ? styles.feedbackSuccess
+                    : styles.feedbackError
+                }
+              >
+                {officialEventSourceStatus.message}
+              </div>
+            ) : null}
+
+            {officialEventsFetchedAt ? (
+              <p style={styles.sourceTimestamp}>
+                Última consulta:{" "}
+                {new Date(officialEventsFetchedAt).toLocaleString("es-ES")}
+              </p>
+            ) : null}
+
+            {officialEventItems.length > 0 ? (
+              <div style={styles.sourceLayout}>
+                <div style={styles.sourceList}>
+                  {officialEventItems.map((item) => {
+                    const isSelected = item.id === selectedOfficialEventId;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedOfficialEventId(item.id);
+                          setOfficialEventSourceStatus({
+                            type: "idle",
+                            message: "",
+                          });
+                          setUfcEventResolution(null);
+                          setUfcAutomationStatus({
+                            type: "idle",
+                            message: "",
+                          });
+                        }}
+                        style={
+                          isSelected
+                            ? styles.sourceItemSelected
+                            : styles.sourceItem
+                        }
+                      >
+                        <span style={styles.sourceItemTitle}>{item.name}</span>
+
+                        {item.mainEvent ? (
+                          <span style={styles.sourceItemSummary}>
+                            {item.mainEvent}
+                          </span>
+                        ) : null}
+
+                        <span style={styles.sourceItemMeta}>
+                          {item.startDate
+                            ? new Date(item.startDate).toLocaleString("es-ES")
+                            : "Fecha no disponible"}
+                          {" · "}
+                          {item.status}
+                          {item.locationText ? ` · ${item.locationText}` : ""}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={styles.sourcePreview}>
+                  {selectedOfficialEvent ? (
+                    <>
+                      {selectedOfficialEvent.imageUrl ? (
+                        <img
+                          src={selectedOfficialEvent.imageUrl}
+                          alt=""
+                          style={styles.sourceImage}
+                        />
+                      ) : null}
+
+                      <div style={styles.sourcePreviewContent}>
+                        <p style={styles.sourceEyebrow}>Evento seleccionado</p>
+                        <h3 style={styles.sourcePreviewTitle}>
+                          {selectedOfficialEvent.name}
+                        </h3>
+
+                        <p style={styles.sourcePreviewSummary}>
+                          {[
+                            selectedOfficialEvent.mainEvent,
+                            selectedOfficialEvent.locationText,
+                            selectedOfficialEvent.watchText,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+
+                        <div style={styles.sourcePreviewActions}>
+                          <button
+                            type="button"
+                            onClick={applyOfficialEventToForm}
+                            style={styles.button}
+                            disabled={isTransformingOfficialEvent}
+                          >
+                            Pasar al formulario
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void transformOfficialEventToSpanish();
+                            }}
+                            style={
+                              isTransformingOfficialEvent
+                                ? styles.buttonDisabled
+                                : styles.secondaryButton
+                            }
+                            disabled={isTransformingOfficialEvent}
+                          >
+                            {isTransformingOfficialEvent
+                              ? "Transformando..."
+                              : "Transformar a español"}
+                          </button>
+
+                          <a
+                            href={selectedOfficialEvent.canonicalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={styles.sourceLink}
+                          >
+                            Abrir fuente oficial
+                          </a>
+                        </div>
+
+                        <p style={styles.sourceBodyPreview}>
+                          {selectedOfficialEvent.description ||
+                            "La fuente oficial no incluye una descripción editorial completa. Podrás completarla manualmente."}
+                        </p>
+
+                        <div style={styles.automationCard}>
+                          <div style={styles.automationHeader}>
+                            <div>
+                              <p style={styles.sourceEyebrow}>
+                                Automatización de cartelera
+                              </p>
+                              <h4 style={styles.automationTitle}>
+                                Resolver y crear relaciones en Sanity
+                              </h4>
+                            </div>
+
+                            <div style={styles.automationTopActions}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void resolveSelectedUfcEvent();
+                                }}
+                                style={
+                                  isResolvingUfcEvent ||
+                                  isPreparingFullUfcCard
+                                    ? styles.buttonDisabled
+                                    : styles.secondaryButton
+                                }
+                                disabled={
+                                  isResolvingUfcEvent ||
+                                  isPreparingFullUfcCard
+                                }
+                              >
+                                {isResolvingUfcEvent
+                                  ? "Resolviendo..."
+                                  : "Analizar cartelera"}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void prepareFullUfcCard();
+                                }}
+                                style={
+                                  isPreparingFullUfcCard
+                                    ? styles.buttonDisabled
+                                    : styles.button
+                                }
+                                disabled={
+                                  isPreparingFullUfcCard ||
+                                  isResolvingUfcEvent ||
+                                  isCreatingUfcFighters ||
+                                  isCreatingUfcFights
+                                }
+                              >
+                                {isPreparingFullUfcCard
+                                  ? "Preparando cartelera..."
+                                  : "Preparar cartelera completa"}
+                              </button>
+                            </div>
+                          </div>
+
+                          {ufcAutomationStatus.type !== "idle" ? (
+                            <div
+                              style={
+                                ufcAutomationStatus.type === "success"
+                                  ? styles.feedbackSuccess
+                                  : styles.feedbackError
+                              }
+                            >
+                              {ufcAutomationStatus.message}
+                            </div>
+                          ) : null}
+
+                          {ufcEventResolution?.ok ? (
+                            <>
+                              <div style={styles.automationStats}>
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Evento
+                                  </span>
+                                  <strong>
+                                    {ufcEventResolution.event.found
+                                      ? "Encontrado"
+                                      : "No encontrado"}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Combates
+                                  </span>
+                                  <strong>
+                                    {ufcEventResolution.counts.fights}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Resueltos
+                                  </span>
+                                  <strong>
+                                    {ufcEventResolution.counts.readyFights}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Ya existentes
+                                  </span>
+                                  <strong>
+                                    {ufcEventResolution.counts.existingFights}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Pendientes de crear
+                                  </span>
+                                  <strong>
+                                    {ufcEventResolution.counts.pendingFights}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Luchadores existentes
+                                  </span>
+                                  <strong>
+                                    {
+                                      ufcEventResolution.counts
+                                        .existingFighters
+                                    }
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Luchadores faltantes
+                                  </span>
+                                  <strong>
+                                    {
+                                      ufcEventResolution.counts
+                                        .missingFighters
+                                    }
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Categorías pendientes
+                                  </span>
+                                  <strong>
+                                    {
+                                      ufcEventResolution.counts
+                                        .unresolvedCategories
+                                    }
+                                  </strong>
+                                </div>
+                              </div>
+
+                              {ufcEventResolution.missingFighters.length > 0 ? (
+                                <div style={styles.automationWarning}>
+                                  <strong>Luchadores pendientes:</strong>{" "}
+                                  {ufcEventResolution.missingFighters
+                                    .map((fighter) => fighter.sourceName)
+                                    .join(", ")}
+                                </div>
+                              ) : null}
+
+                              {ufcEventResolution.unresolvedCategories.length >
+                              0 ? (
+                                <div style={styles.automationWarning}>
+                                  <strong>Categorías sin resolver:</strong>{" "}
+                                  {ufcEventResolution.unresolvedCategories
+                                    .map((category) => category.sourceLabel)
+                                    .join(", ")}
+                                </div>
+                              ) : null}
+
+                              <div style={styles.automationActions}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void createMissingUfcFighters();
+                                  }}
+                                  style={
+                                    canCreateMissingUfcFighters
+                                      ? styles.secondaryButton
+                                      : styles.buttonDisabled
+                                  }
+                                  disabled={!canCreateMissingUfcFighters}
+                                >
+                                  {isCreatingUfcFighters
+                                    ? "Creando luchadores..."
+                                    : `Crear luchadores faltantes (${ufcEventResolution.counts.missingFighters})`}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void createUfcFights();
+                                  }}
+                                  style={
+                                    canCreateUfcFights
+                                      ? styles.button
+                                      : styles.buttonDisabled
+                                  }
+                                  disabled={!canCreateUfcFights}
+                                >
+                                  {isCreatingUfcFights
+                                    ? "Creando combates..."
+                                    : `Crear combates (${ufcEventResolution.counts.pendingFights})`}
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <p style={styles.inlineEmptyState}>
+                              Analiza la cartelera para comprobar evento,
+                              luchadores, categorías y combates disponibles.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <p style={styles.emptyText}>
+                      Selecciona un evento para revisar sus datos oficiales.
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p style={styles.emptyText}>
+                Pulsa “Cargar eventos UFC” para consultar la fuente oficial.
+              </p>
+            )}
+          </section>
+        ) : null}
+
         <div style={styles.grid}>
           <section style={styles.card}>
             <h2 style={styles.sectionTitle}>Campos reales de schema</h2>
@@ -1657,6 +3629,194 @@ const styles: Record<string, CSSProperties> = {
     color: "#fecaca",
     fontSize: 13,
     lineHeight: 1.4,
+  },
+  sourceCard: {
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: 22,
+    padding: 20,
+    display: "grid",
+    gap: 16,
+  },
+  sourceHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 16,
+    flexWrap: "wrap",
+  },
+  sourceEyebrow: {
+    margin: "0 0 6px",
+    fontSize: 11,
+    letterSpacing: "0.12em",
+    textTransform: "uppercase",
+    opacity: 0.65,
+  },
+  sourceTimestamp: {
+    margin: 0,
+    fontSize: 12,
+    opacity: 0.65,
+  },
+  sourceLayout: {
+    display: "grid",
+    gridTemplateColumns: "minmax(280px, 0.85fr) minmax(340px, 1.15fr)",
+    gap: 16,
+    alignItems: "start",
+  },
+  sourceList: {
+    display: "grid",
+    gap: 10,
+    maxHeight: 620,
+    overflowY: "auto",
+    paddingRight: 4,
+  },
+  sourceItem: {
+    width: "100%",
+    display: "grid",
+    gap: 7,
+    textAlign: "left",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(0,0,0,0.16)",
+    color: "#f5f7fa",
+    padding: 14,
+    cursor: "pointer",
+  },
+  sourceItemSelected: {
+    width: "100%",
+    display: "grid",
+    gap: 7,
+    textAlign: "left",
+    borderRadius: 14,
+    border: "1px solid rgba(245,247,250,0.55)",
+    background: "rgba(255,255,255,0.1)",
+    color: "#f5f7fa",
+    padding: 14,
+    cursor: "pointer",
+  },
+  sourceItemTitle: {
+    fontSize: 14,
+    fontWeight: 750,
+    lineHeight: 1.35,
+  },
+  sourceItemSummary: {
+    fontSize: 12,
+    opacity: 0.76,
+    lineHeight: 1.45,
+  },
+  sourceItemMeta: {
+    fontSize: 11,
+    opacity: 0.58,
+    lineHeight: 1.4,
+  },
+  sourcePreview: {
+    minHeight: 260,
+    display: "grid",
+    gap: 14,
+    borderRadius: 18,
+    overflow: "hidden",
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(0,0,0,0.18)",
+  },
+  sourceImage: {
+    display: "block",
+    width: "100%",
+    maxHeight: 290,
+    objectFit: "cover",
+  },
+  sourcePreviewContent: {
+    display: "grid",
+    gap: 12,
+    padding: 18,
+  },
+  sourcePreviewTitle: {
+    margin: 0,
+    fontSize: 22,
+    lineHeight: 1.25,
+  },
+  sourcePreviewSummary: {
+    margin: 0,
+    opacity: 0.8,
+    lineHeight: 1.5,
+  },
+  sourcePreviewActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  sourceLink: {
+    color: "#f5f7fa",
+    fontSize: 13,
+    fontWeight: 700,
+    textDecoration: "underline",
+    textUnderlineOffset: 3,
+  },
+  sourceBodyPreview: {
+    margin: 0,
+    paddingTop: 4,
+    whiteSpace: "pre-wrap",
+    fontSize: 13,
+    lineHeight: 1.6,
+    opacity: 0.78,
+  },
+  automationCard: {
+    display: "grid",
+    gap: 14,
+    padding: 16,
+    borderRadius: 18,
+    background: "rgba(255,255,255,0.035)",
+    border: "1px solid rgba(255,255,255,0.1)",
+  },
+  automationHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  automationTitle: {
+    margin: "4px 0 0",
+    fontSize: 17,
+    lineHeight: 1.25,
+  },
+  automationTopActions: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  automationStats: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+    gap: 10,
+  },
+  automationStat: {
+    display: "grid",
+    gap: 4,
+    minHeight: 72,
+    padding: 12,
+    borderRadius: 14,
+    background: "rgba(0,0,0,0.2)",
+    border: "1px solid rgba(255,255,255,0.07)",
+  },
+  automationStatLabel: {
+    fontSize: 12,
+    opacity: 0.68,
+    lineHeight: 1.3,
+  },
+  automationWarning: {
+    padding: 12,
+    borderRadius: 12,
+    background: "rgba(245,158,11,0.1)",
+    border: "1px solid rgba(245,158,11,0.28)",
+    fontSize: 13,
+    lineHeight: 1.5,
+  },
+  automationActions: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
   },
   resultHeader: {
     display: "flex",

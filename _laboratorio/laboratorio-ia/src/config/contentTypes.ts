@@ -45,8 +45,10 @@ export const contentTypes: ContentTypeDefinition[] = [
         label: "Imagen principal",
         kind: "image",
         sanityType: "image",
-        required: false,
-        description: "Imagen principal opcional de la noticia.",
+        required: true,
+        description:
+          "Imagen principal obligatoria en Sanity. En el laboratorio puede cargarse temporalmente una URL de fuente para revisión antes de subir el asset definitivo.",
+        validations: [{ type: "required", value: true }],
       },
       {
         name: "extracto",
@@ -59,6 +61,7 @@ export const contentTypes: ContentTypeDefinition[] = [
         validations: [
           { type: "required", value: true },
           { type: "min", value: 20 },
+          { type: "max", value: 220 },
         ],
       },
       {
