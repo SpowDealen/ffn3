@@ -11,10 +11,18 @@ type TransformarNoticiaBody = {
   sourceUrl?: string;
 };
 
+type SuggestedRelations = {
+  luchadores: string[];
+  evento: string;
+  organizacion: string;
+  disciplina: string;
+};
+
 type TransformedNews = {
   titulo: string;
   extracto: string;
   contenido: string;
+  relacionesSugeridas: SuggestedRelations;
 };
 
 const CORS_HEADERS = {
@@ -43,8 +51,40 @@ function getString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function getStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => getString(item))
+        .filter(Boolean)
+    )
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateSuggestedRelations(value: unknown): SuggestedRelations {
+  if (!isRecord(value)) {
+    return {
+      luchadores: [],
+      evento: "",
+      organizacion: "UFC",
+      disciplina: "MMA",
+    };
+  }
+
+  return {
+    luchadores: getStringArray(value.luchadores),
+    evento: getString(value.evento),
+    organizacion: getString(value.organizacion) || "UFC",
+    disciplina: getString(value.disciplina) || "MMA",
+  };
 }
 
 function validateTransformedNews(value: unknown): TransformedNews {
@@ -55,6 +95,9 @@ function validateTransformedNews(value: unknown): TransformedNews {
   const titulo = getString(value.titulo);
   const extracto = getString(value.extracto);
   const contenido = getString(value.contenido);
+  const relacionesSugeridas = validateSuggestedRelations(
+    value.relacionesSugeridas
+  );
 
   if (!titulo) {
     throw new Error("La IA no devolvió un título válido.");
@@ -72,6 +115,7 @@ function validateTransformedNews(value: unknown): TransformedNews {
     titulo,
     extracto: extracto.slice(0, 220),
     contenido,
+    relacionesSugeridas,
   };
 }
 
@@ -162,6 +206,15 @@ export async function POST(request: Request): Promise<NextResponse> {
         "El título debe tener entre 8 y 160 caracteres.",
         "El extracto debe tener entre 20 y 220 caracteres.",
         "El contenido debe estar dividido en párrafos y listo para revisión editorial.",
+        "",
+        "Además, detecta posibles relaciones editoriales basándote únicamente en la fuente:",
+        "- luchadores: nombres completos de luchadores mencionados de forma relevante.",
+        "- evento: nombre oficial del evento UFC mencionado, solo si aparece claramente.",
+        "- organizacion: usa UFC salvo que la fuente indique claramente otra organización.",
+        "- disciplina: usa MMA para contenido UFC.",
+        "No inventes luchadores ni eventos.",
+        "No incluyas periodistas, comentaristas, entrenadores o directivos en luchadores.",
+        "Si no hay un evento claro, devuelve una cadena vacía.",
       ].join("\n"),
       input: [
         {
@@ -184,7 +237,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       text: {
         format: {
           type: "json_schema",
-          name: "noticia_transformada",
+          name: "noticia_transformada_con_relaciones",
           strict: true,
           schema: {
             type: "object",
@@ -199,8 +252,40 @@ export async function POST(request: Request): Promise<NextResponse> {
               contenido: {
                 type: "string",
               },
+              relacionesSugeridas: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  luchadores: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                    },
+                  },
+                  evento: {
+                    type: "string",
+                  },
+                  organizacion: {
+                    type: "string",
+                  },
+                  disciplina: {
+                    type: "string",
+                  },
+                },
+                required: [
+                  "luchadores",
+                  "evento",
+                  "organizacion",
+                  "disciplina",
+                ],
+              },
             },
-            required: ["titulo", "extracto", "contenido"],
+            required: [
+              "titulo",
+              "extracto",
+              "contenido",
+              "relacionesSugeridas",
+            ],
           },
         },
       },

@@ -98,6 +98,13 @@ type OfficialSourceStatus =
       message: string;
     };
 
+type SuggestedNewsRelations = {
+  luchadores: string[];
+  evento: string;
+  organizacion: string;
+  disciplina: string;
+};
+
 type TransformNewsApiResponse =
   | {
       ok: true;
@@ -105,12 +112,29 @@ type TransformNewsApiResponse =
         titulo: string;
         extracto: string;
         contenido: string;
+        relacionesSugeridas: SuggestedNewsRelations;
       };
     }
   | {
       ok: false;
       error?: string;
     };
+
+type NewsRelationsResolution = {
+  suggested: SuggestedNewsRelations;
+  resolved: {
+    luchadores: ReferenceEntityOption[];
+    evento?: ReferenceEntityOption;
+    organizacion?: ReferenceEntityOption;
+    disciplina?: ReferenceEntityOption;
+  };
+  unresolved: {
+    luchadores: string[];
+    evento?: string;
+    organizacion?: string;
+    disciplina?: string;
+  };
+};
 
 type UfcFightCardItem = {
   id: string;
@@ -426,6 +450,98 @@ function findReferenceByLabel(
   return options.find(
     (option) => option.label.trim().toLocaleLowerCase("es") === normalizedExpectedLabel
   );
+}
+
+function normalizeEntityLabel(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es")
+    .replace(/\bvs\.?\b/g, "vs")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findReferenceBySuggestedLabel(
+  options: ReferenceEntityOption[],
+  suggestedLabel: string
+): ReferenceEntityOption | undefined {
+  const normalizedSuggestion = normalizeEntityLabel(suggestedLabel);
+
+  if (!normalizedSuggestion) {
+    return undefined;
+  }
+
+  return options.find(
+    (option) =>
+      normalizeEntityLabel(option.label) === normalizedSuggestion
+  );
+}
+
+function resolveSuggestedNewsRelations(params: {
+  suggestions: SuggestedNewsRelations;
+  referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>;
+}): NewsRelationsResolution {
+  const { suggestions, referenceData } = params;
+
+  const disciplina = findReferenceBySuggestedLabel(
+    referenceData.disciplina,
+    suggestions.disciplina || "MMA"
+  );
+  const organizacion = findReferenceBySuggestedLabel(
+    referenceData.organizacion,
+    suggestions.organizacion || "UFC"
+  );
+  const evento = suggestions.evento
+    ? findReferenceBySuggestedLabel(
+        referenceData.evento,
+        suggestions.evento
+      )
+    : undefined;
+
+  const resolvedFighters: ReferenceEntityOption[] = [];
+  const unresolvedFighters: string[] = [];
+  const usedFighterIds = new Set<string>();
+
+  for (const fighterName of suggestions.luchadores) {
+    const fighter = findReferenceBySuggestedLabel(
+      referenceData.luchador,
+      fighterName
+    );
+
+    if (fighter && !usedFighterIds.has(fighter.value)) {
+      usedFighterIds.add(fighter.value);
+      resolvedFighters.push(fighter);
+    } else if (!fighter) {
+      unresolvedFighters.push(fighterName);
+    }
+  }
+
+  return {
+    suggested: suggestions,
+    resolved: {
+      luchadores: resolvedFighters,
+      evento,
+      organizacion,
+      disciplina,
+    },
+    unresolved: {
+      luchadores: unresolvedFighters,
+      evento:
+        suggestions.evento && !evento
+          ? suggestions.evento
+          : undefined,
+      organizacion:
+        suggestions.organizacion && !organizacion
+          ? suggestions.organizacion
+          : undefined,
+      disciplina:
+        suggestions.disciplina && !disciplina
+          ? suggestions.disciplina
+          : undefined,
+    },
+  };
 }
 
 function createEditorialInstructions(item: UfcOfficialNewsItem): string {
@@ -966,6 +1082,8 @@ export default function PanelIA(): ReactElement {
       type: "idle",
       message: "",
     });
+  const [newsRelationsResolution, setNewsRelationsResolution] =
+    useState<NewsRelationsResolution | null>(null);
 
   const [officialEventItems, setOfficialEventItems] = useState<
     UfcOfficialEventItem[]
@@ -1130,6 +1248,7 @@ export default function PanelIA(): ReactElement {
 
       setOfficialNewsItems(payload.items);
       setOfficialNewsFetchedAt(payload.fetchedAt);
+      setNewsRelationsResolution(null);
       setSelectedOfficialNewsId((currentId) =>
         payload.items.some((item) => item.id === currentId) ? currentId : ""
       );
@@ -2241,7 +2360,12 @@ export default function PanelIA(): ReactElement {
       const publicationDate = toDateTimeLocalValue(
         selectedOfficialNews.publishedAt
       );
+      const relationResolution = resolveSuggestedNewsRelations({
+        suggestions: payload.data.relacionesSugeridas,
+        referenceData,
+      });
 
+      setNewsRelationsResolution(relationResolution);
       resetDerivedUiState();
 
       setForm((currentForm) => {
@@ -2261,13 +2385,34 @@ export default function PanelIA(): ReactElement {
           nextForm.imagenPrincipal = selectedOfficialNews.imageUrl;
         }
 
-        if (mmaOption) {
+        if (relationResolution.resolved.disciplina) {
+          nextForm.disciplina = toReferenceValue(
+            relationResolution.resolved.disciplina.value
+          );
+        } else if (mmaOption) {
           nextForm.disciplina = toReferenceValue(mmaOption.value);
         }
 
-        if (ufcOption) {
+        if (relationResolution.resolved.organizacion) {
+          nextForm.organizacionRelacionada = toReferenceValue(
+            relationResolution.resolved.organizacion.value
+          );
+        } else if (ufcOption) {
           nextForm.organizacionRelacionada = toReferenceValue(ufcOption.value);
         }
+
+        if (relationResolution.resolved.evento) {
+          nextForm.eventoRelacionado = toReferenceValue(
+            relationResolution.resolved.evento.value
+          );
+        } else {
+          nextForm.eventoRelacionado = undefined;
+        }
+
+        nextForm.luchadoresRelacionados =
+          relationResolution.resolved.luchadores.map((fighter) =>
+            toReferenceValue(fighter.value)
+          );
 
         return clearInvalidDependentReferences(
           nextForm,
@@ -2292,24 +2437,24 @@ export default function PanelIA(): ReactElement {
         ),
       }));
 
-      const missingRelations: string[] = [];
+      const unresolvedCount =
+        relationResolution.unresolved.luchadores.length +
+        (relationResolution.unresolved.evento ? 1 : 0) +
+        (relationResolution.unresolved.organizacion ? 1 : 0) +
+        (relationResolution.unresolved.disciplina ? 1 : 0);
 
-      if (!mmaOption) {
-        missingRelations.push("MMA");
-      }
-
-      if (!ufcOption) {
-        missingRelations.push("UFC");
-      }
+      const resolvedRelationCount =
+        relationResolution.resolved.luchadores.length +
+        (relationResolution.resolved.evento ? 1 : 0) +
+        (relationResolution.resolved.organizacion ? 1 : 0) +
+        (relationResolution.resolved.disciplina ? 1 : 0);
 
       setOfficialSourceStatus({
         type: "success",
         message:
-          missingRelations.length === 0
-            ? "Noticia transformada al español y cargada en el formulario con imagen, fecha, MMA y UFC."
-            : `Noticia transformada al español. Revisa manualmente estas referencias no encontradas en Sanity: ${missingRelations.join(
-                ", "
-              )}.`,
+          unresolvedCount === 0
+            ? `Noticia transformada y relacionada automáticamente: ${resolvedRelationCount} referencias reales resueltas en Sanity.`
+            : `Noticia transformada: ${resolvedRelationCount} referencias resueltas y ${unresolvedCount} sugerencias pendientes de revisión.`,
       });
     } catch (error) {
       setOfficialSourceStatus({
@@ -2359,6 +2504,7 @@ export default function PanelIA(): ReactElement {
       selectedOfficialNews.title;
     const publicationDate = toDateTimeLocalValue(selectedOfficialNews.publishedAt);
 
+    setNewsRelationsResolution(null);
     resetDerivedUiState();
 
     setForm((currentForm) => {
@@ -3129,6 +3275,7 @@ export default function PanelIA(): ReactElement {
                         type="button"
                         onClick={() => {
                           setSelectedOfficialNewsId(item.id);
+                          setNewsRelationsResolution(null);
                           setOfficialSourceStatus({
                             type: "idle",
                             message: "",
@@ -3221,6 +3368,107 @@ export default function PanelIA(): ReactElement {
                             Abrir fuente oficial
                           </a>
                         </div>
+
+                        {newsRelationsResolution ? (
+                          <div style={styles.newsRelationsCard}>
+                            <div style={styles.newsRelationsHeader}>
+                              <div>
+                                <p style={styles.sourceEyebrow}>
+                                  Relaciones editoriales sugeridas
+                                </p>
+                                <strong>
+                                  Coincidencias reales encontradas en Sanity
+                                </strong>
+                              </div>
+
+                              <span
+                                style={
+                                  newsRelationsResolution.unresolved.luchadores
+                                    .length > 0 ||
+                                  newsRelationsResolution.unresolved.evento ||
+                                  newsRelationsResolution.unresolved
+                                    .organizacion ||
+                                  newsRelationsResolution.unresolved.disciplina
+                                    ? styles.batchStatusPending
+                                    : styles.batchStatusOk
+                                }
+                              >
+                                {newsRelationsResolution.unresolved.luchadores
+                                  .length > 0 ||
+                                newsRelationsResolution.unresolved.evento ||
+                                newsRelationsResolution.unresolved
+                                  .organizacion ||
+                                newsRelationsResolution.unresolved.disciplina
+                                  ? "Revisión parcial"
+                                  : "Todo resuelto"}
+                              </span>
+                            </div>
+
+                            <div style={styles.newsRelationsGrid}>
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.automationStatLabel}>
+                                  Disciplina
+                                </span>
+                                <strong>
+                                  {newsRelationsResolution.resolved.disciplina
+                                    ?.label ||
+                                    newsRelationsResolution.unresolved
+                                      .disciplina ||
+                                    "Sin sugerencia"}
+                                </strong>
+                              </div>
+
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.automationStatLabel}>
+                                  Organización
+                                </span>
+                                <strong>
+                                  {newsRelationsResolution.resolved.organizacion
+                                    ?.label ||
+                                    newsRelationsResolution.unresolved
+                                      .organizacion ||
+                                    "Sin sugerencia"}
+                                </strong>
+                              </div>
+
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.automationStatLabel}>
+                                  Evento
+                                </span>
+                                <strong>
+                                  {newsRelationsResolution.resolved.evento
+                                    ?.label ||
+                                    newsRelationsResolution.unresolved.evento ||
+                                    "Sin evento claro"}
+                                </strong>
+                              </div>
+                            </div>
+
+                            <div style={styles.newsRelationGroup}>
+                              <span style={styles.automationStatLabel}>
+                                Luchadores resueltos
+                              </span>
+                              <span style={styles.newsRelationTags}>
+                                {newsRelationsResolution.resolved.luchadores
+                                  .length > 0
+                                  ? newsRelationsResolution.resolved.luchadores
+                                      .map((fighter) => fighter.label)
+                                      .join(" · ")
+                                  : "Ninguno"}
+                              </span>
+                            </div>
+
+                            {newsRelationsResolution.unresolved.luchadores
+                              .length > 0 ? (
+                              <div style={styles.newsRelationWarning}>
+                                Sin coincidencia exacta en Sanity:{" "}
+                                {newsRelationsResolution.unresolved.luchadores.join(
+                                  " · "
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
 
                         <p style={styles.sourceBodyPreview}>
                           {selectedOfficialNews.bodyText
@@ -4368,6 +4616,46 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 700,
     textDecoration: "underline",
     textUnderlineOffset: 3,
+  },
+  newsRelationsCard: {
+    display: "grid",
+    gap: 12,
+    padding: 14,
+    borderRadius: 16,
+    background: "rgba(255,255,255,0.035)",
+    border: "1px solid rgba(255,255,255,0.1)",
+  },
+  newsRelationsHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  newsRelationsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+    gap: 10,
+  },
+  newsRelationGroup: {
+    display: "grid",
+    gap: 5,
+    padding: 10,
+    borderRadius: 12,
+    background: "rgba(0,0,0,0.18)",
+  },
+  newsRelationTags: {
+    fontSize: 13,
+    lineHeight: 1.5,
+    opacity: 0.88,
+  },
+  newsRelationWarning: {
+    padding: 10,
+    borderRadius: 12,
+    background: "rgba(245,158,11,0.12)",
+    border: "1px solid rgba(245,158,11,0.28)",
+    fontSize: 12,
+    lineHeight: 1.5,
   },
   sourceBodyPreview: {
     margin: 0,
