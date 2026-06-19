@@ -13,7 +13,15 @@ type InitialFormStateResult = {
   auxiliary: AuxiliaryFormState;
 };
 
-function getDefaultFormValue(kind: FieldKind): FormValue {
+function getDefaultFormValue(kind: FieldKind, fieldName?: string): FormValue {
+  if (fieldName === "activa" || fieldName === "activo") {
+    return true;
+  }
+
+  if (fieldName === "destacadoHome" || fieldName === "destacada") {
+    return false;
+  }
+
   switch (kind) {
     case "boolean":
       return false;
@@ -66,7 +74,7 @@ export function getInitialFormState(
   const auxiliary: AuxiliaryFormState = {};
 
   for (const field of definition.schemaFields) {
-    form[field.name] = getDefaultFormValue(field.kind);
+    form[field.name] = getDefaultFormValue(field.kind, field.name);
   }
 
   for (const input of definition.auxiliaryInputs) {

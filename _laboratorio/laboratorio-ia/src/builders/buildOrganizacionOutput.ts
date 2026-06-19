@@ -59,13 +59,15 @@ function getReferenceValue(value: unknown): ReferenceValue | null {
 }
 
 function getReferenceArrayValues(value: unknown): ReferenceValue[] {
-  if (!Array.isArray(value)) {
-    return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => getReferenceValue(item))
+      .filter((item): item is ReferenceValue => Boolean(item));
   }
 
-  return value
-    .map((item) => getReferenceValue(item))
-    .filter((item): item is ReferenceValue => Boolean(item));
+  const singleReference = getReferenceValue(value);
+
+  return singleReference ? [singleReference] : [];
 }
 
 function getStringArrayFromTextarea(value: unknown): string[] {

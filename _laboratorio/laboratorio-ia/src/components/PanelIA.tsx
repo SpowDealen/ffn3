@@ -230,6 +230,24 @@ type TransformNewsApiResponse =
       error?: string;
     };
 
+type TransformOrganizationApiResponse =
+  | {
+      ok: true;
+      data: {
+        descripcionCorta: string;
+        descripcion: string;
+        paisOrigen: string;
+        sede: string;
+        anioFundacion?: number;
+        identidad: string;
+        datosCuriosos: string[];
+      };
+    }
+  | {
+      ok: false;
+      error?: string;
+    };
+
 type NewsRelationsResolution = {
   suggested: SuggestedNewsRelations;
   resolved: {
@@ -1251,6 +1269,14 @@ export default function PanelIA(): ReactElement {
     type: "idle",
     message: "",
   });
+
+  const [organizationAutomationStatus, setOrganizationAutomationStatus] =
+    useState<OfficialSourceStatus>({
+      type: "idle",
+      message: "",
+    });
+  const [isTransformingOrganization, setIsTransformingOrganization] =
+    useState(false);
 
   const [referenceData, setReferenceData] = useState<
     Record<ReferenceTarget, ReferenceEntityOption[]>
@@ -4337,6 +4363,127 @@ export default function PanelIA(): ReactElement {
     selectedOfficialNews,
   ]);
 
+
+  const transformOrganizationWithAI = useCallback(async (): Promise<void> => {
+    if (contentType !== "organizacion") {
+      setOrganizationAutomationStatus({
+        type: "error",
+        message:
+          "Selecciona el tipo de contenido Organización antes de automatizar esta ficha.",
+      });
+      return;
+    }
+
+    const nombre = getStringValue(form.nombre);
+
+    if (!nombre) {
+      setOrganizationAutomationStatus({
+        type: "error",
+        message: "Introduce primero el nombre de la organización.",
+      });
+      return;
+    }
+
+    const existingOrganization = findReferenceBySuggestedLabel(
+      referenceData.organizacion,
+      nombre
+    );
+
+    if (existingOrganization) {
+      setOrganizationAutomationStatus({
+        type: "error",
+        message: `Ya existe una organización en Sanity con coincidencia fuerte: ${existingOrganization.label}. Revisa antes de crear duplicados.`,
+      });
+      return;
+    }
+
+    const disciplinaRefs = getReferenceArrayValues(form.disciplinas);
+    const disciplinas = disciplinaRefs
+      .map((ref) => referenceData.disciplina.find((item) => item.value === ref)?.label)
+      .filter((item): item is string => Boolean(item));
+
+    try {
+      setIsTransformingOrganization(true);
+      setOrganizationAutomationStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(`${API_BASE_URL}/api/transformar-organizacion`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          nombre,
+          descripcionCorta: getStringValue(form.descripcionCorta),
+          descripcion: getStringValue(form.descripcion),
+          paisOrigen: getStringValue(form.paisOrigen),
+          sede: getStringValue(form.sede),
+          anioFundacion: form.anioFundacion,
+          identidad: getStringValue(form.identidad),
+          datosCuriosos: getStringValue(form.datosCuriosos),
+          sitioWeb: getStringValue(form.sitioWeb),
+          disciplinas,
+          enfoqueEditorial: getStringValue(auxiliary.enfoqueEditorial),
+          rasgosDiferenciales: getStringValue(auxiliary.rasgosDiferenciales),
+          contextoHistorico: getStringValue(auxiliary.contextoHistorico),
+          tono: getStringValue(auxiliary.tono),
+        }),
+      });
+
+      const payload = (await response.json()) as TransformOrganizationApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudo transformar la organización."
+        );
+      }
+
+      resetDerivedUiState();
+
+      setForm((currentForm) => ({
+        ...currentForm,
+        descripcionCorta: payload.data.descripcionCorta,
+        descripcion: payload.data.descripcion,
+        paisOrigen: payload.data.paisOrigen || getStringValue(currentForm.paisOrigen),
+        sede: payload.data.sede || getStringValue(currentForm.sede),
+        anioFundacion:
+          typeof payload.data.anioFundacion === "number"
+            ? payload.data.anioFundacion
+            : currentForm.anioFundacion,
+        identidad: payload.data.identidad,
+        datosCuriosos: payload.data.datosCuriosos.join("\n"),
+        activa: true,
+      }));
+
+      setOrganizationAutomationStatus({
+        type: "success",
+        message:
+          "Organización transformada y preparada como ficha editorial. Revisa el logo/banner y genera el output antes de guardar.",
+      });
+    } catch (error) {
+      setOrganizationAutomationStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido transformando la organización.",
+      });
+    } finally {
+      setIsTransformingOrganization(false);
+    }
+  }, [
+    auxiliary,
+    contentType,
+    form,
+    referenceData,
+    resetDerivedUiState,
+  ]);
+
   useEffect(() => {
     const nextState = getInitialFormState(contentType);
     setForm(nextState.form);
@@ -4346,6 +4493,13 @@ export default function PanelIA(): ReactElement {
       type: "idle",
       message: "",
     });
+
+    if (contentType !== "organizacion") {
+      setOrganizationAutomationStatus({
+        type: "idle",
+        message: "",
+      });
+    }
 
     if (contentType !== "noticia") {
       setSelectedOfficialNewsId("");
@@ -4981,6 +5135,55 @@ export default function PanelIA(): ReactElement {
           <strong>{definition.label}</strong>
           <p style={styles.metaText}>{definition.description}</p>
         </section>
+
+        {contentType === "organizacion" ? (
+          <section style={styles.sourceCard}>
+            <div style={styles.sourceHeader}>
+              <div>
+                <p style={styles.sourceEyebrow}>Automatización de entidad</p>
+                <h2 style={styles.sectionTitle}>Ficha de organización</h2>
+                <p style={styles.metaText}>
+                  Escribe el nombre, elige disciplina y añade los datos seguros que tengas.
+                  La IA completa la ficha editorial sin crear duplicados si detecta una organización existente.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void transformOrganizationWithAI();
+                }}
+                style={
+                  isTransformingOrganization
+                    ? styles.buttonDisabled
+                    : styles.secondaryButton
+                }
+                disabled={isTransformingOrganization}
+              >
+                {isTransformingOrganization
+                  ? "Preparando organización..."
+                  : "Preparar ficha con IA"}
+              </button>
+            </div>
+
+            {organizationAutomationStatus.type !== "idle" ? (
+              <div
+                style={
+                  organizationAutomationStatus.type === "success"
+                    ? styles.feedbackSuccess
+                    : styles.feedbackError
+                }
+              >
+                {organizationAutomationStatus.message}
+              </div>
+            ) : null}
+
+            <p style={styles.metaText}>
+              Criterio: no inventar logo ni banner. Si ya existe una coincidencia fuerte en Sanity,
+              el panel bloqueará la automatización para evitar duplicados.
+            </p>
+          </section>
+        ) : null}
 
         {contentType === "noticia" ? (
           <section style={styles.sourceCard}>
