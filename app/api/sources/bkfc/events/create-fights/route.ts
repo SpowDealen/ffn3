@@ -73,14 +73,106 @@ type SkippedFight = {
   existingId: string;
 };
 
-type FailedFight = {
+type BlockedFight = {
   sourceFightId?: string;
   combate: string;
   reasons: string[];
+  weightClass?: string;
+  normalizedWeightClass?: string;
 };
 
 const CATEGORY_ALIASES: Record<string, string[]> = {
+  "women atomweight": [
+    "peso átomo femenino",
+    "peso atomo femenino",
+    "átomo femenino",
+    "atomo femenino",
+    "peso átomo",
+    "peso atomo",
+    "átomo",
+    "atomo",
+  ],
+  "womens atomweight": [
+    "peso átomo femenino",
+    "peso atomo femenino",
+    "átomo femenino",
+    "atomo femenino",
+    "peso átomo",
+    "peso atomo",
+    "átomo",
+    "atomo",
+  ],
+  "women s atomweight": [
+    "peso átomo femenino",
+    "peso atomo femenino",
+    "átomo femenino",
+    "atomo femenino",
+    "peso átomo",
+    "peso atomo",
+    "átomo",
+    "atomo",
+  ],
+  "woman atomweight": [
+    "peso átomo femenino",
+    "peso atomo femenino",
+    "átomo femenino",
+    "atomo femenino",
+    "peso átomo",
+    "peso atomo",
+    "átomo",
+    "atomo",
+  ],
+  "woman s atomweight": [
+    "peso átomo femenino",
+    "peso atomo femenino",
+    "átomo femenino",
+    "atomo femenino",
+    "peso átomo",
+    "peso atomo",
+    "átomo",
+    "atomo",
+  ],
+  atomweight: [
+    "peso átomo femenino",
+    "peso atomo femenino",
+    "átomo femenino",
+    "atomo femenino",
+    "peso átomo",
+    "peso atomo",
+    "átomo",
+    "atomo",
+  ],
   "women strawweight": [
+    "peso paja femenino",
+    "paja femenino",
+    "peso paja",
+    "paja",
+  ],
+  "womens strawweight": [
+    "peso paja femenino",
+    "paja femenino",
+    "peso paja",
+    "paja",
+  ],
+  "women s strawweight": [
+    "peso paja femenino",
+    "paja femenino",
+    "peso paja",
+    "paja",
+  ],
+  "woman strawweight": [
+    "peso paja femenino",
+    "paja femenino",
+    "peso paja",
+    "paja",
+  ],
+  "woman s strawweight": [
+    "peso paja femenino",
+    "paja femenino",
+    "peso paja",
+    "paja",
+  ],
+  strawweight: [
     "peso paja femenino",
     "paja femenino",
     "peso paja",
@@ -92,58 +184,73 @@ const CATEGORY_ALIASES: Record<string, string[]> = {
     "peso mosca",
     "mosca",
   ],
+  "womens flyweight": [
+    "peso mosca femenino",
+    "mosca femenino",
+    "peso mosca",
+    "mosca",
+  ],
+  "women s flyweight": [
+    "peso mosca femenino",
+    "mosca femenino",
+    "peso mosca",
+    "mosca",
+  ],
+  "woman flyweight": [
+    "peso mosca femenino",
+    "mosca femenino",
+    "peso mosca",
+    "mosca",
+  ],
+  "woman s flyweight": [
+    "peso mosca femenino",
+    "mosca femenino",
+    "peso mosca",
+    "mosca",
+  ],
+  "men flyweight": ["peso mosca", "mosca"],
+  "mens flyweight": ["peso mosca", "mosca"],
+  "men s flyweight": ["peso mosca", "mosca"],
+  flyweight: ["peso mosca", "mosca"],
   "women bantamweight": [
     "peso gallo femenino",
     "gallo femenino",
     "peso gallo",
     "gallo",
   ],
-  "men flyweight": [
-    "peso mosca",
-    "mosca",
-  ],
-  flyweight: [
-    "peso mosca",
-    "mosca",
-  ],
-  bantamweight: [
+  "womens bantamweight": [
+    "peso gallo femenino",
+    "gallo femenino",
     "peso gallo",
     "gallo",
   ],
-  featherweight: [
-    "peso pluma",
-    "pluma",
+  "women s bantamweight": [
+    "peso gallo femenino",
+    "gallo femenino",
+    "peso gallo",
+    "gallo",
   ],
-  lightweight: [
-    "peso ligero",
-    "ligero",
+  "woman bantamweight": [
+    "peso gallo femenino",
+    "gallo femenino",
+    "peso gallo",
+    "gallo",
   ],
-  welterweight: [
-    "peso wélter",
-    "peso welter",
-    "wélter",
-    "welter",
+  "woman s bantamweight": [
+    "peso gallo femenino",
+    "gallo femenino",
+    "peso gallo",
+    "gallo",
   ],
-  middleweight: [
-    "peso medio",
-    "medio",
-  ],
-  "light heavyweight": [
-    "peso semipesado",
-    "semipesado",
-  ],
-  cruiserweight: [
-    "peso crucero",
-    "crucero",
-  ],
-  heavyweight: [
-    "peso pesado",
-    "pesado",
-  ],
-  catchweight: [
-    "peso pactado",
-    "catchweight",
-  ],
+  bantamweight: ["peso gallo", "gallo"],
+  featherweight: ["peso pluma", "pluma"],
+  lightweight: ["peso ligero", "ligero"],
+  welterweight: ["peso wélter", "peso welter", "wélter", "welter"],
+  middleweight: ["peso medio", "medio"],
+  "light heavyweight": ["peso semipesado", "semipesado"],
+  cruiserweight: ["peso crucero", "crucero"],
+  heavyweight: ["peso pesado", "pesado"],
+  catchweight: ["peso pactado", "catchweight"],
 };
 
 function getAllowedOrigin(request: Request): string {
@@ -164,18 +271,9 @@ function getAllowedOrigin(request: Request): string {
 }
 
 function withCors(response: NextResponse, request: Request): NextResponse {
-  response.headers.set(
-    "Access-Control-Allow-Origin",
-    getAllowedOrigin(request)
-  );
-  response.headers.set(
-    "Access-Control-Allow-Methods",
-    "POST,OPTIONS"
-  );
-  response.headers.set(
-    "Access-Control-Allow-Headers",
-    "Content-Type"
-  );
+  response.headers.set("Access-Control-Allow-Origin", getAllowedOrigin(request));
+  response.headers.set("Access-Control-Allow-Methods", "POST,OPTIONS");
+  response.headers.set("Access-Control-Allow-Headers", "Content-Type");
   response.headers.set("Vary", "Origin");
   response.headers.set("Cache-Control", "no-store");
 
@@ -187,9 +285,7 @@ function getString(value: unknown): string {
 }
 
 function stripDiacritics(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
 function normalizeName(value: string): string {
@@ -197,6 +293,31 @@ function normalizeName(value: string): string {
     .toLowerCase()
     .replace(/[’‘`´]/g, "'")
     .replace(/[^a-z0-9']+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeWeightClass(value: string): string {
+  return normalizeName(
+    value
+      .replace(/[’‘`´]/g, "'")
+      .replace(/\bwomen's\b/gi, "women")
+      .replace(/\bwoman's\b/gi, "women")
+      .replace(/\bmen's\b/gi, "men")
+      .replace(/\bwomens\b/gi, "women")
+      .replace(/\bmens\b/gi, "men")
+      .replace(/\binterim\b/gi, "")
+      .replace(/\btitle\b/gi, "")
+      .replace(/\bbout\b/gi, "")
+      .replace(/\bchampionship\b/gi, "")
+      .replace(/\bfight\b/gi, "")
+      .replace(/\bdivision\b/gi, "")
+  )
+    .replace(/\bwomen s\b/g, "women")
+    .replace(/\bwoman s\b/g, "women")
+    .replace(/\bmen s\b/g, "men")
+    .replace(/\bwomens\b/g, "women")
+    .replace(/\bmens\b/g, "men")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -210,29 +331,16 @@ function createSlug(value: string): string {
     .slice(0, 96);
 }
 
-function normalizeWeightClass(value: string): string {
-  return normalizeName(
-    value
-      .replace(/\binterim\b/gi, "")
-      .replace(/\btitle\b/gi, "")
-      .replace(/\bbout\b/gi, "")
-      .replace(/\bchampionship\b/gi, "")
-  );
-}
-
 function baseId(value: string): string {
   return value.replace(/^drafts\./, "");
 }
 
-async function createSafeReference(
-  targetId: string
-): Promise<{
+async function createSafeReference(targetId: string): Promise<{
   _type: "reference";
   _ref: string;
   _weak?: true;
 }> {
   const publishedId = baseId(targetId);
-
   const publishedDocument = await sanityClient.getDocument(publishedId);
   const publishedExists = Boolean(publishedDocument?._id);
 
@@ -279,15 +387,11 @@ function resolveCategory(
     return undefined;
   }
 
-  const aliases =
-    CATEGORY_ALIASES[normalizedSource] ?? [normalizedSource];
-
+  const aliases = CATEGORY_ALIASES[normalizedSource] ?? [normalizedSource];
   const normalizedAliases = aliases.map(normalizeName);
 
   return categories.find((category) =>
-    normalizedAliases.includes(
-      normalizeName(getString(category.nombre))
-    )
+    normalizedAliases.includes(normalizeName(getString(category.nombre)))
   );
 }
 
@@ -343,10 +447,7 @@ async function fetchContext(): Promise<{
   };
 }
 
-function findEvent(
-  sourceName: string,
-  events: EventDoc[]
-): EventDoc | undefined {
+function findEvent(sourceName: string, events: EventDoc[]): EventDoc | undefined {
   return resolveByName(sourceName, events);
 }
 
@@ -359,32 +460,19 @@ function buildFightDocumentId(params: {
   const redPart = createSlug(params.redFighter);
   const bluePart = createSlug(params.blueFighter);
 
-  return `bkfc-fight-${eventPart}-${redPart}-vs-${bluePart}`.slice(
-    0,
-    200
-  );
+  return `bkfc-fight-${eventPart}-${redPart}-vs-${bluePart}`.slice(0, 200);
 }
 
-export async function OPTIONS(
-  request: Request
-): Promise<NextResponse> {
-  return withCors(
-    new NextResponse(null, { status: 204 }),
-    request
-  );
+export async function OPTIONS(request: Request): Promise<NextResponse> {
+  return withCors(new NextResponse(null, { status: 204 }), request);
 }
 
-export async function POST(
-  request: Request
-): Promise<NextResponse> {
+export async function POST(request: Request): Promise<NextResponse> {
   try {
     if (!process.env.NEXT_PUBLIC_SANITY_PROJECT_ID) {
       return withCors(
         NextResponse.json(
-          {
-            ok: false,
-            error: "Falta NEXT_PUBLIC_SANITY_PROJECT_ID.",
-          },
+          { ok: false, error: "Falta NEXT_PUBLIC_SANITY_PROJECT_ID." },
           { status: 500 }
         ),
         request
@@ -394,10 +482,7 @@ export async function POST(
     if (!process.env.NEXT_PUBLIC_SANITY_DATASET) {
       return withCors(
         NextResponse.json(
-          {
-            ok: false,
-            error: "Falta NEXT_PUBLIC_SANITY_DATASET.",
-          },
+          { ok: false, error: "Falta NEXT_PUBLIC_SANITY_DATASET." },
           { status: 500 }
         ),
         request
@@ -407,10 +492,7 @@ export async function POST(
     if (!process.env.SANITY_API_WRITE_TOKEN) {
       return withCors(
         NextResponse.json(
-          {
-            ok: false,
-            error: "Falta SANITY_API_WRITE_TOKEN.",
-          },
+          { ok: false, error: "Falta SANITY_API_WRITE_TOKEN." },
           { status: 500 }
         ),
         request
@@ -424,10 +506,7 @@ export async function POST(
     } catch {
       return withCors(
         NextResponse.json(
-          {
-            ok: false,
-            error: "El body no contiene JSON válido.",
-          },
+          { ok: false, error: "El body no contiene JSON válido." },
           { status: 400 }
         ),
         request
@@ -439,8 +518,7 @@ export async function POST(
         NextResponse.json(
           {
             ok: false,
-            error:
-              "Debes enviar confirm: true para crear los borradores.",
+            error: "Debes enviar confirm: true para crear los borradores.",
           },
           { status: 400 }
         ),
@@ -456,10 +534,7 @@ export async function POST(
     if (!eventName) {
       return withCors(
         NextResponse.json(
-          {
-            ok: false,
-            error: "Falta el nombre del evento.",
-          },
+          { ok: false, error: "Falta el nombre del evento." },
           { status: 400 }
         ),
         request
@@ -469,24 +544,14 @@ export async function POST(
     if (fightCard.length === 0) {
       return withCors(
         NextResponse.json(
-          {
-            ok: false,
-            error:
-              "El evento no contiene una cartelera válida.",
-          },
+          { ok: false, error: "El evento no contiene una cartelera válida." },
           { status: 400 }
         ),
         request
       );
     }
 
-    const {
-      events,
-      fighters,
-      categories,
-      bareKnuckle,
-    } = await fetchContext();
-
+    const { events, fighters, categories, bareKnuckle } = await fetchContext();
     const event = findEvent(eventName, events);
 
     if (!event?._id) {
@@ -494,8 +559,7 @@ export async function POST(
         NextResponse.json(
           {
             ok: false,
-            error:
-              "No se encontró el evento en Sanity por nombre exacto.",
+            error: "No se encontró el evento en Sanity por nombre exacto.",
           },
           { status: 409 }
         ),
@@ -513,11 +577,13 @@ export async function POST(
 
     const created: CreatedFight[] = [];
     const skipped: SkippedFight[] = [];
-    const failed: FailedFight[] = [];
+    const blocked: BlockedFight[] = [];
 
     for (const sourceFight of fightCard) {
       const redName = getString(sourceFight.redFighter);
       const blueName = getString(sourceFight.blueFighter);
+      const rawWeightClass = getString(sourceFight.weightClass);
+      const normalizedWeightClass = normalizeWeightClass(rawWeightClass);
       const fightLabel =
         redName && blueName
           ? `${redName} vs ${blueName}`
@@ -527,10 +593,7 @@ export async function POST(
 
       const redFighter = resolveByName(redName, fighters);
       const blueFighter = resolveByName(blueName, fighters);
-      const category = resolveCategory(
-        getString(sourceFight.weightClass),
-        bareKnuckleCategories
-      );
+      const category = resolveCategory(rawWeightClass, bareKnuckleCategories);
 
       if (!redName || !redFighter?._id) {
         reasons.push("luchador_rojo_no_encontrado");
@@ -541,32 +604,32 @@ export async function POST(
       }
 
       if (!category?._id) {
-        reasons.push("categoria_peso_no_resuelta");
+        reasons.push(
+          rawWeightClass
+            ? "categoria_peso_no_resuelta"
+            : "categoria_peso_no_informada_por_fuente"
+        );
       }
 
       const status: FightStatus =
-        sourceFight.status === "finalizado" ||
-        sourceFight.status === "cancelado"
+        sourceFight.status === "finalizado" || sourceFight.status === "cancelado"
           ? sourceFight.status
           : "programado";
 
       const winnerName = getString(sourceFight.winnerName);
-      const winner = winnerName
-        ? resolveByName(winnerName, fighters)
-        : undefined;
+      const winner = winnerName ? resolveByName(winnerName, fighters) : undefined;
 
-      if (
-        status === "finalizado" &&
-        (!winnerName || !winner?._id)
-      ) {
+      if (status === "finalizado" && (!winnerName || !winner?._id)) {
         reasons.push("ganador_no_encontrado");
       }
 
       if (reasons.length > 0) {
-        failed.push({
+        blocked.push({
           sourceFightId: getString(sourceFight.id) || undefined,
           combate: fightLabel,
           reasons,
+          weightClass: rawWeightClass || undefined,
+          normalizedWeightClass: normalizedWeightClass || undefined,
         });
         continue;
       }
@@ -579,9 +642,7 @@ export async function POST(
 
       const draftId = `drafts.${documentId}`;
 
-      const existing = await sanityClient.fetch<{
-        _id: string;
-      } | null>(
+      const existing = await sanityClient.fetch<{ _id: string } | null>(
         `*[
           _type == "combate" &&
           _id in [$publishedId, $draftId]
@@ -604,9 +665,7 @@ export async function POST(
       }
 
       const cartelera: FightCardSection =
-        sourceFight.section === "preliminar"
-          ? "preliminar"
-          : "principal";
+        sourceFight.section === "preliminar" ? "preliminar" : "principal";
 
       const orden =
         typeof sourceFight.order === "number" &&
@@ -626,9 +685,7 @@ export async function POST(
         createSafeReference(redFighter!._id),
         createSafeReference(blueFighter!._id),
         createSafeReference(category!._id),
-        winner?._id
-          ? createSafeReference(winner._id)
-          : Promise.resolve(undefined),
+        winner?._id ? createSafeReference(winner._id) : Promise.resolve(undefined),
       ]);
 
       await sanityClient.createIfNotExists({
@@ -638,27 +695,17 @@ export async function POST(
         luchadorRojo: redFighterReference,
         luchadorAzul: blueFighterReference,
         ...(status === "finalizado" && winnerReference
-          ? {
-              ganador: winnerReference,
-            }
+          ? { ganador: winnerReference }
           : {}),
         ...(getString(sourceFight.method)
-          ? {
-              metodo: getString(sourceFight.method),
-            }
+          ? { metodo: getString(sourceFight.method) }
           : {}),
         ...(typeof sourceFight.round === "number" &&
         Number.isInteger(sourceFight.round) &&
         sourceFight.round >= 1
-          ? {
-              asalto: sourceFight.round,
-            }
+          ? { asalto: sourceFight.round }
           : {}),
-        ...(getString(sourceFight.time)
-          ? {
-              tiempo: getString(sourceFight.time),
-            }
-          : {}),
+        ...(getString(sourceFight.time) ? { tiempo: getString(sourceFight.time) } : {}),
         categoriaPeso: categoryReference,
         tituloEnJuego: Boolean(sourceFight.titleFight),
         cartelera,
@@ -686,12 +733,12 @@ export async function POST(
         summary: {
           candidates: fightCard.length,
           created: created.length,
-          skipped: skipped.length + failed.length,
+          skipped: skipped.length + blocked.length,
           failed: 0,
         },
         created,
         skipped,
-        blocked: failed,
+        blocked,
         failed: [],
       }),
       request
@@ -702,10 +749,7 @@ export async function POST(
         ? error.message
         : "Error desconocido creando combates.";
 
-    console.error(
-      "Error creando combates BKFC en Sanity:",
-      error
-    );
+    console.error("Error creando combates BKFC en Sanity:", error);
 
     return withCors(
       NextResponse.json(

@@ -114,7 +114,11 @@ type ResolveEventResponse =
         found: boolean;
         sanityId?: string;
         sanityName?: string;
-        matchStrategy?: "exact_name" | "exact_slug" | "headliners" | "headliners_and_date";
+        matchStrategy?:
+          | "exact_name"
+          | "exact_slug"
+          | "headliners"
+          | "headliners_and_date";
         candidates?: Array<{
           sanityId: string;
           sanityName?: string;
@@ -154,7 +158,97 @@ type ResolveEventResponse =
     };
 
 const CATEGORY_ALIASES: Record<string, string[]> = {
+  "women atomweight": [
+    "peso átomo femenino",
+    "peso atomo femenino",
+    "átomo femenino",
+    "atomo femenino",
+    "peso átomo",
+    "peso atomo",
+    "átomo",
+    "atomo",
+  ],
+  "womens atomweight": [
+    "peso átomo femenino",
+    "peso atomo femenino",
+    "átomo femenino",
+    "atomo femenino",
+    "peso átomo",
+    "peso atomo",
+    "átomo",
+    "atomo",
+  ],
+  "women s atomweight": [
+    "peso átomo femenino",
+    "peso atomo femenino",
+    "átomo femenino",
+    "atomo femenino",
+    "peso átomo",
+    "peso atomo",
+    "átomo",
+    "atomo",
+  ],
+  "woman atomweight": [
+    "peso átomo femenino",
+    "peso atomo femenino",
+    "átomo femenino",
+    "atomo femenino",
+    "peso átomo",
+    "peso atomo",
+    "átomo",
+    "atomo",
+  ],
+  "woman s atomweight": [
+    "peso átomo femenino",
+    "peso atomo femenino",
+    "átomo femenino",
+    "atomo femenino",
+    "peso átomo",
+    "peso atomo",
+    "átomo",
+    "atomo",
+  ],
+  atomweight: [
+    "peso átomo femenino",
+    "peso atomo femenino",
+    "átomo femenino",
+    "atomo femenino",
+    "peso átomo",
+    "peso atomo",
+    "átomo",
+    "atomo",
+  ],
   "women strawweight": [
+    "peso paja femenino",
+    "paja femenino",
+    "peso paja",
+    "paja",
+  ],
+  "womens strawweight": [
+    "peso paja femenino",
+    "paja femenino",
+    "peso paja",
+    "paja",
+  ],
+  "women s strawweight": [
+    "peso paja femenino",
+    "paja femenino",
+    "peso paja",
+    "paja",
+  ],
+  "woman strawweight": [
+    "peso paja femenino",
+    "paja femenino",
+    "peso paja",
+    "paja",
+  ],
+  "woman s strawweight": [
+    "peso paja femenino",
+    "paja femenino",
+    "peso paja",
+    "paja",
+  ],
+  strawweight: [
     "peso paja femenino",
     "paja femenino",
     "peso paja",
@@ -166,59 +260,75 @@ const CATEGORY_ALIASES: Record<string, string[]> = {
     "peso mosca",
     "mosca",
   ],
+  "womens flyweight": [
+    "peso mosca femenino",
+    "mosca femenino",
+    "peso mosca",
+    "mosca",
+  ],
+  "women s flyweight": [
+    "peso mosca femenino",
+    "mosca femenino",
+    "peso mosca",
+    "mosca",
+  ],
+  "woman flyweight": [
+    "peso mosca femenino",
+    "mosca femenino",
+    "peso mosca",
+    "mosca",
+  ],
+  "woman s flyweight": [
+    "peso mosca femenino",
+    "mosca femenino",
+    "peso mosca",
+    "mosca",
+  ],
   "women bantamweight": [
     "peso gallo femenino",
     "gallo femenino",
     "peso gallo",
     "gallo",
   ],
-  "men flyweight": [
-    "peso mosca",
-    "mosca",
-  ],
-  "flyweight": [
-    "peso mosca",
-    "mosca",
-  ],
-  "bantamweight": [
+  "womens bantamweight": [
+    "peso gallo femenino",
+    "gallo femenino",
     "peso gallo",
     "gallo",
   ],
-  "featherweight": [
-    "peso pluma",
-    "pluma",
+  "women s bantamweight": [
+    "peso gallo femenino",
+    "gallo femenino",
+    "peso gallo",
+    "gallo",
   ],
-  "lightweight": [
-    "peso ligero",
-    "ligero",
+  "woman bantamweight": [
+    "peso gallo femenino",
+    "gallo femenino",
+    "peso gallo",
+    "gallo",
   ],
-  "welterweight": [
-    "peso wélter",
-    "peso welter",
-    "wélter",
-    "welter",
+  "woman s bantamweight": [
+    "peso gallo femenino",
+    "gallo femenino",
+    "peso gallo",
+    "gallo",
   ],
-  "middleweight": [
-    "peso medio",
-    "medio",
-  ],
-  "light heavyweight": [
-    "peso semipesado",
-    "semipesado",
-  ],
-  "cruiserweight": [
-    "peso crucero",
-    "crucero",
-  ],
-  "heavyweight": [
-    "peso pesado",
-    "pesado",
-  ],
-  "catchweight": [
-    "peso pactado",
-    "catchweight",
-  ],
+  "men flyweight": ["peso mosca", "mosca"],
+  "mens flyweight": ["peso mosca", "mosca"],
+  "men s flyweight": ["peso mosca", "mosca"],
+  flyweight: ["peso mosca", "mosca"],
+  bantamweight: ["peso gallo", "gallo"],
+  featherweight: ["peso pluma", "pluma"],
+  lightweight: ["peso ligero", "ligero"],
+  welterweight: ["peso wélter", "peso welter", "wélter", "welter"],
+  middleweight: ["peso medio", "medio"],
+  "light heavyweight": ["peso semipesado", "semipesado"],
+  cruiserweight: ["peso crucero", "crucero"],
+  heavyweight: ["peso pesado", "pesado"],
+  catchweight: ["peso pactado", "catchweight"],
 };
+
 
 function getAllowedOrigin(request: Request): string {
   const origin = request.headers.get("origin")?.trim();
@@ -273,15 +383,30 @@ function normalizeEntityName(value: string): string {
 function normalizeWeightClass(value: string): string {
   return normalizeEntityName(
     value
+      .replace(/[’‘`´]/g, "'")
+      .replace(/\bwomen's\b/gi, "women")
+      .replace(/\bwoman's\b/gi, "women")
+      .replace(/\bmen's\b/gi, "men")
+      .replace(/\bwomens\b/gi, "women")
+      .replace(/\bmens\b/gi, "men")
       .replace(/\binterim\b/gi, "")
       .replace(/\btitle\b/gi, "")
       .replace(/\bbout\b/gi, "")
-      .replace(/\bchampionship\b/gi, "")
-  );
+      .replace(/\bfight\b/gi, "")
+      .replace(/\bdivision\b/gi, "")
+      .replace(/\bchampionship\b/gi, ""),
+  )
+    .replace(/\bwomen s\b/g, "women")
+    .replace(/\bwoman s\b/g, "women")
+    .replace(/\bmen s\b/g, "men")
+    .replace(/\bwomens\b/g, "women")
+    .replace(/\bmens\b/g, "men")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function uniqueByNormalizedName<T extends { normalizedName: string }>(
-  items: T[]
+  items: T[],
 ): T[] {
   const seen = new Set<string>();
   const unique: T[] = [];
@@ -303,12 +428,23 @@ function uniqueCategories(items: ResolvedCategory[]): ResolvedCategory[] {
   const unique: ResolvedCategory[] = [];
 
   for (const item of items) {
-    if (seen.has(item.normalizedLabel)) {
+    const sourceLabel = getString(item.sourceLabel);
+    const normalizedLabel = getString(item.normalizedLabel);
+
+    if (!sourceLabel || !normalizedLabel) {
       continue;
     }
 
-    seen.add(item.normalizedLabel);
-    unique.push(item);
+    if (seen.has(normalizedLabel)) {
+      continue;
+    }
+
+    seen.add(normalizedLabel);
+    unique.push({
+      ...item,
+      sourceLabel,
+      normalizedLabel,
+    });
   }
 
   return unique;
@@ -316,12 +452,12 @@ function uniqueCategories(items: ResolvedCategory[]): ResolvedCategory[] {
 
 function resolveReferenceByName(
   sourceName: string,
-  docs: SanityReferenceDoc[]
+  docs: SanityReferenceDoc[],
 ): ResolvedReference {
   const normalizedName = normalizeEntityName(sourceName);
 
   const exactMatch = docs.find(
-    (doc) => normalizeEntityName(getString(doc.nombre)) === normalizedName
+    (doc) => normalizeEntityName(getString(doc.nombre)) === normalizedName,
   );
 
   return exactMatch
@@ -341,7 +477,7 @@ function resolveReferenceByName(
 
 function resolveCategory(
   sourceLabel: string | undefined,
-  categories: SanityCategoryDoc[]
+  categories: SanityCategoryDoc[],
 ): ResolvedCategory {
   const cleanSourceLabel = getString(sourceLabel);
   const normalizedLabel = normalizeWeightClass(cleanSourceLabel);
@@ -378,54 +514,7 @@ function resolveCategory(
       };
 }
 
-async function fetchResolutionData(): Promise<{
-  discipline?: SanityReferenceDoc;
-  organization?: SanityReferenceDoc;
-  events: SanityEventDoc[];
-  fighters: SanityFighterDoc[];
-  categories: SanityCategoryDoc[];
-}> {
-  const [discipline, organization, events, fighters, categories] =
-    await Promise.all([
-      sanityClient.fetch<SanityReferenceDoc | null>(
-        `*[_type == "disciplina" && lower(nombre) == "bare knuckle"][0]{_id,nombre,slug}`,
-        {},
-        { perspective: "raw" }
-      ),
-      sanityClient.fetch<SanityReferenceDoc | null>(
-        `*[_type == "organizacion" && lower(nombre) == "bkfc"][0]{_id,nombre,slug}`,
-        {},
-        { perspective: "raw" }
-      ),
-      sanityClient.fetch<SanityEventDoc[]>(
-        `*[_type == "evento"]{_id,nombre,slug,fecha,disciplina,organizacion}`,
-        {},
-        { perspective: "raw" }
-      ),
-      sanityClient.fetch<SanityFighterDoc[]>(
-        `*[_type == "luchador"]{_id,nombre,slug,disciplina,organizacion,categoriaPeso}`,
-        {},
-        { perspective: "raw" }
-      ),
-      sanityClient.fetch<SanityCategoryDoc[]>(
-        `*[_type == "categoriaPeso"]{_id,nombre,slug,disciplina}`,
-        {},
-        { perspective: "raw" }
-      ),
-    ]);
-
-  return {
-    discipline: discipline ?? undefined,
-    organization: organization ?? undefined,
-    events: preferDraft(events),
-    fighters: preferDraft(fighters),
-    categories: preferDraft(categories),
-  };
-}
-
-function preferDraft<T extends { _id: string }>(
-  docs: T[]
-): T[] {
+function preferDraft<T extends { _id: string }>(docs: T[]): T[] {
   const grouped = new Map<string, T>();
 
   for (const doc of docs) {
@@ -438,6 +527,51 @@ function preferDraft<T extends { _id: string }>(
   }
 
   return Array.from(grouped.values());
+}
+
+async function fetchResolutionData(): Promise<{
+  discipline?: SanityReferenceDoc;
+  organization?: SanityReferenceDoc;
+  events: SanityEventDoc[];
+  fighters: SanityFighterDoc[];
+  categories: SanityCategoryDoc[];
+}> {
+  const [discipline, organization, events, fighters, categories] =
+    await Promise.all([
+      sanityClient.fetch<SanityReferenceDoc | null>(
+        `*[_type == "disciplina" && lower(nombre) == "bare knuckle"][0]{_id,nombre,slug}`,
+        {},
+        { perspective: "raw" },
+      ),
+      sanityClient.fetch<SanityReferenceDoc | null>(
+        `*[_type == "organizacion" && lower(nombre) == "bkfc"][0]{_id,nombre,slug}`,
+        {},
+        { perspective: "raw" },
+      ),
+      sanityClient.fetch<SanityEventDoc[]>(
+        `*[_type == "evento"]{_id,nombre,slug,fecha,disciplina,organizacion}`,
+        {},
+        { perspective: "raw" },
+      ),
+      sanityClient.fetch<SanityFighterDoc[]>(
+        `*[_type == "luchador"]{_id,nombre,slug,disciplina,organizacion,categoriaPeso}`,
+        {},
+        { perspective: "raw" },
+      ),
+      sanityClient.fetch<SanityCategoryDoc[]>(
+        `*[_type == "categoriaPeso"]{_id,nombre,slug,disciplina}`,
+        {},
+        { perspective: "raw" },
+      ),
+    ]);
+
+  return {
+    discipline: discipline ?? undefined,
+    organization: organization ?? undefined,
+    events: preferDraft(events),
+    fighters: preferDraft(fighters),
+    categories: preferDraft(categories),
+  };
 }
 
 function createComparableSlug(value: string): string {
@@ -466,30 +600,28 @@ function extractHeadlinerTokens(sourceName: string): string[] {
     return [];
   }
 
-  return parts.slice(0, 2).map((part) => {
-    const tokens = part.split(" ").filter(Boolean);
-    return tokens.at(-1) ?? "";
-  }).filter(Boolean);
+  return parts
+    .slice(0, 2)
+    .map((part) => {
+      const tokens = part.split(" ").filter(Boolean);
+      return tokens.at(-1) ?? "";
+    })
+    .filter(Boolean);
 }
 
-function hasAllHeadliners(
-  eventName: string,
-  headliners: string[]
-): boolean {
+function hasAllHeadliners(eventName: string, headliners: string[]): boolean {
   if (headliners.length < 2) {
     return false;
   }
 
   const normalizedEventName = normalizeEntityName(eventName);
 
-  return headliners.every((token) =>
-    normalizedEventName.includes(token)
-  );
+  return headliners.every((token) => normalizedEventName.includes(token));
 }
 
 function isSameEventDate(
   sourceStartDate: string | undefined,
-  sanityDate: string | undefined
+  sanityDate: string | undefined,
 ): boolean {
   if (!sourceStartDate || !sanityDate) {
     return false;
@@ -498,10 +630,7 @@ function isSameEventDate(
   const sourceTimestamp = new Date(sourceStartDate).getTime();
   const sanityTimestamp = new Date(sanityDate).getTime();
 
-  if (
-    Number.isNaN(sourceTimestamp) ||
-    Number.isNaN(sanityTimestamp)
-  ) {
+  if (Number.isNaN(sourceTimestamp) || Number.isNaN(sanityTimestamp)) {
     return false;
   }
 
@@ -517,11 +646,7 @@ function findEvent(params: {
   event?: SanityEventDoc;
   strategy?: "exact_name" | "exact_slug" | "headliners" | "headliners_and_date";
 } {
-  const {
-    sourceName,
-    sourceStartDate,
-    events,
-  } = params;
+  const { sourceName, sourceStartDate, events } = params;
 
   const preferredEvents = preferDraft(events);
   const normalizedSourceName = normalizeEntityName(sourceName);
@@ -529,8 +654,7 @@ function findEvent(params: {
 
   const exactName = preferredEvents.find(
     (event) =>
-      normalizeEntityName(getString(event.nombre)) ===
-      normalizedSourceName
+      normalizeEntityName(getString(event.nombre)) === normalizedSourceName,
   );
 
   if (exactName) {
@@ -542,9 +666,7 @@ function findEvent(params: {
 
   const exactSlug = preferredEvents.find(
     (event) =>
-      createComparableSlug(
-        getString(event.slug?.current)
-      ) === sourceSlug
+      createComparableSlug(getString(event.slug?.current)) === sourceSlug,
   );
 
   if (exactSlug) {
@@ -558,14 +680,8 @@ function findEvent(params: {
 
   const headlinerAndDateMatch = preferredEvents.find(
     (event) =>
-      hasAllHeadliners(
-        getString(event.nombre),
-        headliners
-      ) &&
-      isSameEventDate(
-        sourceStartDate,
-        event.fecha
-      )
+      hasAllHeadliners(getString(event.nombre), headliners) &&
+      isSameEventDate(sourceStartDate, event.fecha),
   );
 
   if (headlinerAndDateMatch) {
@@ -575,12 +691,8 @@ function findEvent(params: {
     };
   }
 
-  const headlinerMatches = preferredEvents.filter(
-    (event) =>
-      hasAllHeadliners(
-        getString(event.nombre),
-        headliners
-      )
+  const headlinerMatches = preferredEvents.filter((event) =>
+    hasAllHeadliners(getString(event.nombre), headliners),
   );
 
   if (headlinerMatches.length === 1) {
@@ -593,10 +705,9 @@ function findEvent(params: {
   return {};
 }
 
-
 function getEventCandidates(
   sourceStartDate: string | undefined,
-  events: SanityEventDoc[]
+  events: SanityEventDoc[],
 ): Array<{
   sanityId: string;
   sanityName?: string;
@@ -631,10 +742,7 @@ function getEventCandidates(
         return a.distance - b.distance;
       }
 
-      return (a.sanityName ?? "").localeCompare(
-        b.sanityName ?? "",
-        "es"
-      );
+      return (a.sanityName ?? "").localeCompare(b.sanityName ?? "", "es");
     })
     .slice(0, 12)
     .map(({ distance: _distance, ...candidate }) => candidate);
@@ -650,9 +758,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       return withCors(
         NextResponse.json(
           { ok: false, error: "Falta NEXT_PUBLIC_SANITY_PROJECT_ID." } satisfies ResolveEventResponse,
-          { status: 500 }
+          { status: 500 },
         ),
-        request
+        request,
       );
     }
 
@@ -660,9 +768,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       return withCors(
         NextResponse.json(
           { ok: false, error: "Falta NEXT_PUBLIC_SANITY_DATASET." } satisfies ResolveEventResponse,
-          { status: 500 }
+          { status: 500 },
         ),
-        request
+        request,
       );
     }
 
@@ -670,9 +778,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       return withCors(
         NextResponse.json(
           { ok: false, error: "Falta SANITY_API_WRITE_TOKEN." } satisfies ResolveEventResponse,
-          { status: 500 }
+          { status: 500 },
         ),
-        request
+        request,
       );
     }
 
@@ -687,9 +795,9 @@ export async function POST(request: Request): Promise<NextResponse> {
             ok: false,
             error: "El body no es un JSON válido.",
           } satisfies ResolveEventResponse,
-          { status: 400 }
+          { status: 400 },
         ),
-        request
+        request,
       );
     }
 
@@ -700,9 +808,9 @@ export async function POST(request: Request): Promise<NextResponse> {
             ok: false,
             error: "Falta event en el body.",
           } satisfies ResolveEventResponse,
-          { status: 400 }
+          { status: 400 },
         ),
-        request
+        request,
       );
     }
 
@@ -719,9 +827,9 @@ export async function POST(request: Request): Promise<NextResponse> {
             ok: false,
             error: "El evento no incluye nombre.",
           } satisfies ResolveEventResponse,
-          { status: 400 }
+          { status: 400 },
         ),
-        request
+        request,
       );
     }
 
@@ -732,25 +840,20 @@ export async function POST(request: Request): Promise<NextResponse> {
             ok: false,
             error: "El evento no incluye una cartelera para resolver.",
           } satisfies ResolveEventResponse,
-          { status: 400 }
+          { status: 400 },
         ),
-        request
+        request,
       );
     }
 
-    const {
-      discipline,
-      organization,
-      events,
-      fighters,
-      categories,
-    } = await fetchResolutionData();
+    const { discipline, organization, events, fighters, categories } =
+      await fetchResolutionData();
 
     const bareKnuckleCategories = discipline
       ? categories.filter(
           (category) =>
             !category.disciplina?._ref ||
-            category.disciplina._ref === discipline._id
+            category.disciplina._ref === discipline._id,
         )
       : categories;
 
@@ -779,12 +882,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     const resolvedFights: ResolvedFight[] = fightCard.map((fight) => {
       const redFighter = resolveReferenceByName(
         getString(fight.redFighter),
-        bkfcFighters
+        bkfcFighters,
       );
 
       const blueFighter = resolveReferenceByName(
         getString(fight.blueFighter),
-        bkfcFighters
+        bkfcFighters,
       );
 
       const category = resolveCategory(fight.weightClass, bareKnuckleCategories);
@@ -817,14 +920,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       }
 
       if (!category.found) {
-        blockingReasons.push("categoria_peso_no_resuelta");
+        blockingReasons.push(
+          getString(fight.weightClass)
+            ? "categoria_peso_no_resuelta"
+            : "categoria_peso_no_informada_por_fuente"
+        );
       }
 
-      if (
-        fight.status === "finalizado" &&
-        winnerName &&
-        !winner?.found
-      ) {
+      if (fight.status === "finalizado" && winnerName && !winner?.found) {
         blockingReasons.push("ganador_no_encontrado");
       }
 
@@ -866,8 +969,8 @@ export async function POST(request: Request): Promise<NextResponse> {
             {
               eventId: matchedEvent._id.replace(/^drafts\./, ""),
             },
-            { perspective: "raw" }
-          )
+            { perspective: "raw" },
+          ),
         )
       : [];
 
@@ -879,11 +982,11 @@ export async function POST(request: Request): Promise<NextResponse> {
         const existingCombat = existingCombatDocs.find((combat) => {
           const combatRedId = combat.luchadorRojo?._ref?.replace(
             /^drafts\./,
-            ""
+            "",
           );
           const combatBlueId = combat.luchadorAzul?._ref?.replace(
             /^drafts\./,
-            ""
+            "",
           );
 
           return combatRedId === redId && combatBlueId === blueId;
@@ -894,7 +997,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           alreadyExists: Boolean(existingCombat),
           existingSanityId: existingCombat?._id,
         };
-      }
+      },
     );
 
     const allFighterReferences = uniqueByNormalizedName(
@@ -906,14 +1009,14 @@ export async function POST(request: Request): Promise<NextResponse> {
         }
 
         return values;
-      })
+      }),
     );
 
     const existingFighters = allFighterReferences.filter((item) => item.found);
     const missingFighters = allFighterReferences.filter((item) => !item.found);
 
     const allCategories = uniqueCategories(
-      fightsWithExistingState.map((fight) => fight.category)
+      fightsWithExistingState.map((fight) => fight.category),
     );
 
     const resolvedCategories = allCategories.filter((item) => item.found);
@@ -944,13 +1047,13 @@ export async function POST(request: Request): Promise<NextResponse> {
       counts: {
         fights: fightsWithExistingState.length,
         readyFights: fightsWithExistingState.filter(
-          (fight) => fight.readyToCreate
+          (fight) => fight.readyToCreate,
         ).length,
         existingFights: fightsWithExistingState.filter(
-          (fight) => fight.alreadyExists
+          (fight) => fight.alreadyExists,
         ).length,
         pendingFights: fightsWithExistingState.filter(
-          (fight) => fight.readyToCreate && !fight.alreadyExists
+          (fight) => fight.readyToCreate && !fight.alreadyExists,
         ).length,
         existingFighters: existingFighters.length,
         missingFighters: missingFighters.length,
@@ -979,9 +1082,9 @@ export async function POST(request: Request): Promise<NextResponse> {
           ok: false,
           error: message,
         } satisfies ResolveEventResponse,
-        { status: 500 }
+        { status: 500 },
       ),
-      request
+      request,
     );
   }
 }

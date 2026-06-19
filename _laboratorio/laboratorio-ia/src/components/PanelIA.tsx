@@ -107,6 +107,76 @@ type UfcNewsBatchResolveApiResponse =
       error?: string;
     };
 
+
+
+type BkfcOfficialNewsItem = {
+  id: string;
+  title: string;
+  summary?: string;
+  bodyText?: string;
+  sourceUrl: string;
+  canonicalUrl: string;
+  publishedAt?: string;
+  imageUrl?: string;
+};
+
+type BkfcNewsBatchPreparationItem = {
+  sourceId: string;
+  title: string;
+  status: "pendiente" | "procesando" | "completado" | "fallido";
+  message: string;
+};
+
+type BkfcNewsBatchItem = {
+  sourceId: string;
+  title: string;
+  canonicalUrl: string;
+  publishedAt?: string;
+  status:
+    | "existente"
+    | "nueva_apta"
+    | "sin_contenido"
+    | "requiere_revision";
+  existingSanityId?: string;
+  existingTitle?: string;
+  matchStrategy?: "fuenteId" | "fuenteUrl" | "titulo";
+  reasons: string[];
+};
+
+type BkfcNewsBatchResolveApiResponse =
+  | {
+      ok: true;
+      count: number;
+      summary: {
+        existing: number;
+        ready: number;
+        withoutContent: number;
+        requiresReview: number;
+      };
+      items: BkfcNewsBatchItem[];
+    }
+  | {
+      ok: false;
+      error?: string;
+    };
+
+type BkfcOfficialNewsApiResponse =
+  | {
+      ok: true;
+      source: "bkfc";
+      fetchedAt: string;
+      count: number;
+      items: BkfcOfficialNewsItem[];
+    }
+  | {
+      ok: false;
+      source?: "bkfc";
+      fetchedAt?: string;
+      count?: number;
+      items?: BkfcOfficialNewsItem[];
+      error?: string;
+    };
+
 type UfcOfficialNewsApiResponse =
   | {
       ok: true;
@@ -532,6 +602,10 @@ function toDateTimeLocalValue(value: string | undefined): string {
   )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function getRequiredPublicationDateTimeLocalValue(value: string | undefined): string {
+  return toDateTimeLocalValue(value) || toDateTimeLocalValue(new Date().toISOString());
+}
+
 function createSourceExtract(item: UfcOfficialNewsItem): string {
   const sourceText = item.summary?.trim() || item.bodyText?.trim() || "";
 
@@ -651,6 +725,19 @@ function createEditorialInstructions(item: UfcOfficialNewsItem): string {
     "No traduzcas de forma literal ni copies frases extensas de la fuente.",
     "Conserva todos los hechos, nombres, fechas y declaraciones relevantes sin inventar datos.",
     "Atribuye la información a UFC cuando corresponda.",
+    `Fuente oficial: ${item.canonicalUrl || item.sourceUrl}`,
+  ].join("\n");
+}
+
+
+
+function createBkfcEditorialInstructions(item: BkfcOfficialNewsItem): string {
+  return [
+    "Reescribe la información en español con estilo periodístico propio de Full Fight News.",
+    "No traduzcas de forma literal ni copies frases extensas de la fuente.",
+    "Conserva todos los hechos, nombres, fechas y declaraciones relevantes sin inventar datos.",
+    "Atribuye la información a BKFC cuando corresponda.",
+    "Usa Bare Knuckle como disciplina principal salvo que la fuente indique claramente otra cosa.",
     `Fuente oficial: ${item.canonicalUrl || item.sourceUrl}`,
   ].join("\n");
 }
@@ -1201,6 +1288,35 @@ export default function PanelIA(): ReactElement {
   const [showAllUfcNewsBatchItems, setShowAllUfcNewsBatchItems] =
     useState(false);
 
+
+
+  const [bkfcNewsItems, setBkfcNewsItems] = useState<BkfcOfficialNewsItem[]>([]);
+  const [selectedBkfcNewsId, setSelectedBkfcNewsId] = useState("");
+  const [isLoadingBkfcNews, setIsLoadingBkfcNews] = useState(false);
+  const [isTransformingBkfcNews, setIsTransformingBkfcNews] = useState(false);
+  const [bkfcNewsFetchedAt, setBkfcNewsFetchedAt] = useState("");
+  const [bkfcNewsStatus, setBkfcNewsStatus] = useState<OfficialSourceStatus>({
+    type: "idle",
+    message: "",
+  });
+  const [bkfcNewsRelationsResolution, setBkfcNewsRelationsResolution] =
+    useState<NewsRelationsResolution | null>(null);
+  const [bkfcNewsBatchAnalysis, setBkfcNewsBatchAnalysis] =
+    useState<BkfcNewsBatchResolveApiResponse | null>(null);
+  const [isAnalyzingBkfcNewsBatch, setIsAnalyzingBkfcNewsBatch] =
+    useState(false);
+  const [bkfcNewsBatchStatus, setBkfcNewsBatchStatus] =
+    useState<OfficialSourceStatus>({
+      type: "idle",
+      message: "",
+    });
+  const [isPreparingBkfcNewsBatch, setIsPreparingBkfcNewsBatch] =
+    useState(false);
+  const [bkfcNewsBatchPreparation, setBkfcNewsBatchPreparation] =
+    useState<BkfcNewsBatchPreparationItem[]>([]);
+  const [showAllBkfcNewsBatchItems, setShowAllBkfcNewsBatchItems] =
+    useState(false);
+
   const [officialEventItems, setOfficialEventItems] = useState<
     UfcOfficialEventItem[]
   >([]);
@@ -1276,6 +1392,13 @@ export default function PanelIA(): ReactElement {
     () =>
       officialNewsItems.find((item) => item.id === selectedOfficialNewsId) ?? null,
     [officialNewsItems, selectedOfficialNewsId]
+  );
+
+
+
+  const selectedBkfcNews = useMemo(
+    () => bkfcNewsItems.find((item) => item.id === selectedBkfcNewsId) ?? null,
+    [bkfcNewsItems, selectedBkfcNewsId]
   );
 
   const selectedOfficialEvent = useMemo(
@@ -1641,8 +1764,7 @@ export default function PanelIA(): ReactElement {
               extracto: transformPayload.data.extracto,
               contenido: transformPayload.data.contenido,
               fechaPublicacion:
-                toDateTimeLocalValue(sourceItem.publishedAt) ||
-                new Date().toISOString(),
+                getRequiredPublicationDateTimeLocalValue(sourceItem.publishedAt),
               imagenPrincipal: sourceItem.imageUrl,
               disciplina: relationResolution.resolved.disciplina
                 ? toReferenceValue(
@@ -1755,6 +1877,664 @@ export default function PanelIA(): ReactElement {
       ufcNewsBatchAnalysis,
       updateUfcNewsBatchPreparationItem,
     ]);
+
+
+
+  const reloadOfficialBkfcNews = useCallback(async (): Promise<void> => {
+    try {
+      setIsLoadingBkfcNews(true);
+      setBkfcNewsStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/bkfc/news?refresh=${Date.now()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        }
+      );
+
+      const payload = (await response.json()) as BkfcOfficialNewsApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron cargar las noticias oficiales de BKFC."
+        );
+      }
+
+      setBkfcNewsItems(payload.items);
+      setBkfcNewsFetchedAt(payload.fetchedAt);
+      setBkfcNewsRelationsResolution(null);
+      setBkfcNewsBatchAnalysis(null);
+      setBkfcNewsBatchPreparation([]);
+      setShowAllBkfcNewsBatchItems(false);
+      setBkfcNewsBatchStatus({
+        type: "idle",
+        message: "",
+      });
+      setSelectedBkfcNewsId((currentId) =>
+        payload.items.some((item) => item.id === currentId) ? currentId : ""
+      );
+
+      setBkfcNewsStatus({
+        type: "success",
+        message: `${payload.count} noticias oficiales de BKFC cargadas.`,
+      });
+    } catch (error) {
+      setBkfcNewsItems([]);
+      setSelectedBkfcNewsId("");
+      setBkfcNewsFetchedAt("");
+      setBkfcNewsStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido cargando las noticias oficiales de BKFC.",
+      });
+    } finally {
+      setIsLoadingBkfcNews(false);
+    }
+  }, []);
+
+  const analyzeOfficialBkfcNews = useCallback(async (): Promise<void> => {
+    if (bkfcNewsItems.length === 0) {
+      setBkfcNewsBatchStatus({
+        type: "error",
+        message: "Carga primero las noticias oficiales de BKFC.",
+      });
+      return;
+    }
+
+    try {
+      setIsAnalyzingBkfcNewsBatch(true);
+      setBkfcNewsBatchStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/bkfc/news/batch-resolve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            items: bkfcNewsItems,
+          }),
+        }
+      );
+
+      const payload =
+        (await response.json()) as BkfcNewsBatchResolveApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron analizar las noticias oficiales de BKFC."
+        );
+      }
+
+      setBkfcNewsBatchAnalysis(payload);
+      setBkfcNewsBatchStatus({
+        type: "success",
+        message: `${payload.count} noticias analizadas: ${payload.summary.existing} existentes, ${payload.summary.ready} nuevas aptas, ${payload.summary.withoutContent} sin contenido suficiente y ${payload.summary.requiresReview} para revisión.`,
+      });
+    } catch (error) {
+      setBkfcNewsBatchAnalysis(null);
+      setBkfcNewsBatchStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido analizando noticias BKFC.",
+      });
+    } finally {
+      setIsAnalyzingBkfcNewsBatch(false);
+    }
+  }, [bkfcNewsItems]);
+
+  const updateBkfcNewsBatchPreparationItem = useCallback(
+    (
+      sourceId: string,
+      changes: Partial<BkfcNewsBatchPreparationItem>
+    ): void => {
+      setBkfcNewsBatchPreparation((current) =>
+        current.map((item) =>
+          item.sourceId === sourceId ? { ...item, ...changes } : item
+        )
+      );
+    },
+    []
+  );
+
+  const prepareAllEligibleBkfcNews =
+    useCallback(async (): Promise<void> => {
+      if (!bkfcNewsBatchAnalysis?.ok) {
+        setBkfcNewsBatchStatus({
+          type: "error",
+          message:
+            "Analiza primero las noticias oficiales BKFC antes de preparar el lote.",
+        });
+        return;
+      }
+
+      const eligibleAnalysisItems = bkfcNewsBatchAnalysis.items.filter(
+        (item) => item.status === "nueva_apta"
+      );
+
+      const eligibleNews = eligibleAnalysisItems
+        .map((analysisItem) => {
+          const sourceItem = bkfcNewsItems.find(
+            (item) => item.id === analysisItem.sourceId
+          );
+
+          return sourceItem
+            ? {
+                analysis: analysisItem,
+                sourceItem,
+              }
+            : null;
+        })
+        .filter(
+          (
+            item
+          ): item is {
+            analysis: BkfcNewsBatchItem;
+            sourceItem: BkfcOfficialNewsItem;
+          } => item !== null
+        );
+
+      const confirmed = window.confirm(
+        `Se prepararán ${eligibleNews.length} noticias nuevas BKFC como borradores en Sanity. Las noticias existentes o inseguras se excluirán. ¿Continuar?`
+      );
+
+      if (!confirmed) {
+        setBkfcNewsBatchStatus({
+          type: "idle",
+          message: "",
+        });
+        return;
+      }
+
+      if (eligibleNews.length === 0) {
+        setBkfcNewsBatchStatus({
+          type: "error",
+          message:
+            "No hay noticias BKFC nuevas aptas. Las existentes, incompletas o inseguras se excluyen automáticamente.",
+        });
+        return;
+      }
+
+      setBkfcNewsBatchPreparation(
+        eligibleNews.map(({ sourceItem }) => ({
+          sourceId: sourceItem.id,
+          title: sourceItem.title,
+          status: "pendiente",
+          message: "En espera.",
+        }))
+      );
+      setIsPreparingBkfcNewsBatch(true);
+
+      let completed = 0;
+      let failed = 0;
+
+      try {
+        for (let index = 0; index < eligibleNews.length; index += 1) {
+          const { sourceItem } = eligibleNews[index];
+
+          updateBkfcNewsBatchPreparationItem(sourceItem.id, {
+            status: "procesando",
+            message: `Noticia ${index + 1} de ${eligibleNews.length}: transformando al español...`,
+          });
+
+          try {
+            const transformResponse = await fetch(
+              `${API_BASE_URL}/api/transformar-noticia-bkfc`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Accept: "application/json",
+                },
+                body: JSON.stringify({
+                  title: sourceItem.title,
+                  summary: sourceItem.summary,
+                  bodyText: sourceItem.bodyText,
+                  sourceUrl:
+                    sourceItem.canonicalUrl || sourceItem.sourceUrl,
+                }),
+              }
+            );
+
+            const transformPayload =
+              (await transformResponse.json()) as TransformNewsApiResponse;
+
+            if (!transformResponse.ok || !transformPayload.ok) {
+              throw new Error(
+                !transformPayload.ok && transformPayload.error
+                  ? transformPayload.error
+                  : "No se pudo transformar la noticia BKFC al español."
+              );
+            }
+
+            updateBkfcNewsBatchPreparationItem(sourceItem.id, {
+              message: "Resolviendo relaciones editoriales reales...",
+            });
+
+            const relationResolution = resolveSuggestedNewsRelations({
+              suggestions: transformPayload.data.relacionesSugeridas,
+              referenceData,
+            });
+
+            const bareKnuckleOption = findReferenceByLabel(
+              referenceData.disciplina,
+              "Bare Knuckle"
+            );
+            const bkfcOption = findReferenceByLabel(
+              referenceData.organizacion,
+              "BKFC"
+            );
+
+            const initialState = getInitialFormState("noticia");
+            const batchForm: ContentFormState = {
+              ...initialState.form,
+              titulo: transformPayload.data.titulo,
+              extracto: transformPayload.data.extracto,
+              contenido: transformPayload.data.contenido,
+              fechaPublicacion:
+                getRequiredPublicationDateTimeLocalValue(sourceItem.publishedAt),
+              imagenPrincipal: sourceItem.imageUrl,
+              disciplina: relationResolution.resolved.disciplina
+                ? toReferenceValue(
+                    relationResolution.resolved.disciplina.value
+                  )
+                : bareKnuckleOption
+                ? toReferenceValue(bareKnuckleOption.value)
+                : undefined,
+              organizacionRelacionada:
+                relationResolution.resolved.organizacion
+                  ? toReferenceValue(
+                      relationResolution.resolved.organizacion.value
+                    )
+                  : bkfcOption
+                  ? toReferenceValue(bkfcOption.value)
+                  : undefined,
+              eventoRelacionado: relationResolution.resolved.evento
+                ? toReferenceValue(
+                    relationResolution.resolved.evento.value
+                  )
+                : undefined,
+              luchadoresRelacionados:
+                relationResolution.resolved.luchadores.map((fighter) =>
+                  toReferenceValue(fighter.value)
+                ),
+              fuente: "bkfc",
+              fuenteUrl:
+                sourceItem.canonicalUrl || sourceItem.sourceUrl,
+              fuenteId: sourceItem.id,
+              destacada: false,
+            };
+
+            updateBkfcNewsBatchPreparationItem(sourceItem.id, {
+              message: "Generando documento y validando campos...",
+            });
+
+            const buildResult = buildContentOutput({
+              contentType: "noticia",
+              form: batchForm,
+              auxiliary: initialState.auxiliary,
+            });
+
+            if (!buildResult.ok || !buildResult.output) {
+              const errors = buildResult.issues
+                .filter((issue) => issue.severity === "error")
+                .map((issue) => issue.message)
+                .join(" · ");
+
+              throw new Error(
+                errors || "El builder bloqueó el documento de noticia BKFC."
+              );
+            }
+
+            updateBkfcNewsBatchPreparationItem(sourceItem.id, {
+              message: "Importando imagen y guardando borrador en Sanity...",
+            });
+
+            await saveDraft({
+              contentType: "noticia",
+              document: buildResult.output as Record<string, unknown>,
+            });
+
+            completed += 1;
+            updateBkfcNewsBatchPreparationItem(sourceItem.id, {
+              status: "completado",
+              message: `${
+                relationResolution.resolved.luchadores.length
+              } luchadores, ${
+                relationResolution.resolved.evento ? 1 : 0
+              } evento y trazabilidad BKFC guardados.`,
+            });
+          } catch (error) {
+            failed += 1;
+            updateBkfcNewsBatchPreparationItem(sourceItem.id, {
+              status: "fallido",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Error desconocido preparando esta noticia BKFC.",
+            });
+          }
+        }
+
+        await reloadReferenceEntities();
+        await analyzeOfficialBkfcNews();
+
+        setBkfcNewsBatchStatus({
+          type: failed === 0 ? "success" : "error",
+          message:
+            failed === 0
+              ? `Preparación masiva BKFC completada: ${completed} noticias guardadas como borrador.`
+              : `Preparación masiva BKFC terminada: ${completed} noticias completadas y ${failed} fallidas.`,
+        });
+      } catch (error) {
+        setBkfcNewsBatchStatus({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Error desconocido durante la preparación masiva de noticias BKFC.",
+        });
+      } finally {
+        setIsPreparingBkfcNewsBatch(false);
+      }
+    }, [
+      analyzeOfficialBkfcNews,
+      bkfcNewsBatchAnalysis,
+      bkfcNewsItems,
+      referenceData,
+      reloadReferenceEntities,
+      updateBkfcNewsBatchPreparationItem,
+    ]);
+
+  const applyBkfcNewsToForm = useCallback((): void => {
+    if (!selectedBkfcNews) {
+      setBkfcNewsStatus({
+        type: "error",
+        message: "Selecciona primero una noticia oficial de BKFC.",
+      });
+      return;
+    }
+
+    if (contentType !== "noticia") {
+      setBkfcNewsStatus({
+        type: "error",
+        message: "Selecciona el tipo de contenido Noticia antes de pasar la fuente al formulario.",
+      });
+      return;
+    }
+
+    const bareKnuckleOption = findReferenceByLabel(referenceData.disciplina, "Bare Knuckle");
+    const bkfcOption = findReferenceByLabel(referenceData.organizacion, "BKFC");
+    const officialSummary =
+      selectedBkfcNews.summary?.trim() ||
+      createSourceExtract(selectedBkfcNews as unknown as UfcOfficialNewsItem) ||
+      selectedBkfcNews.title;
+    const officialBody =
+      selectedBkfcNews.bodyText?.trim() ||
+      selectedBkfcNews.summary?.trim() ||
+      selectedBkfcNews.title;
+    const publicationDate = getRequiredPublicationDateTimeLocalValue(selectedBkfcNews.publishedAt);
+
+    setBkfcNewsRelationsResolution(null);
+    resetDerivedUiState();
+
+    setForm((currentForm) => {
+      const nextForm: ContentFormState = {
+        ...currentForm,
+        titulo: selectedBkfcNews.title,
+        extracto: createSourceExtract(selectedBkfcNews as unknown as UfcOfficialNewsItem),
+        contenido: officialBody,
+        fuente: "bkfc",
+        fuenteUrl:
+          selectedBkfcNews.canonicalUrl || selectedBkfcNews.sourceUrl,
+        fuenteId: selectedBkfcNews.id,
+        destacada: false,
+      };
+
+      if (publicationDate) {
+        nextForm.fechaPublicacion = publicationDate;
+      }
+
+      if (selectedBkfcNews.imageUrl) {
+        nextForm.imagenPrincipal = selectedBkfcNews.imageUrl;
+      }
+
+      if (bareKnuckleOption) {
+        nextForm.disciplina = toReferenceValue(bareKnuckleOption.value);
+      }
+
+      if (bkfcOption) {
+        nextForm.organizacionRelacionada = toReferenceValue(bkfcOption.value);
+      }
+
+      return clearInvalidDependentReferences(nextForm, auxiliary, referenceData);
+    });
+
+    setAuxiliary((currentAuxiliary) => ({
+      ...currentAuxiliary,
+      anguloEditorial:
+        "Reescritura informativa en español a partir de una fuente oficial de BKFC, con enfoque propio de Full Fight News.",
+      hechoPrincipal: officialSummary,
+      contextoPrevio: officialBody,
+      tono: "informativo, directo y periodístico",
+      seoObjetivo: selectedBkfcNews.title,
+      instruccionesRedaccion: createBkfcEditorialInstructions(selectedBkfcNews),
+    }));
+
+    const missingRelations: string[] = [];
+
+    if (!bareKnuckleOption) {
+      missingRelations.push("Bare Knuckle");
+    }
+
+    if (!bkfcOption) {
+      missingRelations.push("BKFC");
+    }
+
+    setBkfcNewsStatus({
+      type: "success",
+      message:
+        missingRelations.length === 0
+          ? "Noticia oficial BKFC cargada y mapeada: contenido, relaciones y trazabilidad listas para generar el output."
+          : `Noticia BKFC cargada. Revisa manualmente estas referencias no encontradas en Sanity: ${missingRelations.join(
+              ", "
+            )}.`,
+    });
+  }, [
+    auxiliary,
+    contentType,
+    referenceData,
+    resetDerivedUiState,
+    selectedBkfcNews,
+  ]);
+
+  const transformBkfcNewsToSpanish = useCallback(async (): Promise<void> => {
+    if (!selectedBkfcNews) {
+      setBkfcNewsStatus({
+        type: "error",
+        message: "Selecciona primero una noticia oficial de BKFC.",
+      });
+      return;
+    }
+
+    if (contentType !== "noticia") {
+      setBkfcNewsStatus({
+        type: "error",
+        message:
+          "Selecciona el tipo de contenido Noticia antes de transformar la fuente.",
+      });
+      return;
+    }
+
+    try {
+      setIsTransformingBkfcNews(true);
+      setBkfcNewsStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(`${API_BASE_URL}/api/transformar-noticia-bkfc`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          title: selectedBkfcNews.title,
+          summary: selectedBkfcNews.summary,
+          bodyText: selectedBkfcNews.bodyText,
+          sourceUrl:
+            selectedBkfcNews.canonicalUrl || selectedBkfcNews.sourceUrl,
+        }),
+      });
+
+      const payload = (await response.json()) as TransformNewsApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudo transformar la noticia BKFC al español."
+        );
+      }
+
+      const bareKnuckleOption = findReferenceByLabel(referenceData.disciplina, "Bare Knuckle");
+      const bkfcOption = findReferenceByLabel(referenceData.organizacion, "BKFC");
+      const publicationDate = getRequiredPublicationDateTimeLocalValue(selectedBkfcNews.publishedAt);
+      const relationResolution = resolveSuggestedNewsRelations({
+        suggestions: payload.data.relacionesSugeridas,
+        referenceData,
+      });
+
+      setBkfcNewsRelationsResolution(relationResolution);
+      resetDerivedUiState();
+
+      setForm((currentForm) => {
+        const nextForm: ContentFormState = {
+          ...currentForm,
+          titulo: payload.data.titulo,
+          extracto: payload.data.extracto,
+          contenido: payload.data.contenido,
+          fuente: "bkfc",
+          fuenteUrl:
+            selectedBkfcNews.canonicalUrl ||
+            selectedBkfcNews.sourceUrl,
+          fuenteId: selectedBkfcNews.id,
+          destacada: false,
+        };
+
+        if (publicationDate) {
+          nextForm.fechaPublicacion = publicationDate;
+        }
+
+        if (selectedBkfcNews.imageUrl) {
+          nextForm.imagenPrincipal = selectedBkfcNews.imageUrl;
+        }
+
+        if (relationResolution.resolved.disciplina) {
+          nextForm.disciplina = toReferenceValue(
+            relationResolution.resolved.disciplina.value
+          );
+        } else if (bareKnuckleOption) {
+          nextForm.disciplina = toReferenceValue(bareKnuckleOption.value);
+        }
+
+        if (relationResolution.resolved.organizacion) {
+          nextForm.organizacionRelacionada = toReferenceValue(
+            relationResolution.resolved.organizacion.value
+          );
+        } else if (bkfcOption) {
+          nextForm.organizacionRelacionada = toReferenceValue(bkfcOption.value);
+        }
+
+        if (relationResolution.resolved.evento) {
+          nextForm.eventoRelacionado = toReferenceValue(
+            relationResolution.resolved.evento.value
+          );
+        } else {
+          nextForm.eventoRelacionado = undefined;
+        }
+
+        nextForm.luchadoresRelacionados =
+          relationResolution.resolved.luchadores.map((fighter) =>
+            toReferenceValue(fighter.value)
+          );
+
+        return clearInvalidDependentReferences(
+          nextForm,
+          auxiliary,
+          referenceData
+        );
+      });
+
+      setAuxiliary((currentAuxiliary) => ({
+        ...currentAuxiliary,
+        anguloEditorial:
+          "Noticia reescrita en español desde una fuente oficial de BKFC con enfoque propio de Full Fight News.",
+        hechoPrincipal: payload.data.extracto,
+        contextoPrevio:
+          selectedBkfcNews.bodyText?.trim() ||
+          selectedBkfcNews.summary?.trim() ||
+          selectedBkfcNews.title,
+        tono: "informativo, directo y periodístico",
+        seoObjetivo: payload.data.titulo,
+        instruccionesRedaccion: createBkfcEditorialInstructions(selectedBkfcNews),
+      }));
+
+      const unresolvedCount =
+        relationResolution.unresolved.luchadores.length +
+        (relationResolution.unresolved.evento ? 1 : 0) +
+        (relationResolution.unresolved.organizacion ? 1 : 0) +
+        (relationResolution.unresolved.disciplina ? 1 : 0);
+
+      const resolvedRelationCount =
+        relationResolution.resolved.luchadores.length +
+        (relationResolution.resolved.evento ? 1 : 0) +
+        (relationResolution.resolved.organizacion ? 1 : 0) +
+        (relationResolution.resolved.disciplina ? 1 : 0);
+
+      setBkfcNewsStatus({
+        type: "success",
+        message:
+          unresolvedCount === 0
+            ? `Noticia BKFC transformada y relacionada automáticamente: ${resolvedRelationCount} referencias reales resueltas y trazabilidad añadida.`
+            : `Noticia BKFC transformada: ${resolvedRelationCount} referencias resueltas, ${unresolvedCount} sugerencias pendientes y trazabilidad añadida.`,
+      });
+    } catch (error) {
+      setBkfcNewsStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido transformando la noticia BKFC al español.",
+      });
+    } finally {
+      setIsTransformingBkfcNews(false);
+    }
+  }, [
+    auxiliary,
+    contentType,
+    referenceData,
+    resetDerivedUiState,
+    selectedBkfcNews,
+  ]);
 
   const reloadOfficialUfcEvents = useCallback(async (): Promise<void> => {
     try {
@@ -3573,6 +4353,12 @@ export default function PanelIA(): ReactElement {
         type: "idle",
         message: "",
       });
+      setSelectedBkfcNewsId("");
+      setBkfcNewsStatus({
+        type: "idle",
+        message: "",
+      });
+      setBkfcNewsRelationsResolution(null);
     }
 
     if (contentType !== "evento") {
@@ -4723,6 +5509,516 @@ export default function PanelIA(): ReactElement {
             ) : (
               <p style={styles.emptyText}>
                 Pulsa “Cargar noticias UFC” para consultar la fuente oficial.
+              </p>
+            )}
+          </section>
+        ) : null}
+
+
+
+        {contentType === "noticia" ? (
+          <section style={styles.sourceCard}>
+            <div style={styles.sourceHeader}>
+              <div>
+                <p style={styles.sourceEyebrow}>Segundo conector oficial</p>
+                <h2 style={styles.sectionTitle}>Bandeja de noticias BKFC</h2>
+                <p style={styles.metaText}>
+                  Selecciona una noticia oficial de BKFC, pásala al formulario,
+                  transfórmala al español y guárdala como borrador con
+                  trazabilidad real.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void reloadOfficialBkfcNews();
+                }}
+                style={
+                  isLoadingBkfcNews
+                    ? styles.buttonDisabled
+                    : styles.secondaryButton
+                }
+                disabled={isLoadingBkfcNews || isPreparingBkfcNewsBatch}
+              >
+                {isLoadingBkfcNews
+                  ? "Actualizando BKFC..."
+                  : bkfcNewsItems.length > 0
+                  ? "Actualizar noticias BKFC"
+                  : "Cargar noticias BKFC"}
+              </button>
+            </div>
+
+            {bkfcNewsStatus.type !== "idle" ? (
+              <div
+                style={
+                  bkfcNewsStatus.type === "success"
+                    ? styles.feedbackSuccess
+                    : styles.feedbackError
+                }
+              >
+                {bkfcNewsStatus.message}
+              </div>
+            ) : null}
+
+            {bkfcNewsFetchedAt ? (
+              <p style={styles.sourceTimestamp}>
+                Última consulta: {" "}
+                {new Date(bkfcNewsFetchedAt).toLocaleString("es-ES")}
+              </p>
+            ) : null}
+
+            {bkfcNewsItems.length > 0 ? (
+              <div style={styles.batchCard}>
+                <div style={styles.batchHeader}>
+                  <div>
+                    <p style={styles.sourceEyebrow}>Análisis masivo</p>
+                    <h3 style={styles.batchTitle}>Noticias oficiales BKFC</h3>
+                    <p style={styles.metaText}>
+                      Comprueba duplicados, noticias aptas y contenido que
+                      requiere revisión antes de transformar.
+                    </p>
+                  </div>
+
+                  <div style={styles.batchHeaderActions}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void analyzeOfficialBkfcNews();
+                      }}
+                      style={
+                        isAnalyzingBkfcNewsBatch || isPreparingBkfcNewsBatch
+                          ? styles.buttonDisabled
+                          : styles.secondaryButton
+                      }
+                      disabled={
+                        isAnalyzingBkfcNewsBatch || isPreparingBkfcNewsBatch
+                      }
+                    >
+                      {isAnalyzingBkfcNewsBatch
+                        ? "Analizando noticias..."
+                        : "Analizar noticias BKFC"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void prepareAllEligibleBkfcNews();
+                      }}
+                      style={
+                        isPreparingBkfcNewsBatch ||
+                        !bkfcNewsBatchAnalysis?.ok ||
+                        bkfcNewsBatchAnalysis.summary.ready === 0
+                          ? styles.buttonDisabled
+                          : styles.button
+                      }
+                      disabled={
+                        isPreparingBkfcNewsBatch ||
+                        isAnalyzingBkfcNewsBatch ||
+                        !bkfcNewsBatchAnalysis?.ok ||
+                        bkfcNewsBatchAnalysis.summary.ready === 0
+                      }
+                    >
+                      {isPreparingBkfcNewsBatch
+                        ? "Preparando noticias nuevas..."
+                        : `Preparar ${bkfcNewsBatchAnalysis?.ok ? bkfcNewsBatchAnalysis.summary.ready : 0} nuevas aptas`}
+                    </button>
+                  </div>
+                </div>
+
+                {bkfcNewsBatchStatus.type !== "idle" ? (
+                  <div
+                    aria-live="polite"
+                    style={
+                      bkfcNewsBatchStatus.type === "success"
+                        ? styles.feedbackSuccess
+                        : styles.feedbackError
+                    }
+                  >
+                    {bkfcNewsBatchStatus.message}
+                  </div>
+                ) : null}
+
+                {bkfcNewsBatchPreparation.length > 0 ? (
+                  <div style={styles.batchProgressList}>
+                    {bkfcNewsBatchPreparation.map((item) => (
+                      <div key={item.sourceId} style={styles.batchProgressItem}>
+                        <div style={styles.batchProgressText}>
+                          <strong>{item.title}</strong>
+                          <span style={styles.batchItemMeta}>{item.message}</span>
+                        </div>
+
+                        <span
+                          style={
+                            item.status === "completado"
+                              ? styles.batchStatusOk
+                              : item.status === "fallido"
+                              ? styles.batchStatusError
+                              : styles.batchStatusPending
+                          }
+                        >
+                          {item.status === "pendiente"
+                            ? "Pendiente"
+                            : item.status === "procesando"
+                            ? "Procesando"
+                            : item.status === "completado"
+                            ? "Completado"
+                            : "Fallido"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {bkfcNewsBatchAnalysis?.ok ? (
+                  <>
+                    <div style={styles.batchSummaryGrid}>
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>Ya existen</span>
+                        <strong>{bkfcNewsBatchAnalysis.summary.existing}</strong>
+                      </div>
+
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>Nuevas aptas</span>
+                        <strong>{bkfcNewsBatchAnalysis.summary.ready}</strong>
+                      </div>
+
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>Sin contenido</span>
+                        <strong>{bkfcNewsBatchAnalysis.summary.withoutContent}</strong>
+                      </div>
+
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>Requieren revisión</span>
+                        <strong>{bkfcNewsBatchAnalysis.summary.requiresReview}</strong>
+                      </div>
+                    </div>
+
+                    <div style={styles.batchList}>
+                      {(showAllBkfcNewsBatchItems
+                        ? bkfcNewsBatchAnalysis.items
+                        : bkfcNewsBatchAnalysis.items.slice(0, 6)
+                      ).map((item) => {
+                        const sourceItem = bkfcNewsItems.find(
+                          (newsItem) => newsItem.id === item.sourceId
+                        );
+
+                        return (
+                          <div key={item.sourceId} style={styles.batchItem}>
+                            <div style={styles.batchItemMain}>
+                              <strong>{item.title}</strong>
+                              <span style={styles.batchItemMeta}>
+                                {item.status === "existente"
+                                  ? "Ya existe en Sanity"
+                                  : item.status === "nueva_apta"
+                                  ? "Nueva y apta para transformar"
+                                  : item.status === "sin_contenido"
+                                  ? "Sin contenido suficiente"
+                                  : "Requiere revisión"}
+                                {item.matchStrategy
+                                  ? ` · coincidencia por ${item.matchStrategy}`
+                                  : ""}
+                              </span>
+
+                              {item.reasons.length > 0 ? (
+                                <span style={styles.batchError}>
+                                  {item.reasons.join(" · ")}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div style={styles.batchItemActions}>
+                              <span
+                                style={
+                                  item.status === "existente"
+                                    ? styles.batchStatusOk
+                                    : item.status === "nueva_apta"
+                                    ? styles.batchStatusPending
+                                    : styles.batchStatusError
+                                }
+                              >
+                                {item.status === "existente"
+                                  ? "Existente"
+                                  : item.status === "nueva_apta"
+                                  ? "Nueva apta"
+                                  : item.status === "sin_contenido"
+                                  ? "Sin contenido"
+                                  : "Revisar"}
+                              </span>
+
+                              {sourceItem ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedBkfcNewsId(sourceItem.id);
+                                    setBkfcNewsRelationsResolution(null);
+                                    setBkfcNewsStatus({
+                                      type: "idle",
+                                      message: "",
+                                    });
+                                  }}
+                                  style={
+                                    isPreparingBkfcNewsBatch
+                                      ? styles.buttonDisabled
+                                      : styles.secondaryButton
+                                  }
+                                  disabled={isPreparingBkfcNewsBatch}
+                                >
+                                  Seleccionar
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {bkfcNewsBatchAnalysis.items.length > 6 ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowAllBkfcNewsBatchItems((current) => !current)
+                        }
+                        style={styles.tertiaryButton}
+                      >
+                        {showAllBkfcNewsBatchItems
+                          ? "Mostrar menos noticias"
+                          : `Ver las ${bkfcNewsBatchAnalysis.items.length} noticias BKFC analizadas`}
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            {bkfcNewsItems.length > 0 ? (
+              <div style={styles.sourceLayout}>
+                <div style={styles.sourceList}>
+                  {bkfcNewsItems.map((item) => {
+                    const isSelected = item.id === selectedBkfcNewsId;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedBkfcNewsId(item.id);
+                          setBkfcNewsRelationsResolution(null);
+                          setBkfcNewsStatus({
+                            type: "idle",
+                            message: "",
+                          });
+                        }}
+                        style={
+                          isSelected
+                            ? styles.sourceItemSelected
+                            : styles.sourceItem
+                        }
+                      >
+                        <span style={styles.sourceItemTitle}>{item.title}</span>
+
+                        {item.summary ? (
+                          <span style={styles.sourceItemSummary}>
+                            {item.summary}
+                          </span>
+                        ) : null}
+
+                        <span style={styles.sourceItemMeta}>
+                          {item.publishedAt
+                            ? new Date(item.publishedAt).toLocaleString("es-ES")
+                            : "Fecha no disponible"}
+                          {" · "}
+                          {item.bodyText
+                            ? "Contenido completo"
+                            : "Sin cuerpo completo"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={styles.sourcePreview}>
+                  {selectedBkfcNews ? (
+                    <>
+                      {selectedBkfcNews.imageUrl ? (
+                        <img
+                          src={selectedBkfcNews.imageUrl}
+                          alt=""
+                          style={styles.sourceImage}
+                        />
+                      ) : null}
+
+                      <div style={styles.sourcePreviewContent}>
+                        <p style={styles.sourceEyebrow}>Noticia BKFC seleccionada</p>
+                        <h3 style={styles.sourcePreviewTitle}>
+                          {selectedBkfcNews.title}
+                        </h3>
+
+                        {selectedBkfcNews.summary ? (
+                          <p style={styles.sourcePreviewSummary}>
+                            {selectedBkfcNews.summary}
+                          </p>
+                        ) : null}
+
+                        <div style={styles.sourcePreviewActions}>
+                          <button
+                            type="button"
+                            onClick={applyBkfcNewsToForm}
+                            style={styles.button}
+                            disabled={isTransformingBkfcNews}
+                          >
+                            Pasar al formulario
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void transformBkfcNewsToSpanish();
+                            }}
+                            style={
+                              isTransformingBkfcNews
+                                ? styles.buttonDisabled
+                                : styles.secondaryButton
+                            }
+                            disabled={isTransformingBkfcNews}
+                          >
+                            {isTransformingBkfcNews
+                              ? "Transformando..."
+                              : "Transformar a español"}
+                          </button>
+
+                          <a
+                            href={selectedBkfcNews.canonicalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={styles.sourceLink}
+                          >
+                            Abrir fuente oficial
+                          </a>
+                        </div>
+
+                        {bkfcNewsRelationsResolution ? (
+                          <div style={styles.newsRelationsCard}>
+                            <div style={styles.newsRelationsHeader}>
+                              <div>
+                                <p style={styles.sourceEyebrow}>
+                                  Relaciones editoriales sugeridas
+                                </p>
+                                <strong>
+                                  Coincidencias reales encontradas en Sanity
+                                </strong>
+                              </div>
+
+                              <span
+                                style={
+                                  bkfcNewsRelationsResolution.unresolved.luchadores
+                                    .length > 0 ||
+                                  bkfcNewsRelationsResolution.unresolved.evento ||
+                                  bkfcNewsRelationsResolution.unresolved
+                                    .organizacion ||
+                                  bkfcNewsRelationsResolution.unresolved.disciplina
+                                    ? styles.batchStatusPending
+                                    : styles.batchStatusOk
+                                }
+                              >
+                                {bkfcNewsRelationsResolution.unresolved.luchadores
+                                  .length > 0 ||
+                                bkfcNewsRelationsResolution.unresolved.evento ||
+                                bkfcNewsRelationsResolution.unresolved
+                                  .organizacion ||
+                                bkfcNewsRelationsResolution.unresolved.disciplina
+                                  ? "Revisión parcial"
+                                  : "Todo resuelto"}
+                              </span>
+                            </div>
+
+                            <div style={styles.newsRelationsGrid}>
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.automationStatLabel}>
+                                  Disciplina
+                                </span>
+                                <strong>
+                                  {bkfcNewsRelationsResolution.resolved.disciplina
+                                    ?.label ||
+                                    bkfcNewsRelationsResolution.unresolved
+                                      .disciplina ||
+                                    "Sin sugerencia"}
+                                </strong>
+                              </div>
+
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.automationStatLabel}>
+                                  Organización
+                                </span>
+                                <strong>
+                                  {bkfcNewsRelationsResolution.resolved.organizacion
+                                    ?.label ||
+                                    bkfcNewsRelationsResolution.unresolved
+                                      .organizacion ||
+                                    "Sin sugerencia"}
+                                </strong>
+                              </div>
+
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.automationStatLabel}>
+                                  Evento
+                                </span>
+                                <strong>
+                                  {bkfcNewsRelationsResolution.resolved.evento
+                                    ?.label ||
+                                    bkfcNewsRelationsResolution.unresolved.evento ||
+                                    "Sin evento claro"}
+                                </strong>
+                              </div>
+                            </div>
+
+                            <div style={styles.newsRelationGroup}>
+                              <span style={styles.automationStatLabel}>
+                                Luchadores resueltos
+                              </span>
+                              <span style={styles.newsRelationTags}>
+                                {bkfcNewsRelationsResolution.resolved.luchadores
+                                  .length > 0
+                                  ? bkfcNewsRelationsResolution.resolved.luchadores
+                                      .map((fighter) => fighter.label)
+                                      .join(" · ")
+                                  : "Ninguno"}
+                              </span>
+                            </div>
+
+                            {bkfcNewsRelationsResolution.unresolved.luchadores
+                              .length > 0 ? (
+                              <div style={styles.newsRelationWarning}>
+                                Sin coincidencia exacta en Sanity: {" "}
+                                {bkfcNewsRelationsResolution.unresolved.luchadores.join(
+                                  " · "
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        <p style={styles.sourceBodyPreview}>
+                          {selectedBkfcNews.bodyText
+                            ? `${selectedBkfcNews.bodyText.slice(0, 900)}${
+                                selectedBkfcNews.bodyText.length > 900
+                                  ? "..."
+                                  : ""
+                              }`
+                            : "Esta noticia BKFC no contiene un cuerpo completo fiable. Se usará el resumen disponible y podrás completar el contenido manualmente."}
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <p style={styles.emptyText}>
+                      Selecciona una noticia BKFC de la bandeja para revisar sus datos.
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p style={styles.emptyText}>
+                Pulsa “Cargar noticias BKFC” para consultar la fuente oficial.
               </p>
             )}
           </section>

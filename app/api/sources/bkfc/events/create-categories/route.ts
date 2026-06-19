@@ -43,8 +43,7 @@ const dataset =
   "production"
 
 const apiVersion =
-  process.env.NEXT_PUBLIC_SANITY_API_VERSION ||
-  "2025-03-01"
+  process.env.NEXT_PUBLIC_SANITY_API_VERSION || "2025-03-01"
 
 const token = process.env.SANITY_API_WRITE_TOKEN
 
@@ -64,8 +63,97 @@ const CORS_HEADERS = {
   "Cache-Control": "no-store",
 }
 
+
 const CATEGORY_MAP: Record<string, Omit<CategoryDefinition, "sourceLabel">> = {
+  "women atomweight": {
+    nombre: "Peso átomo femenino",
+    slug: "peso-atomo-femenino-bare-knuckle",
+    limitePeso: 105,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso átomo de Bare Knuckle, con límite máximo de 105 libras.",
+  },
+  "womens atomweight": {
+    nombre: "Peso átomo femenino",
+    slug: "peso-atomo-femenino-bare-knuckle",
+    limitePeso: 105,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso átomo de Bare Knuckle, con límite máximo de 105 libras.",
+  },
+  "women s atomweight": {
+    nombre: "Peso átomo femenino",
+    slug: "peso-atomo-femenino-bare-knuckle",
+    limitePeso: 105,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso átomo de Bare Knuckle, con límite máximo de 105 libras.",
+  },
+  "woman atomweight": {
+    nombre: "Peso átomo femenino",
+    slug: "peso-atomo-femenino-bare-knuckle",
+    limitePeso: 105,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso átomo de Bare Knuckle, con límite máximo de 105 libras.",
+  },
+  "woman s atomweight": {
+    nombre: "Peso átomo femenino",
+    slug: "peso-atomo-femenino-bare-knuckle",
+    limitePeso: 105,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso átomo de Bare Knuckle, con límite máximo de 105 libras.",
+  },
+  atomweight: {
+    nombre: "Peso átomo femenino",
+    slug: "peso-atomo-femenino-bare-knuckle",
+    limitePeso: 105,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso átomo de Bare Knuckle, con límite máximo de 105 libras.",
+  },
   "women strawweight": {
+    nombre: "Peso paja femenino",
+    slug: "peso-paja-femenino-bare-knuckle",
+    limitePeso: 115,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso paja de Bare Knuckle, con límite máximo de 115 libras.",
+  },
+  "womens strawweight": {
+    nombre: "Peso paja femenino",
+    slug: "peso-paja-femenino-bare-knuckle",
+    limitePeso: 115,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso paja de Bare Knuckle, con límite máximo de 115 libras.",
+  },
+  "women s strawweight": {
+    nombre: "Peso paja femenino",
+    slug: "peso-paja-femenino-bare-knuckle",
+    limitePeso: 115,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso paja de Bare Knuckle, con límite máximo de 115 libras.",
+  },
+  "woman strawweight": {
+    nombre: "Peso paja femenino",
+    slug: "peso-paja-femenino-bare-knuckle",
+    limitePeso: 115,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso paja de Bare Knuckle, con límite máximo de 115 libras.",
+  },
+  "woman s strawweight": {
+    nombre: "Peso paja femenino",
+    slug: "peso-paja-femenino-bare-knuckle",
+    limitePeso: 115,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso paja de Bare Knuckle, con límite máximo de 115 libras.",
+  },
+  strawweight: {
     nombre: "Peso paja femenino",
     slug: "peso-paja-femenino-bare-knuckle",
     limitePeso: 115,
@@ -81,6 +169,38 @@ const CATEGORY_MAP: Record<string, Omit<CategoryDefinition, "sourceLabel">> = {
     descripcion:
       "Categoría femenina de peso mosca de Bare Knuckle, con límite máximo de 125 libras.",
   },
+  "womens flyweight": {
+    nombre: "Peso mosca femenino",
+    slug: "peso-mosca-femenino-bare-knuckle",
+    limitePeso: 125,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso mosca de Bare Knuckle, con límite máximo de 125 libras.",
+  },
+  "women s flyweight": {
+    nombre: "Peso mosca femenino",
+    slug: "peso-mosca-femenino-bare-knuckle",
+    limitePeso: 125,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso mosca de Bare Knuckle, con límite máximo de 125 libras.",
+  },
+  "woman flyweight": {
+    nombre: "Peso mosca femenino",
+    slug: "peso-mosca-femenino-bare-knuckle",
+    limitePeso: 125,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso mosca de Bare Knuckle, con límite máximo de 125 libras.",
+  },
+  "woman s flyweight": {
+    nombre: "Peso mosca femenino",
+    slug: "peso-mosca-femenino-bare-knuckle",
+    limitePeso: 125,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso mosca de Bare Knuckle, con límite máximo de 125 libras.",
+  },
   "women bantamweight": {
     nombre: "Peso gallo femenino",
     slug: "peso-gallo-femenino-bare-knuckle",
@@ -89,7 +209,55 @@ const CATEGORY_MAP: Record<string, Omit<CategoryDefinition, "sourceLabel">> = {
     descripcion:
       "Categoría femenina de peso gallo de Bare Knuckle, con límite máximo de 135 libras.",
   },
+  "womens bantamweight": {
+    nombre: "Peso gallo femenino",
+    slug: "peso-gallo-femenino-bare-knuckle",
+    limitePeso: 135,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso gallo de Bare Knuckle, con límite máximo de 135 libras.",
+  },
+  "women s bantamweight": {
+    nombre: "Peso gallo femenino",
+    slug: "peso-gallo-femenino-bare-knuckle",
+    limitePeso: 135,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso gallo de Bare Knuckle, con límite máximo de 135 libras.",
+  },
+  "woman bantamweight": {
+    nombre: "Peso gallo femenino",
+    slug: "peso-gallo-femenino-bare-knuckle",
+    limitePeso: 135,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso gallo de Bare Knuckle, con límite máximo de 135 libras.",
+  },
+  "woman s bantamweight": {
+    nombre: "Peso gallo femenino",
+    slug: "peso-gallo-femenino-bare-knuckle",
+    limitePeso: 135,
+    unidad: "lb",
+    descripcion:
+      "Categoría femenina de peso gallo de Bare Knuckle, con límite máximo de 135 libras.",
+  },
   "men flyweight": {
+    nombre: "Peso mosca",
+    slug: "peso-mosca-bare-knuckle",
+    limitePeso: 125,
+    unidad: "lb",
+    descripcion:
+      "Categoría de peso mosca de Bare Knuckle, con límite máximo de 125 libras.",
+  },
+  "mens flyweight": {
+    nombre: "Peso mosca",
+    slug: "peso-mosca-bare-knuckle",
+    limitePeso: 125,
+    unidad: "lb",
+    descripcion:
+      "Categoría de peso mosca de Bare Knuckle, con límite máximo de 125 libras.",
+  },
+  "men s flyweight": {
     nombre: "Peso mosca",
     slug: "peso-mosca-bare-knuckle",
     limitePeso: 125,
@@ -171,6 +339,7 @@ const CATEGORY_MAP: Record<string, Omit<CategoryDefinition, "sourceLabel">> = {
   },
 }
 
+
 function withCors(response: NextResponse): NextResponse {
   Object.entries(CORS_HEADERS).forEach(([key, value]) => {
     response.headers.set(key, value)
@@ -191,7 +360,22 @@ function normalize(value: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/[’‘`´]/g, "'")
+    .replace(/\bwomen's\b/g, "women")
+    .replace(/\bwoman's\b/g, "women")
+    .replace(/\bmen's\b/g, "men")
+    .replace(/\bwomens\b/g, "women")
+    .replace(/\bmens\b/g, "men")
+    .replace(/\binterim\b/g, "")
+    .replace(/\btitle\b/g, "")
+    .replace(/\bbout\b/g, "")
+    .replace(/\bfight\b/g, "")
+    .replace(/\bdivision\b/g, "")
+    .replace(/\bchampionship\b/g, "")
     .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\bwomen s\b/g, "women")
+    .replace(/\bwoman s\b/g, "women")
+    .replace(/\bmen s\b/g, "men")
     .replace(/\s+/g, " ")
     .trim()
 }
@@ -282,8 +466,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       return jsonWithCors(
         {
           ok: false,
-          error:
-            "Debes enviar confirm: true para crear las categorías.",
+          error: "Debes enviar confirm: true para crear las categorías.",
         },
         {status: 400},
       )
@@ -306,8 +489,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       return jsonWithCors(
         {
           ok: false,
-          error:
-            "No se encontró la disciplina Bare Knuckle en Sanity.",
+          error: "No se encontró la disciplina Bare Knuckle en Sanity.",
         },
         {status: 409},
       )
@@ -322,13 +504,22 @@ export async function POST(request: Request): Promise<NextResponse> {
     )
 
     const candidates: CategoryDefinition[] = []
-    const unresolved: string[] = []
+    const unresolved: Array<{
+      sourceLabel: string
+      normalizedLabel: string
+      reason: string
+    }> = []
 
     for (const sourceLabel of sourceLabels) {
-      const mapped = CATEGORY_MAP[normalize(sourceLabel)]
+      const normalizedLabel = normalize(sourceLabel)
+      const mapped = CATEGORY_MAP[normalizedLabel]
 
       if (!mapped) {
-        unresolved.push(sourceLabel)
+        unresolved.push({
+          sourceLabel,
+          normalizedLabel,
+          reason: "categoria_no_mapeada",
+        })
         continue
       }
 
@@ -400,6 +591,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           limitePeso: category.limitePeso,
           unidad: category.unidad,
           descripcion: category.descripcion,
+          activa: true,
         })
 
         created.push({
@@ -413,9 +605,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           sourceLabel: category.sourceLabel,
           nombre: category.nombre,
           error:
-            error instanceof Error
-              ? error.message
-              : "Error desconocido.",
+            error instanceof Error ? error.message : "Error desconocido.",
         })
       }
     }
@@ -441,10 +631,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       failed,
     })
   } catch (error) {
-    console.error(
-      "Error creando categorías BKFC:",
-      error,
-    )
+    console.error("Error creando categorías BKFC:", error)
 
     return jsonWithCors(
       {
