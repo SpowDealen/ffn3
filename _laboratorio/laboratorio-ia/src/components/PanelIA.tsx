@@ -19,6 +19,54 @@ import type {
   ValidationIssue,
 } from "../types";
 import type { ReferenceEntityOption } from "../data/referenceEntities";
+import type { ExternalNewsFetchResult, ExternalNewsItem } from "../sources/types";
+
+
+type ExternalEditorialAnalysisResponse =
+  | {
+      ok: true;
+      data: {
+        analysis: {
+          relevancia: "alta" | "media" | "baja" | "descartar";
+          debeCrearNoticia: boolean;
+          necesitaRevisionManual: boolean;
+          razonRevisionManual: string;
+          motivoRelevancia: string;
+          temaPrincipal: string;
+          disciplinaPrincipal: string;
+          organizacionPrincipal: string;
+          eventoPrincipal: string;
+          combatePrincipal: string;
+          luchadoresPrincipales: string[];
+          luchadoresSecundarios: string[];
+          entidadesMencionadas: string[];
+          fuenteFormulario: "ufc" | "bkfc" | "otra";
+          anguloEditorial: string;
+          hechoPrincipal: string;
+          contextoPrevio: string;
+          instruccionesRedaccion: string;
+          confianzaRelaciones: number;
+        };
+        resolved: {
+          disciplina: { id: string; label: string } | null;
+          organizacion: { id: string; label: string } | null;
+          evento: { id: string; label: string } | null;
+          combate: {
+            id: string;
+            label: string;
+            eventoId?: string;
+            eventoLabel?: string;
+          } | null;
+          luchadoresPrincipales: Array<{ id: string; label: string }>;
+          luchadoresSecundarios: Array<{ id: string; label: string }>;
+        };
+        warnings: string[];
+      };
+    }
+  | {
+      ok: false;
+      error?: string;
+    };
 
 type BuildResultState = {
   ok: boolean;
@@ -634,6 +682,128 @@ function createSourceExtract(item: UfcOfficialNewsItem): string {
   return `${sourceText.slice(0, 217).trimEnd()}...`;
 }
 
+function createSafeNewsExtract(value: string): string {
+  const cleanedValue = value.replace(/\s+/g, " ").trim();
+
+  if (cleanedValue.length <= 220) {
+    return cleanedValue;
+  }
+
+  return `${cleanedValue.slice(0, 217).trimEnd()}...`;
+}
+
+function createExternalSourceExtract(item: ExternalNewsItem): string {
+  const sourceText = item.excerpt?.trim() || item.bodyText?.trim() || item.title;
+  return createSafeNewsExtract(sourceText);
+}
+
+function createExternalEditorialInstructions(item: ExternalNewsItem): string {
+  return [
+    "Reescribe la información con estilo periodístico propio de Full Fight News.",
+    "No copies frases extensas de la fuente externa ni hagas una traducción literal.",
+    "Conserva hechos, nombres, fechas, resultados, declaraciones y contexto relevante sin inventar datos.",
+    "Prioriza el ángulo deportivo y editorial para audiencia de deportes de combate.",
+    `Fuente externa: ${item.sourceName}.`,
+    `URL de referencia: ${item.canonicalUrl || item.sourceUrl}`,
+  ].join("\n");
+}
+
+function getExternalNewsSearchText(item: ExternalNewsItem): string {
+  return [
+    item.title,
+    item.excerpt,
+    item.bodyText,
+    item.canonicalUrl,
+    item.sourceUrl,
+    ...item.tags,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase("es");
+}
+
+function inferExternalNewsDisciplineLabel(item: ExternalNewsItem): string | undefined {
+  const searchText = getExternalNewsSearchText(item);
+
+  if (searchText.includes("bare knuckle") || searchText.includes("bkfc")) {
+    return "Bare Knuckle";
+  }
+
+  if (
+    searchText.includes("ufc") ||
+    searchText.includes("mma") ||
+    searchText.includes("artes marciales mixtas")
+  ) {
+    return "MMA";
+  }
+
+  if (
+    searchText.includes("jiu-jitsu") ||
+    searchText.includes("jiu jitsu") ||
+    searchText.includes("grappling") ||
+    searchText.includes("ibjjf")
+  ) {
+    return "Jiu-Jitsu";
+  }
+
+  if (searchText.includes("muay thai")) {
+    return "Muay Thai";
+  }
+
+  if (searchText.includes("kickboxing") || searchText.includes("glory")) {
+    return "Kickboxing";
+  }
+
+  if (searchText.includes("boxeo") || searchText.includes("púgil") || searchText.includes("pugil")) {
+    return "Boxeo";
+  }
+
+  return undefined;
+}
+
+function inferExternalNewsOrganizationLabel(item: ExternalNewsItem): string | undefined {
+  const searchText = getExternalNewsSearchText(item);
+
+  if (searchText.includes("bkfc")) {
+    return "BKFC";
+  }
+
+  if (searchText.includes("ufc")) {
+    return "UFC";
+  }
+
+  if (searchText.includes("ibjjf")) {
+    return "IBJJF";
+  }
+
+  if (searchText.includes("one championship")) {
+    return "ONE Championship";
+  }
+
+  return undefined;
+}
+
+function getAvailableFieldOptionValue(
+  schemaFields: SchemaFieldDefinition[],
+  fieldName: string,
+  candidateValues: string[]
+): string {
+  const field = schemaFields.find((schemaField) => schemaField.name === fieldName);
+  const allowedValues = new Set(
+    (field?.options ?? []).map((option) => option.value.trim().toLocaleLowerCase("es"))
+  );
+
+  for (const candidateValue of candidateValues) {
+    const normalizedCandidate = candidateValue.trim().toLocaleLowerCase("es");
+
+    if (allowedValues.size === 0 || allowedValues.has(normalizedCandidate)) {
+      return candidateValue;
+    }
+  }
+
+  return candidateValues[0] ?? "otra";
+}
+
 function findReferenceByLabel(
   options: ReferenceEntityOption[],
   expectedLabel: string
@@ -670,6 +840,165 @@ function findReferenceBySuggestedLabel(
     (option) =>
       normalizeEntityLabel(option.label) === normalizedSuggestion
   );
+}
+
+function referenceMatchesFilter(
+  optionValues: string[] | undefined,
+  selectedValue: string | undefined
+): boolean {
+  if (!selectedValue) {
+    return true;
+  }
+
+  if (!optionValues || optionValues.length === 0) {
+    return true;
+  }
+
+  return optionValues.includes(selectedValue);
+}
+
+function getNormalizedExternalNewsFields(item: ExternalNewsItem): {
+  title: string;
+  excerpt: string;
+  body: string;
+  tags: string;
+  url: string;
+  all: string;
+} {
+  const title = normalizeEntityLabel(item.title || "");
+  const excerpt = normalizeEntityLabel(item.excerpt || "");
+  const body = normalizeEntityLabel(item.bodyText || "");
+  const tags = normalizeEntityLabel((item.tags || []).join(" "));
+  const url = normalizeEntityLabel(
+    [item.canonicalUrl, item.sourceUrl].filter(Boolean).join(" ")
+  );
+  const all = ` ${[title, excerpt, body, tags, url].filter(Boolean).join(" ")} `;
+
+  return { title, excerpt, body, tags, url, all };
+}
+
+function createFighterSearchAliases(label: string): string[] {
+  const normalizedLabel = normalizeEntityLabel(
+    label
+      .replace(/["“”‘’'][^"“”‘’']+["“”‘’']/g, " ")
+      .replace(/\([^)]*\)/g, " ")
+  );
+
+  if (!normalizedLabel) {
+    return [];
+  }
+
+  const tokens = normalizedLabel.split(" ").filter(Boolean);
+  const aliases = new Set<string>([normalizedLabel]);
+
+  if (tokens.length >= 2) {
+    aliases.add(`${tokens[0]} ${tokens[tokens.length - 1]}`);
+  }
+
+  if (tokens.length >= 3) {
+    aliases.add(`${tokens[tokens.length - 2]} ${tokens[tokens.length - 1]}`);
+  }
+
+  const lastToken = tokens[tokens.length - 1];
+
+  if (lastToken && lastToken.length >= 5) {
+    aliases.add(lastToken);
+  }
+
+  return Array.from(aliases).filter((alias) => alias.length >= 5);
+}
+
+function textContainsNormalizedPhrase(text: string, phrase: string): boolean {
+  if (!text.trim() || !phrase.trim()) {
+    return false;
+  }
+
+  return ` ${text} `.includes(` ${phrase} `);
+}
+
+function scoreExternalNewsFighterMention(
+  item: ExternalNewsItem,
+  fighterLabel: string
+): number {
+  const fields = getNormalizedExternalNewsFields(item);
+  const aliases = createFighterSearchAliases(fighterLabel);
+  let score = 0;
+
+  for (const alias of aliases) {
+    const aliasTokens = alias.split(" ").filter(Boolean);
+    const isFullName = aliasTokens.length >= 2;
+
+    if (textContainsNormalizedPhrase(fields.title, alias)) {
+      score = Math.max(score, isFullName ? 120 : 70);
+    }
+
+    if (textContainsNormalizedPhrase(fields.tags, alias)) {
+      score = Math.max(score, isFullName ? 105 : 65);
+    }
+
+    if (textContainsNormalizedPhrase(fields.excerpt, alias)) {
+      score = Math.max(score, isFullName ? 95 : 55);
+    }
+
+    if (textContainsNormalizedPhrase(fields.body, alias)) {
+      score = Math.max(score, isFullName ? 80 : 45);
+    }
+
+    if (textContainsNormalizedPhrase(fields.url, alias)) {
+      score = Math.max(score, isFullName ? 75 : 40);
+    }
+  }
+
+  return score;
+}
+
+function getExternalNewsMatchedFighters(params: {
+  item: ExternalNewsItem;
+  fighters: ReferenceEntityOption[];
+  disciplineRef?: string;
+  organizationRef?: string;
+}): ReferenceEntityOption[] {
+  const { item, fighters, disciplineRef, organizationRef } = params;
+  const usedIds = new Set<string>();
+  const matches: Array<{ fighter: ReferenceEntityOption; score: number }> = [];
+
+  for (const fighter of fighters) {
+    if (!referenceMatchesFilter(fighter.disciplineIds, disciplineRef)) {
+      continue;
+    }
+
+    const baseScore = scoreExternalNewsFighterMention(item, fighter.label);
+
+    if (baseScore <= 0) {
+      continue;
+    }
+
+    const organizationMatches = referenceMatchesFilter(
+      fighter.organizationIds,
+      organizationRef
+    );
+
+    // Si la noticia menciona al luchador con nombre completo en título/tags/extracto,
+    // no lo descartamos solo porque la organización de Sanity esté incompleta o desalineada.
+    if (!organizationMatches && baseScore < 90) {
+      continue;
+    }
+
+    if (usedIds.has(fighter.value)) {
+      continue;
+    }
+
+    usedIds.add(fighter.value);
+    matches.push({
+      fighter,
+      score: organizationMatches ? baseScore + 10 : baseScore,
+    });
+  }
+
+  return matches
+    .sort((first, second) => second.score - first.score)
+    .slice(0, 8)
+    .map((match) => match.fighter);
 }
 
 function resolveSuggestedNewsRelations(params: {
@@ -1343,6 +1672,16 @@ export default function PanelIA(): ReactElement {
   const [showAllBkfcNewsBatchItems, setShowAllBkfcNewsBatchItems] =
     useState(false);
 
+  const [externalNewsItems, setExternalNewsItems] = useState<ExternalNewsItem[]>([]);
+  const [selectedExternalNewsId, setSelectedExternalNewsId] = useState("");
+  const [isLoadingExternalNews, setIsLoadingExternalNews] = useState(false);
+  const [externalNewsFetchedAt, setExternalNewsFetchedAt] = useState("");
+  const [externalNewsStatus, setExternalNewsStatus] =
+    useState<OfficialSourceStatus>({
+      type: "idle",
+      message: "",
+    });
+
   const [officialEventItems, setOfficialEventItems] = useState<
     UfcOfficialEventItem[]
   >([]);
@@ -1425,6 +1764,12 @@ export default function PanelIA(): ReactElement {
   const selectedBkfcNews = useMemo(
     () => bkfcNewsItems.find((item) => item.id === selectedBkfcNewsId) ?? null,
     [bkfcNewsItems, selectedBkfcNewsId]
+  );
+
+  const selectedExternalNews = useMemo(
+    () =>
+      externalNewsItems.find((item) => item.id === selectedExternalNewsId) ?? null,
+    [externalNewsItems, selectedExternalNewsId]
   );
 
   const selectedOfficialEvent = useMemo(
@@ -1520,6 +1865,290 @@ export default function PanelIA(): ReactElement {
     }
   }, [auxiliary]);
 
+
+  const reloadExternalMarcaNews = useCallback(async (): Promise<void> => {
+    try {
+      setIsLoadingExternalNews(true);
+      setExternalNewsStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/external/news?source=marca&refresh=${Date.now()}`,
+        {
+          headers: {
+            Accept: "application/json",
+          },
+        }
+      );
+
+      const payload = (await response.json()) as ExternalNewsFetchResult;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          payload.error || "No se pudieron cargar las noticias externas de Marca."
+        );
+      }
+
+      setExternalNewsItems(payload.items);
+      setExternalNewsFetchedAt(payload.fetchedAt);
+      setSelectedExternalNewsId((currentId) =>
+        payload.items.some((item) => item.id === currentId)
+          ? currentId
+          : payload.items[0]?.id || ""
+      );
+      setExternalNewsStatus({
+        type: "success",
+        message: `${payload.count} noticias externas de Marca cargadas.`,
+      });
+    } catch (error) {
+      setExternalNewsItems([]);
+      setSelectedExternalNewsId("");
+      setExternalNewsFetchedAt("");
+      setExternalNewsStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido cargando noticias externas de Marca.",
+      });
+    } finally {
+      setIsLoadingExternalNews(false);
+    }
+  }, []);
+
+  const applyExternalNewsToForm = useCallback(async (): Promise<void> => {
+    if (!selectedExternalNews) {
+      setExternalNewsStatus({
+        type: "error",
+        message: "Selecciona primero una noticia externa de Marca.",
+      });
+      return;
+    }
+
+    if (contentType !== "noticia") {
+      setExternalNewsStatus({
+        type: "error",
+        message:
+          "Selecciona el tipo de contenido Noticia antes de pasar la fuente externa al formulario.",
+      });
+      return;
+    }
+
+    setExternalNewsStatus({
+      type: "success",
+      message: "Analizando noticia externa con criterio editorial...",
+    });
+
+    let analysisPayload: ExternalEditorialAnalysisResponse | null = null;
+
+    try {
+      const analysisResponse = await fetch(
+        `${API_BASE_URL}/api/sources/external/news/analyze`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ item: selectedExternalNews }),
+        }
+      );
+
+      analysisPayload = (await analysisResponse.json()) as ExternalEditorialAnalysisResponse;
+
+      if (!analysisResponse.ok || !analysisPayload.ok) {
+        throw new Error(
+          analysisPayload && !analysisPayload.ok && analysisPayload.error
+            ? analysisPayload.error
+            : "No se pudo analizar la noticia externa."
+        );
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido analizando la noticia externa.";
+
+      setExternalNewsStatus({
+        type: "error",
+        message:
+          `${message} No se ha cargado el formulario para evitar relaciones incorrectas.`,
+      });
+      return;
+    }
+
+    if (!analysisPayload?.ok) {
+      setExternalNewsStatus({
+        type: "error",
+        message: "No se pudo analizar la noticia externa.",
+      });
+      return;
+    }
+
+    const { analysis, resolved, warnings } = analysisPayload.data;
+    const sourceExtract = createExternalSourceExtract(selectedExternalNews);
+    const safeExternalExtract = createSafeNewsExtract(
+      analysis.hechoPrincipal || sourceExtract || selectedExternalNews.title
+    );
+    const sourceBody =
+      selectedExternalNews.bodyText?.trim() ||
+      selectedExternalNews.excerpt?.trim() ||
+      selectedExternalNews.title;
+    const publicationDate = toDateTimeLocalValue(selectedExternalNews.publishedAt);
+    const externalSourceValue = getAvailableFieldOptionValue(definition.schemaFields, "fuente", [
+      analysis.fuenteFormulario,
+      "otra",
+      "otro",
+    ]);
+    const resolvedFighters = [
+      ...resolved.luchadoresPrincipales,
+      ...resolved.luchadoresSecundarios,
+    ];
+    const uniqueFighterIds = Array.from(
+      new Set(resolvedFighters.map((fighter) => fighter.id).filter(Boolean))
+    );
+
+    const resolvedDisciplineRef = resolved.disciplina
+      ? referenceData.disciplina.find((option) => {
+          const optionLabel = option.label.trim().toLowerCase();
+          const resolvedLabel = resolved.disciplina?.label.trim().toLowerCase() ?? "";
+
+          return (
+            option.value === resolved.disciplina?.id ||
+            optionLabel === resolvedLabel ||
+            optionLabel.replace(/[-\s]/g, "") ===
+              resolvedLabel.replace(/[-\s]/g, "")
+          );
+        })?.value ?? resolved.disciplina.id
+      : "";
+
+    resetDerivedUiState();
+
+    setForm((currentForm) => {
+      const nextForm: ContentFormState = {
+        ...currentForm,
+        titulo: selectedExternalNews.title,
+        extracto: safeExternalExtract,
+        contenido: sourceBody,
+        fuente: externalSourceValue,
+        fuenteUrl:
+          selectedExternalNews.canonicalUrl || selectedExternalNews.sourceUrl,
+        fuenteId: selectedExternalNews.id,
+        destacada: analysis.relevancia === "alta",
+      };
+
+      if (publicationDate) {
+        nextForm.fechaPublicacion = publicationDate;
+      }
+
+      if (selectedExternalNews.image?.url) {
+        nextForm.imagenPrincipal = selectedExternalNews.image.url;
+      }
+
+      if (resolvedDisciplineRef) {
+        nextForm.disciplina = toReferenceValue(resolvedDisciplineRef);
+      }
+
+      if (resolved.organizacion) {
+        nextForm.organizacionRelacionada = toReferenceValue(resolved.organizacion.id);
+      }
+
+      if (resolved.evento) {
+        nextForm.eventoRelacionado = toReferenceValue(resolved.evento.id);
+      } else if (resolved.combate?.eventoId) {
+        nextForm.eventoRelacionado = toReferenceValue(resolved.combate.eventoId);
+      }
+
+      if (resolved.combate) {
+        nextForm.combateRelacionado = toReferenceValue(resolved.combate.id);
+      }
+
+      if (uniqueFighterIds.length > 0) {
+        nextForm.luchadoresRelacionados = uniqueFighterIds.map((fighterId) =>
+          toReferenceValue(fighterId)
+        );
+      }
+
+      const cleanedForm = clearInvalidDependentReferences(nextForm, auxiliary, referenceData);
+
+      if (resolvedDisciplineRef) {
+        cleanedForm.disciplina = toReferenceValue(resolvedDisciplineRef);
+      }
+
+      return cleanedForm;
+    });
+
+    setAuxiliary((currentAuxiliary) => ({
+      ...currentAuxiliary,
+      ...(resolvedDisciplineRef
+        ? { disciplina: toReferenceValue(resolvedDisciplineRef) }
+        : {}),
+      anguloEditorial:
+        analysis.anguloEditorial ||
+        "Reescritura informativa en español a partir de una fuente externa, con criterio editorial propio de Full Fight News.",
+      hechoPrincipal: analysis.hechoPrincipal || sourceExtract,
+      contextoPrevio: analysis.contextoPrevio || sourceBody,
+      tono: "informativo, directo y periodístico",
+      seoObjetivo: selectedExternalNews.title,
+      instruccionesRedaccion:
+        analysis.instruccionesRedaccion || createExternalEditorialInstructions(selectedExternalNews),
+    }));
+
+    // Blindaje final: algunas limpiezas en cascada/re-render pueden dejar el select
+    // visualmente vacío aunque el análisis haya resuelto una disciplina real.
+    // Reaplicamos la disciplina resuelta después del ciclo de estado para que
+    // el formulario y el output conserven disciplinas no-UFC/no-MMA como Kick boxing.
+    if (resolvedDisciplineRef) {
+      window.setTimeout(() => {
+        setForm((currentForm) => ({
+          ...currentForm,
+          disciplina: toReferenceValue(resolvedDisciplineRef),
+        }));
+        setAuxiliary((currentAuxiliary) => ({
+          ...currentAuxiliary,
+          disciplina: toReferenceValue(resolvedDisciplineRef),
+        }));
+      }, 0);
+
+      window.setTimeout(() => {
+        setForm((currentForm) => ({
+          ...currentForm,
+          disciplina: toReferenceValue(resolvedDisciplineRef),
+        }));
+      }, 250);
+    }
+
+    const relationSummary = [
+      resolved.disciplina ? `disciplina ${resolved.disciplina.label} (${resolvedDisciplineRef || resolved.disciplina.id})` : "sin disciplina resuelta",
+      resolved.organizacion ? `organización ${resolved.organizacion.label}` : "sin organización resuelta",
+      uniqueFighterIds.length > 0
+        ? `${uniqueFighterIds.length} luchador(es)`
+        : "sin luchadores resueltos",
+      resolved.evento ? `evento ${resolved.evento.label}` : null,
+      resolved.combate ? `combate ${resolved.combate.label}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    const reviewMessage = analysis.necesitaRevisionManual
+      ? ` Revisión recomendada: ${analysis.razonRevisionManual || "la noticia mezcla contexto o relaciones con confianza limitada."}`
+      : "";
+    const warningMessage = warnings.length > 0 ? ` Avisos: ${warnings.join(" | ")}.` : "";
+
+    setExternalNewsStatus({
+      type: "success",
+      message: `Análisis editorial aplicado: relevancia ${analysis.relevancia}, fuente ${externalSourceValue.toUpperCase()}, ${relationSummary}.${reviewMessage}${warningMessage}`,
+    });
+  }, [
+    API_BASE_URL,
+    auxiliary,
+    contentType,
+    definition.schemaFields,
+    referenceData,
+    resetDerivedUiState,
+    selectedExternalNews,
+  ]);
 
   const reloadOfficialUfcNews = useCallback(async (): Promise<void> => {
     try {
@@ -6222,6 +6851,245 @@ export default function PanelIA(): ReactElement {
             ) : (
               <p style={styles.emptyText}>
                 Pulsa “Cargar noticias BKFC” para consultar la fuente oficial.
+              </p>
+            )}
+          </section>
+        ) : null}
+
+        {contentType === "noticia" ? (
+          <section style={styles.sourceCard}>
+            <div style={styles.sourceHeader}>
+              <div>
+                <p style={styles.sourceEyebrow}>Fuente externa conectada</p>
+                <h2 style={styles.sectionTitle}>Bandeja externa Marca</h2>
+                <p style={styles.metaText}>
+                  Carga noticias externas de deportes de combate, revisa el contenido
+                  y pásalo al formulario como borrador editorial de Full Fight News.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void reloadExternalMarcaNews();
+                }}
+                style={
+                  isLoadingExternalNews
+                    ? styles.buttonDisabled
+                    : styles.secondaryButton
+                }
+                disabled={isLoadingExternalNews}
+              >
+                {isLoadingExternalNews
+                  ? "Actualizando Marca..."
+                  : externalNewsItems.length > 0
+                  ? "Actualizar Marca"
+                  : "Cargar Marca"}
+              </button>
+            </div>
+
+            {externalNewsStatus.type !== "idle" ? (
+              <div
+                style={
+                  externalNewsStatus.type === "success"
+                    ? styles.feedbackSuccess
+                    : styles.feedbackError
+                }
+              >
+                {externalNewsStatus.message}
+              </div>
+            ) : null}
+
+            {externalNewsFetchedAt ? (
+              <p style={styles.sourceTimestamp}>
+                Última consulta: {" "}
+                {new Date(externalNewsFetchedAt).toLocaleString("es-ES")}
+              </p>
+            ) : null}
+
+            {externalNewsItems.length > 0 ? (
+              <div style={styles.sourceLayout}>
+                <div style={styles.sourceList}>
+                  {externalNewsItems.map((item) => {
+                    const isSelected = item.id === selectedExternalNewsId;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedExternalNewsId(item.id);
+                          setExternalNewsStatus({
+                            type: "idle",
+                            message: "",
+                          });
+                        }}
+                        style={
+                          isSelected
+                            ? styles.sourceItemSelected
+                            : styles.sourceItem
+                        }
+                      >
+                        <span style={styles.sourceItemTitle}>{item.title}</span>
+
+                        {item.excerpt ? (
+                          <span style={styles.sourceItemSummary}>
+                            {item.excerpt}
+                          </span>
+                        ) : null}
+
+                        <span style={styles.sourceItemMeta}>
+                          {item.publishedAt
+                            ? new Date(item.publishedAt).toLocaleString("es-ES")
+                            : "Fecha no disponible"}
+                          {" · "}
+                          {item.bodyText
+                            ? "Contenido completo"
+                            : "Sin cuerpo completo"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={styles.sourcePreview}>
+                  {selectedExternalNews ? (
+                    <>
+                      {selectedExternalNews.image?.url ? (
+                        <img
+                          src={selectedExternalNews.image.url}
+                          alt=""
+                          style={styles.sourceImage}
+                        />
+                      ) : null}
+
+                      <div style={styles.sourcePreviewContent}>
+                        <p style={styles.sourceEyebrow}>
+                          Noticia externa seleccionada
+                        </p>
+                        <h3 style={styles.sourcePreviewTitle}>
+                          {selectedExternalNews.title}
+                        </h3>
+
+                        {selectedExternalNews.excerpt ? (
+                          <p style={styles.sourcePreviewSummary}>
+                            {selectedExternalNews.excerpt}
+                          </p>
+                        ) : null}
+
+                        <div style={styles.sourcePreviewActions}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void applyExternalNewsToForm();
+                            }}
+                            style={styles.button}
+                          >
+                            Pasar al formulario
+                          </button>
+
+                          <a
+                            href={
+                              selectedExternalNews.canonicalUrl ||
+                              selectedExternalNews.sourceUrl
+                            }
+                            target="_blank"
+                            rel="noreferrer"
+                            style={styles.sourceLink}
+                          >
+                            Abrir fuente externa
+                          </a>
+                        </div>
+
+                        <div style={styles.newsRelationsCard}>
+                          <div style={styles.newsRelationsHeader}>
+                            <div>
+                              <p style={styles.sourceEyebrow}>
+                                Detección inicial
+                              </p>
+                              <strong>
+                                {inferExternalNewsDisciplineLabel(selectedExternalNews) ||
+                                  "Disciplina pendiente de revisión"}
+                              </strong>
+                            </div>
+
+                            <span style={styles.batchStatusPending}>
+                              Revisión editorial
+                            </span>
+                          </div>
+
+                          <div style={styles.newsRelationsGrid}>
+                            <div style={styles.newsRelationGroup}>
+                              <span style={styles.sourceEyebrow}>Organización</span>
+                              <span style={styles.newsRelationTags}>
+                                {inferExternalNewsOrganizationLabel(selectedExternalNews) ||
+                                  "Pendiente de revisión"}
+                              </span>
+                            </div>
+
+                            <div style={styles.newsRelationGroup}>
+                              <span style={styles.sourceEyebrow}>Luchadores</span>
+                              <span style={styles.newsRelationTags}>
+                                {(() => {
+                                  const disciplineLabel =
+                                    inferExternalNewsDisciplineLabel(selectedExternalNews);
+                                  const organizationLabel =
+                                    inferExternalNewsOrganizationLabel(selectedExternalNews);
+                                  const disciplineOption = disciplineLabel
+                                    ? findReferenceByLabel(
+                                        referenceData.disciplina,
+                                        disciplineLabel
+                                      )
+                                    : undefined;
+                                  const organizationOption = organizationLabel
+                                    ? findReferenceByLabel(
+                                        referenceData.organizacion,
+                                        organizationLabel
+                                      )
+                                    : undefined;
+                                  const fighters = getExternalNewsMatchedFighters({
+                                    item: selectedExternalNews,
+                                    fighters: referenceData.luchador,
+                                    disciplineRef: disciplineOption?.value,
+                                    organizationRef: organizationOption?.value,
+                                  });
+
+                                  return fighters.length > 0
+                                    ? fighters.map((fighter) => fighter.label).join(" · ")
+                                    : "Sin coincidencia exacta en Sanity";
+                                })()}
+                              </span>
+                            </div>
+                          </div>
+
+                          <p style={styles.metaText}>
+                            Esta versión detecta disciplina, organización y luchadores
+                            por coincidencia exacta contra Sanity. La clasificación
+                            “apta / revisión / descartar” irá en el siguiente bloque.
+                          </p>
+                        </div>
+
+                        <p style={styles.sourceBodyPreview}>
+                          {selectedExternalNews.bodyText
+                            ? `${selectedExternalNews.bodyText.slice(0, 900)}${
+                                selectedExternalNews.bodyText.length > 900
+                                  ? "..."
+                                  : ""
+                              }`
+                            : "Esta noticia externa no contiene un cuerpo completo fiable. Se usará el resumen disponible y podrás completar el contenido manualmente."}
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <p style={styles.emptyText}>
+                      Selecciona una noticia externa de Marca para revisar sus datos.
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p style={styles.emptyText}>
+                Pulsa “Cargar Marca” para consultar noticias externas de deportes de combate.
               </p>
             )}
           </section>

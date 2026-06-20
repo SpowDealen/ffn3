@@ -120,3 +120,70 @@ export type SourceDraftProposal = {
 
   output: Record<string, unknown>;
 };
+
+export const EXTERNAL_SOURCE_IDS = ["marca"] as const;
+
+export type ExternalSourceId = (typeof EXTERNAL_SOURCE_IDS)[number];
+
+export type ExternalNewsSourceDefinition = {
+  id: ExternalSourceId;
+  name: string;
+  baseUrl: string;
+  enabled: boolean;
+  language: "es" | "en" | "unknown";
+  kind: "medio_externo";
+  refreshIntervalSeconds: number;
+};
+
+export type ExternalNewsImage = {
+  url: string;
+  alt?: string;
+};
+
+export type ExternalNewsRawPayload = Record<string, unknown>;
+
+export type ExternalNewsItem = {
+  id: string;
+  source: ExternalSourceId;
+  sourceName: string;
+  sourceKind: "medio_externo";
+
+  title: string;
+  excerpt?: string;
+  bodyText?: string;
+
+  sourceUrl: string;
+  canonicalUrl: string;
+  publishedAt?: string;
+  detectedAt: string;
+
+  image?: ExternalNewsImage;
+
+  authors: string[];
+  tags: string[];
+
+  language: "es" | "en" | "unknown";
+
+  raw?: ExternalNewsRawPayload;
+};
+
+export type ExternalNewsFetchResult = {
+  ok: boolean;
+  source: ExternalSourceId;
+  sourceName: string;
+  fetchedAt: string;
+  count: number;
+  items: ExternalNewsItem[];
+  error?: string;
+};
+
+export type ExternalNewsAdapter = {
+  source: ExternalNewsSourceDefinition;
+  fetchNews: () => Promise<ExternalNewsFetchResult>;
+};
+
+export function isExternalSourceId(
+  value: string,
+): value is ExternalSourceId {
+  return (EXTERNAL_SOURCE_IDS as readonly string[]).includes(value);
+}
