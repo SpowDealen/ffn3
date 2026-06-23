@@ -221,22 +221,90 @@ const CATEGORY_ALIASES: Record<string, string[]> = {
 };
 
 const DISCIPLINE_ALIASES: Record<OneDisciplineKey, string[]> = {
-  mma: ["mma", "artes marciales mixtas"],
-  muay_thai: ["muay thai"],
-  kickboxing: ["kickboxing"],
-  submission_grappling: ["submission grappling", "grappling", "jiu-jitsu", "jiu jitsu", "jiujitsu", "bjj"],
-  jiu_jitsu: ["jiu-jitsu", "jiu jitsu", "jiujitsu", "bjj"],
-  mixed: [],
+  mma: [
+    "mma",
+    "artes marciales mixtas",
+    "artes marciales mixtas mma",
+    "mixed martial arts",
+  ],
+  muay_thai: [
+    "muay thai",
+    "muaythai",
+    "thai boxing",
+    "boxeo tailandes",
+    "boxeo tailandés",
+  ],
+  kickboxing: [
+    "kickboxing",
+    "kick boxing",
+    "k1",
+    "k-1",
+  ],
+  submission_grappling: [
+    "submission grappling",
+    "grappling",
+    "submission",
+    "lucha de sumision",
+    "lucha de sumisión",
+    "jiu-jitsu",
+    "jiu jitsu",
+    "jiujitsu",
+    "bjj",
+    "brazilian jiu jitsu",
+    "brazilian jiu-jitsu",
+  ],
+  jiu_jitsu: [
+    "jiu-jitsu",
+    "jiu jitsu",
+    "jiujitsu",
+    "bjj",
+    "brazilian jiu jitsu",
+    "brazilian jiu-jitsu",
+    "submission grappling",
+    "grappling",
+  ],
+  mixed: [
+    "mma",
+    "artes marciales mixtas",
+    "muay thai",
+    "muaythai",
+    "kickboxing",
+    "kick boxing",
+    "submission grappling",
+    "jiu-jitsu",
+    "jiu jitsu",
+    "jiujitsu",
+    "bjj",
+  ],
 };
 
 function disciplineCandidates(source?: OneDisciplineKey | string): string[] {
   const key = getString(source) as OneDisciplineKey;
-  return DISCIPLINE_ALIASES[key]?.length ? DISCIPLINE_ALIASES[key] : ["mma", "muay thai", "kickboxing", "submission grappling", "jiu-jitsu"];
+  const direct = DISCIPLINE_ALIASES[key];
+
+  if (direct?.length) {
+    return direct;
+  }
+
+  const normalizedSource = normalizeName(getString(source));
+  if (normalizedSource) {
+    return [normalizedSource];
+  }
+
+  return DISCIPLINE_ALIASES.mixed;
 }
 
 function findDiscipline(source: OneDisciplineKey | string | undefined, disciplines: ReferenceDoc[]): ReferenceDoc | undefined {
   const candidates = disciplineCandidates(source).map(normalizeName);
-  return disciplines.find((discipline) => candidates.includes(normalizeName(getString(discipline.nombre))));
+
+  return disciplines.find((discipline) => {
+    const namesToCheck = [
+      getString(discipline.nombre),
+      getString(discipline.slug?.current),
+    ].map(normalizeName);
+
+    return namesToCheck.some((name) => candidates.includes(name));
+  });
 }
 
 function resolveCategory(sourceLabel: string | undefined, categories: CategoryDoc[], discipline?: ReferenceDoc): CategoryDoc | undefined {

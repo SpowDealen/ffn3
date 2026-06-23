@@ -1943,6 +1943,7 @@ export default function PanelIA(): ReactElement {
     useState<OneEventResolution | null>(null);
   const [isResolvingOneEvent, setIsResolvingOneEvent] = useState(false);
   const [isCreatingOneEvent, setIsCreatingOneEvent] = useState(false);
+  const [isCreatingOneCategories, setIsCreatingOneCategories] = useState(false);
   const [isCreatingOneFighters, setIsCreatingOneFighters] = useState(false);
   const [isCreatingOneFights, setIsCreatingOneFights] = useState(false);
   const [isPreparingFullOneCard, setIsPreparingFullOneCard] =
@@ -2012,6 +2013,7 @@ export default function PanelIA(): ReactElement {
     isLoadingOneEvents ||
     isResolvingOneEvent ||
     isCreatingOneEvent ||
+    isCreatingOneCategories ||
     isCreatingOneFighters ||
     isCreatingOneFights ||
     isPreparingFullOneCard;
@@ -5000,6 +5002,7 @@ export default function PanelIA(): ReactElement {
     async (
       path:
         | "create-event"
+        | "create-categories"
         | "create-fighters"
         | "create-fights",
       targetEvent?: BkfcOfficialEventItem
@@ -5478,6 +5481,7 @@ export default function PanelIA(): ReactElement {
     async (
       path:
         | "create-event"
+        | "create-categories"
         | "create-fighters"
         | "create-fights",
       targetEvent?: OneOfficialEventItem
@@ -5552,6 +5556,50 @@ export default function PanelIA(): ReactElement {
       });
     } finally {
       setIsCreatingOneEvent(false);
+    }
+  }, [
+    reloadReferenceEntities,
+    requestOneEventResolution,
+    runOneEventBulkAction,
+    selectedOneEvent,
+  ]);
+
+  const createMissingOneCategories = useCallback(async (): Promise<void> => {
+    if (!selectedOneEvent) {
+      setOneEventSourceStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de ONE.",
+      });
+      return;
+    }
+
+    try {
+      setIsCreatingOneCategories(true);
+      const payload = (await runOneEventBulkAction(
+        "create-categories",
+        selectedOneEvent
+      )) as UfcBulkActionResponse;
+
+      await reloadReferenceEntities();
+      const resolution = await requestOneEventResolution(selectedOneEvent);
+      setOneEventResolution(resolution);
+      setOneEventSourceStatus({
+        type: "success",
+        message:
+          payload.ok && "summary" in payload
+            ? `${payload.summary.created} categorías creadas, ${payload.summary.skipped} omitidas y ${payload.summary.failed} fallidas.`
+            : "Categorías ONE procesadas.",
+      });
+    } catch (error) {
+      setOneEventSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido creando categorías ONE.",
+      });
+    } finally {
+      setIsCreatingOneCategories(false);
     }
   }, [
     reloadReferenceEntities,
@@ -5658,7 +5706,7 @@ export default function PanelIA(): ReactElement {
     }
 
     const confirmed = window.confirm(
-      `Se preparará la cartelera de “${selectedOneEvent.name}”: evento, luchadores y combates con categorías ya resueltas. Las categorías pendientes se omitirán. ¿Continuar?`
+      `Se preparará la cartelera de “${selectedOneEvent.name}”: evento, categorías de peso faltantes, luchadores y combates seguros. Las categorías sin mapeo se omitirán. ¿Continuar?`
     );
 
     if (!confirmed) {
@@ -5669,7 +5717,7 @@ export default function PanelIA(): ReactElement {
       setIsPreparingFullOneCard(true);
       setOneEventSourceStatus({
         type: "success",
-        message: "Paso 1 de 4: analizando la cartelera ONE...",
+        message: "Paso 1 de 5: analizando la cartelera ONE...",
       });
 
       let resolution = await requestOneEventResolution(selectedOneEvent);
@@ -5678,9 +5726,20 @@ export default function PanelIA(): ReactElement {
       if (!resolution.event.found) {
         setOneEventSourceStatus({
           type: "success",
-          message: "Paso 2 de 4: creando el evento ONE...",
+          message: "Paso 2 de 5: creando el evento ONE...",
         });
         await runOneEventBulkAction("create-event", selectedOneEvent);
+        await reloadReferenceEntities();
+        resolution = await requestOneEventResolution(selectedOneEvent);
+        setOneEventResolution(resolution);
+      }
+
+      if (resolution.counts.unresolvedCategories > 0) {
+        setOneEventSourceStatus({
+          type: "success",
+          message: `Paso 3 de 5: creando ${resolution.counts.unresolvedCategories} categorías de peso faltantes...`,
+        });
+        await runOneEventBulkAction("create-categories", selectedOneEvent);
         await reloadReferenceEntities();
         resolution = await requestOneEventResolution(selectedOneEvent);
         setOneEventResolution(resolution);
@@ -5689,7 +5748,7 @@ export default function PanelIA(): ReactElement {
       if (resolution.counts.missingFighters > 0) {
         setOneEventSourceStatus({
           type: "success",
-          message: `Paso 3 de 4: creando ${resolution.counts.missingFighters} luchadores faltantes...`,
+          message: `Paso 4 de 5: creando ${resolution.counts.missingFighters} luchadores faltantes...`,
         });
         await runOneEventBulkAction("create-fighters", selectedOneEvent);
         await reloadReferenceEntities();
@@ -5700,7 +5759,7 @@ export default function PanelIA(): ReactElement {
       if (resolution.counts.pendingFights > 0) {
         setOneEventSourceStatus({
           type: "success",
-          message: `Paso 4 de 4: creando ${resolution.counts.pendingFights} combates con categorías resueltas...`,
+          message: `Paso 5 de 5: creando ${resolution.counts.pendingFights} combates con categorías resueltas...`,
         });
         await runOneEventBulkAction("create-fights", selectedOneEvent);
         await reloadReferenceEntities();
@@ -10326,6 +10385,28 @@ export default function PanelIA(): ReactElement {
                                 >
                                   Crear evento
                                 </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void createMissingOneCategories();
+                                  }}
+                                  style={
+                                    oneEventResolution.counts
+                                      .unresolvedCategories > 0 && !isOneEventBusy
+                                      ? styles.secondaryButton
+                                      : styles.buttonDisabled
+                                  }
+                                  disabled={
+                                    oneEventResolution.counts
+                                      .unresolvedCategories === 0 || isOneEventBusy
+                                  }
+                                >
+                                  {isCreatingOneCategories
+                                    ? "Creando categorías..."
+                                    : `Crear categorías (${oneEventResolution.counts.unresolvedCategories})`}
+                                </button>
+
 
                                 <button
                                   type="button"

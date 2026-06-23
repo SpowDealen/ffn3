@@ -221,22 +221,113 @@ const CATEGORY_ALIASES: Record<string, string[]> = {
 };
 
 const DISCIPLINE_ALIASES: Record<OneDisciplineKey, string[]> = {
-  mma: ["mma", "artes marciales mixtas"],
-  muay_thai: ["muay thai"],
-  kickboxing: ["kickboxing"],
-  submission_grappling: ["submission grappling", "grappling", "jiu-jitsu", "jiu jitsu", "jiujitsu", "bjj"],
-  jiu_jitsu: ["jiu-jitsu", "jiu jitsu", "jiujitsu", "bjj"],
-  mixed: [],
+  mma: [
+    "mma",
+    "artes marciales mixtas",
+    "artes marciales mixtas mma",
+    "mixed martial arts",
+  ],
+  muay_thai: [
+    "muay thai",
+    "muaythai",
+    "thai boxing",
+    "boxeo tailandes",
+    "boxeo tailandés",
+  ],
+  kickboxing: [
+    "kickboxing",
+    "kick boxing",
+    "k1",
+    "k-1",
+  ],
+  submission_grappling: [
+    "submission grappling",
+    "grappling",
+    "submission",
+    "lucha de sumision",
+    "lucha de sumisión",
+    "jiu-jitsu",
+    "jiu jitsu",
+    "jiujitsu",
+    "bjj",
+    "brazilian jiu jitsu",
+    "brazilian jiu-jitsu",
+  ],
+  jiu_jitsu: [
+    "jiu-jitsu",
+    "jiu jitsu",
+    "jiujitsu",
+    "bjj",
+    "brazilian jiu jitsu",
+    "brazilian jiu-jitsu",
+    "submission grappling",
+    "grappling",
+  ],
+  mixed: [
+    "mma",
+    "artes marciales mixtas",
+    "muay thai",
+    "muaythai",
+    "kickboxing",
+    "kick boxing",
+    "submission grappling",
+    "jiu-jitsu",
+    "jiu jitsu",
+    "jiujitsu",
+    "bjj",
+  ],
 };
 
 function disciplineCandidates(source?: OneDisciplineKey | string): string[] {
   const key = getString(source) as OneDisciplineKey;
-  return DISCIPLINE_ALIASES[key]?.length ? DISCIPLINE_ALIASES[key] : ["mma", "muay thai", "kickboxing", "submission grappling", "jiu-jitsu"];
+  const direct = DISCIPLINE_ALIASES[key];
+
+  if (direct?.length) {
+    return direct;
+  }
+
+  const normalizedSource = normalizeName(getString(source));
+  if (normalizedSource) {
+    return [normalizedSource];
+  }
+
+  return DISCIPLINE_ALIASES.mixed;
 }
 
 function findDiscipline(source: OneDisciplineKey | string | undefined, disciplines: ReferenceDoc[]): ReferenceDoc | undefined {
   const candidates = disciplineCandidates(source).map(normalizeName);
-  return disciplines.find((discipline) => candidates.includes(normalizeName(getString(discipline.nombre))));
+
+  return disciplines.find((discipline) => {
+    const namesToCheck = [
+      getString(discipline.nombre),
+      getString(discipline.slug?.current),
+    ].map(normalizeName);
+
+    return namesToCheck.some((name) => candidates.includes(name));
+  });
+}
+
+function resolvePrimaryDiscipline(event: SourceEvent, disciplines: ReferenceDoc[]): ReferenceDoc | undefined {
+  const direct = findDiscipline(event.primaryDiscipline, disciplines);
+  if (direct) return direct;
+
+  const fightCard = Array.isArray(event.fightCard) ? event.fightCard : [];
+  const counts = new Map<string, { discipline: ReferenceDoc; count: number }>();
+
+  for (const fight of fightCard) {
+    const fightDiscipline = findDiscipline(fight.discipline, disciplines);
+    if (!fightDiscipline?._id) continue;
+
+    const key = baseId(fightDiscipline._id);
+    const current = counts.get(key);
+
+    counts.set(key, {
+      discipline: fightDiscipline,
+      count: (current?.count ?? 0) + 1,
+    });
+  }
+
+  return Array.from(counts.values()).sort((a, b) => b.count - a.count)[0]?.discipline;
 }
 
 function resolveCategory(sourceLabel: string | undefined, categories: CategoryDoc[], discipline?: ReferenceDoc): CategoryDoc | undefined {
@@ -462,7 +553,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const context = await fetchContext();
     const organization = context.organization;
-    const primaryDiscipline = findDiscipline(event.primaryDiscipline, context.disciplines);
+    const primaryDiscipline = resolvePrimaryDiscipline(event, context.disciplines);
 
     if (!organization?._id) {
       return withCors(
@@ -477,7 +568,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           {
             ok: false,
             error:
-              "No se encontró una disciplina compatible para este evento ONE en Sanity. Revisa MMA, Muay Thai, Kickboxing o Submission Grappling.",
+              `No se encontró la disciplina real del evento ONE en Sanity. ONE Championship es la organización; la disciplina debe existir como MMA, Muay Thai, Kickboxing o Jiu-Jitsu/Submission Grappling. Disciplina detectada por la fuente: ${getString(event.primaryDisciplineLabel) || getString(event.primaryDiscipline) || "sin indicar"}.`,
           },
           { status: 409 },
         ),
