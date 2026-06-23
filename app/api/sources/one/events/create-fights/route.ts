@@ -130,6 +130,36 @@ function normalizeName(value: string): string {
     .trim();
 }
 
+function containsEditorialNoise(value: string): boolean {
+  const normalized = getString(value).toLowerCase();
+
+  return (
+    /\bone\s+(fight\s+night|friday\s+fights|championship|samurai)\b/.test(normalized) ||
+    /\b(the\s+inner\s+circle|prime\s+video|full\s+card|results?|highlights?|watch|preview|reasons?\s+to\s+watch)\b/.test(normalized) ||
+    /\b(added\s+to|set\s+for|announced|revealed|live\s+on|on\s+prime\s+video|june|july|august|september|october|november|december)\b/.test(normalized) ||
+    /\b(news|tickets|how\s+to\s+watch|press\s+conference|weigh-ins?)\b/.test(normalized)
+  );
+}
+
+function getSourceFightQualityReasons(fight: SourceFight): string[] {
+  const redName = getString(fight.redFighter);
+  const blueName = getString(fight.blueFighter);
+  const label = `${redName} vs ${blueName}`;
+  const reasons: string[] = [];
+
+  if (!redName || !blueName) reasons.push("combate_sin_luchadores_validos");
+  if (redName && blueName && normalizeName(redName) === normalizeName(blueName)) {
+    reasons.push("luchadores_duplicados_en_fuente");
+  }
+  if (redName.length > 60 || blueName.length > 60) reasons.push("nombre_luchador_demasiado_largo");
+  if (/[,:;|]/.test(redName) || /[,:;|]/.test(blueName)) reasons.push("nombre_luchador_con_ruido_editorial");
+  if (containsEditorialNoise(redName) || containsEditorialNoise(blueName) || containsEditorialNoise(label)) {
+    reasons.push("combate_descartado_por_ruido_fuente");
+  }
+
+  return Array.from(new Set(reasons));
+}
+
 function createSlug(value: string): string {
   return stripDiacritics(value)
     .toLowerCase()
@@ -423,7 +453,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       const redFighter = resolveByName(redName, context.fighters);
       const blueFighter = resolveByName(blueName, context.fighters);
 
-      const reasons: string[] = [];
+      const reasons: string[] = getSourceFightQualityReasons(sourceFight);
 
       if (!fightDiscipline?._id) reasons.push("disciplina_del_combate_no_encontrada");
       if (!redName || !redFighter?._id) reasons.push("luchador_rojo_no_encontrado");

@@ -109,6 +109,13 @@ function repairMojibake(value: string): string {
     ["â€“", "–"],
     ["Â ", " "],
     ["Â", ""],
+    ["&amp;", "&"],
+    ["&#038;", "&"],
+    ["&hellip;", "…"],
+    ["&#8217;", "’"],
+    ["&#8216;", "‘"],
+    ["&#8220;", "“"],
+    ["&#8221;", "”"],
   ];
 
   let repaired = value;
@@ -416,6 +423,17 @@ function inferDisciplineFromText(value: string): {
   return { key: "mixed", label: "Mixto" };
 }
 
+function containsEditorialNoise(value: string): boolean {
+  const normalized = cleanInlineText(value).toLowerCase();
+
+  return (
+    /\bone\s+(fight\s+night|friday\s+fights|championship|samurai)\b/.test(normalized) ||
+    /\b(the\s+inner\s+circle|prime\s+video|full\s+card|results?|highlights?|watch|preview|reasons?\s+to\s+watch)\b/.test(normalized) ||
+    /\b(added\s+to|set\s+for|announced|revealed|live\s+on|on\s+prime\s+video|june|july|august|september|october|november|december)\b/.test(normalized) ||
+    /\b(news|tickets|how\s+to\s+watch|press\s+conference|weigh-ins?)\b/.test(normalized)
+  );
+}
+
 function normalizeFighterName(value: string): string | undefined {
   const cleaned = cleanInlineText(value)
     .replace(/\bWIN\b/gi, "")
@@ -428,15 +446,33 @@ function normalizeFighterName(value: string): string | undefined {
   if (
     !cleaned ||
     cleaned.length < 3 ||
-    cleaned.length > 90 ||
+    cleaned.length > 60 ||
     /^TBD$/i.test(cleaned) ||
-    /^(win|loss|country|vs)$/i.test(cleaned) ||
-    /\d{3,}/.test(cleaned)
+    /^(win|loss|country|vs|main card|prelims?|event)$/i.test(cleaned) ||
+    /\d{2,}/.test(cleaned) ||
+    /[,:;|]/.test(cleaned) ||
+    containsEditorialNoise(cleaned)
   ) {
     return undefined;
   }
 
   return cleaned;
+}
+
+function isValidFightPair(redFighter: string, blueFighter: string, rawLine: string, eventName: string): boolean {
+  const normalizedLine = cleanInlineText(rawLine);
+  const normalizedEvent = cleanInlineText(eventName).toLowerCase();
+
+  if (containsEditorialNoise(normalizedLine)) return false;
+  if (redFighter.toLowerCase() === blueFighter.toLowerCase()) return false;
+
+  const lineLower = normalizedLine.toLowerCase();
+  if (normalizedEvent && lineLower === normalizedEvent) return false;
+  if (/^one\s/i.test(redFighter) || /prime video/i.test(blueFighter)) return false;
+  if (/\b(card|event|night|fight\s+night|friday\s+fights)\b/i.test(redFighter)) return false;
+  if (/\b(card|event|night|fight\s+night|friday\s+fights)\b/i.test(blueFighter)) return false;
+
+  return true;
 }
 
 function inferWeightClass(context: string): string | undefined {
@@ -471,24 +507,23 @@ function extractResult(value: string): {
   status: FightStatus;
 } {
   const text = cleanInlineText(value);
-  const status: FightStatus = /\bwin\b|\bko\b|\btko\b|\bud\b|\bsd\b|\bsubmission\b|\bdecision\b/i.test(text)
-    ? "finalizado"
-    : "programado";
+  const isFinished = /\b(defeated?|stopp?ed|knocked\s+out|submitted|wins?\s+(?:by|via)|via\s+(?:ko|tko|submission|decision)|unanimous\s+decision|split\s+decision|majority\s+decision)\b/i.test(text);
 
-  const method =
-    text.match(/\bTKO\b/i)?.[0] ||
-    text.match(/\bKO\b/i)?.[0] ||
-    text.match(/\bUD\b/i)?.[0] ||
-    text.match(/\bSD\b/i)?.[0] ||
-    text.match(/\bsubmission\b/i)?.[0] ||
-    text.match(/\bdecision\b/i)?.[0];
+  const method = isFinished
+    ? text.match(/\bTKO\b/i)?.[0] ||
+      text.match(/\bKO\b/i)?.[0] ||
+      text.match(/\bUD\b/i)?.[0] ||
+      text.match(/\bSD\b/i)?.[0] ||
+      text.match(/\bsubmission\b/i)?.[0] ||
+      text.match(/\bdecision\b/i)?.[0]
+    : undefined;
 
-  const roundText = text.match(/\bR(?:ound)?\s*(\d{1,2})\b/i)?.[1];
+  const roundText = isFinished ? text.match(/\bR(?:ound)?\s*(\d{1,2})\b/i)?.[1] : undefined;
 
   return {
     method,
     round: roundText ? Number(roundText) : undefined,
-    status,
+    status: isFinished ? "finalizado" : "programado",
   };
 }
 
@@ -506,8 +541,9 @@ function extractFightCard(lines: string[], eventName: string): OneFightCardItem[
     const blueFighter = normalizeFighterName(match[2]);
 
     if (!redFighter || !blueFighter) continue;
+    if (!isValidFightPair(redFighter, blueFighter, line, eventName)) continue;
 
-    const normalizedKey = `${redFighter.toLowerCase()}|${blueFighter.toLowerCase()}`;
+    const normalizedKey = [redFighter.toLowerCase(), blueFighter.toLowerCase()].sort().join("|");
     if (seen.has(normalizedKey)) continue;
     seen.add(normalizedKey);
 
