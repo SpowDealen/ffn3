@@ -242,6 +242,74 @@ type UfcOfficialNewsApiResponse =
       error?: string;
     };
 
+type OneOfficialNewsItem = {
+  id: string;
+  title: string;
+  summary?: string;
+  bodyText?: string;
+  sourceUrl: string;
+  canonicalUrl: string;
+  publishedAt?: string;
+  imageUrl?: string;
+};
+
+type OneNewsBatchPreparationItem = {
+  sourceId: string;
+  title: string;
+  status: "pendiente" | "procesando" | "completado" | "fallido";
+  message: string;
+};
+
+type OneNewsBatchItem = {
+  sourceId: string;
+  title: string;
+  canonicalUrl: string;
+  publishedAt?: string;
+  status:
+    | "existente"
+    | "nueva_apta"
+    | "sin_contenido"
+    | "requiere_revision";
+  existingSanityId?: string;
+  existingTitle?: string;
+  matchStrategy?: "fuenteId" | "fuenteUrl" | "titulo";
+  reasons: string[];
+};
+
+type OneNewsBatchResolveApiResponse =
+  | {
+      ok: true;
+      count: number;
+      summary: {
+        existing: number;
+        ready: number;
+        withoutContent: number;
+        requiresReview: number;
+      };
+      items: OneNewsBatchItem[];
+    }
+  | {
+      ok: false;
+      error?: string;
+    };
+
+type OneOfficialNewsApiResponse =
+  | {
+      ok: true;
+      source: "one";
+      fetchedAt: string;
+      count: number;
+      items: OneOfficialNewsItem[];
+    }
+  | {
+      ok: false;
+      source?: "one";
+      fetchedAt?: string;
+      count?: number;
+      items?: OneOfficialNewsItem[];
+      error?: string;
+    };
+
 type OfficialSourceStatus =
   | {
       type: "idle";
@@ -550,6 +618,41 @@ type BkfcOfficialEventsApiResponse =
 type BkfcEventResolution = UfcEventResolution;
 type BkfcEventResolutionSuccess = Extract<
   BkfcEventResolution,
+  { ok: true }
+>;
+
+type OneFightCardItem = BkfcFightCardItem & {
+  discipline?: "mma" | "muay_thai" | "kickboxing" | "submission_grappling" | "jiu_jitsu" | "mixed";
+  disciplineLabel?: string;
+};
+
+type OneOfficialEventItem = Omit<BkfcOfficialEventItem, "fightCard"> & {
+  source?: "one";
+  primaryDiscipline?: "mma" | "muay_thai" | "kickboxing" | "submission_grappling" | "jiu_jitsu" | "mixed";
+  primaryDisciplineLabel?: string;
+  fightCard?: OneFightCardItem[];
+};
+
+type OneOfficialEventsApiResponse =
+  | {
+      ok: true;
+      source: "one";
+      fetchedAt: string;
+      count: number;
+      items: OneOfficialEventItem[];
+    }
+  | {
+      ok: false;
+      source?: "one";
+      fetchedAt?: string;
+      count?: number;
+      items?: OneOfficialEventItem[];
+      error?: string;
+    };
+
+type OneEventResolution = UfcEventResolution;
+type OneEventResolutionSuccess = Extract<
+  OneEventResolution,
   { ok: true }
 >;
 
@@ -1087,6 +1190,60 @@ function createBkfcEditorialInstructions(item: BkfcOfficialNewsItem): string {
     "Usa Bare Knuckle como disciplina principal salvo que la fuente indique claramente otra cosa.",
     `Fuente oficial: ${item.canonicalUrl || item.sourceUrl}`,
   ].join("\n");
+}
+
+function createOneEditorialInstructions(item: OneOfficialNewsItem): string {
+  return [
+    "Reescribe la información en español con estilo periodístico propio de Full Fight News.",
+    "No traduzcas de forma literal ni copies frases extensas de la fuente.",
+    "Conserva todos los hechos, nombres, fechas y declaraciones relevantes sin inventar datos.",
+    "Atribuye la información a ONE Championship cuando corresponda.",
+    "ONE Championship mezcla MMA, Muay Thai, Kickboxing y Submission Grappling: elige la disciplina principal por contexto, no por defecto automático.",
+    `Fuente oficial: ${item.canonicalUrl || item.sourceUrl}`,
+  ].join("\n");
+}
+
+function inferOneNewsDisciplineLabel(item: OneOfficialNewsItem): string {
+  const searchText = [
+    item.title,
+    item.summary,
+    item.bodyText,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (/submission grappling|grappling|jiu jitsu|jiu-jitsu|bjj/.test(searchText)) {
+    return "Jiu-Jitsu";
+  }
+
+  if (/muay thai|thai boxing|lumpinee/.test(searchText)) {
+    return "Muay Thai";
+  }
+
+  if (/kickboxing|kickboxer/.test(searchText)) {
+    return "Kickboxing";
+  }
+
+  if (/mma|mixed martial arts|mixed martial/.test(searchText)) {
+    return "MMA";
+  }
+
+  return "MMA";
+}
+
+function getOneNewsDisciplineOption(
+  item: OneOfficialNewsItem,
+  referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>
+): ReferenceEntityOption | undefined {
+  const inferredLabel = inferOneNewsDisciplineLabel(item);
+
+  return (
+    findReferenceByLabel(referenceData.disciplina, inferredLabel) ||
+    findReferenceByLabel(referenceData.disciplina, "MMA")
+  );
 }
 
 function createEventEditorialInstructions(item: UfcOfficialEventItem): string {
@@ -1672,6 +1829,33 @@ export default function PanelIA(): ReactElement {
   const [showAllBkfcNewsBatchItems, setShowAllBkfcNewsBatchItems] =
     useState(false);
 
+  const [oneNewsItems, setOneNewsItems] = useState<OneOfficialNewsItem[]>([]);
+  const [selectedOneNewsId, setSelectedOneNewsId] = useState("");
+  const [isLoadingOneNews, setIsLoadingOneNews] = useState(false);
+  const [isTransformingOneNews, setIsTransformingOneNews] = useState(false);
+  const [oneNewsFetchedAt, setOneNewsFetchedAt] = useState("");
+  const [oneNewsStatus, setOneNewsStatus] = useState<OfficialSourceStatus>({
+    type: "idle",
+    message: "",
+  });
+  const [oneNewsRelationsResolution, setOneNewsRelationsResolution] =
+    useState<NewsRelationsResolution | null>(null);
+  const [oneNewsBatchAnalysis, setOneNewsBatchAnalysis] =
+    useState<OneNewsBatchResolveApiResponse | null>(null);
+  const [isAnalyzingOneNewsBatch, setIsAnalyzingOneNewsBatch] =
+    useState(false);
+  const [oneNewsBatchStatus, setOneNewsBatchStatus] =
+    useState<OfficialSourceStatus>({
+      type: "idle",
+      message: "",
+    });
+  const [isPreparingOneNewsBatch, setIsPreparingOneNewsBatch] =
+    useState(false);
+  const [oneNewsBatchPreparation, setOneNewsBatchPreparation] =
+    useState<OneNewsBatchPreparationItem[]>([]);
+  const [showAllOneNewsBatchItems, setShowAllOneNewsBatchItems] =
+    useState(false);
+
   const [externalNewsItems, setExternalNewsItems] = useState<ExternalNewsItem[]>([]);
   const [selectedExternalNewsId, setSelectedExternalNewsId] = useState("");
   const [isLoadingExternalNews, setIsLoadingExternalNews] = useState(false);
@@ -1744,6 +1928,26 @@ export default function PanelIA(): ReactElement {
   const [isPreparingFullBkfcCard, setIsPreparingFullBkfcCard] =
     useState(false);
 
+  const [oneEventItems, setOneEventItems] = useState<OneOfficialEventItem[]>(
+    []
+  );
+  const [selectedOneEventId, setSelectedOneEventId] = useState("");
+  const [isLoadingOneEvents, setIsLoadingOneEvents] = useState(false);
+  const [oneEventsFetchedAt, setOneEventsFetchedAt] = useState("");
+  const [oneEventSourceStatus, setOneEventSourceStatus] =
+    useState<OfficialSourceStatus>({
+      type: "idle",
+      message: "",
+    });
+  const [oneEventResolution, setOneEventResolution] =
+    useState<OneEventResolution | null>(null);
+  const [isResolvingOneEvent, setIsResolvingOneEvent] = useState(false);
+  const [isCreatingOneEvent, setIsCreatingOneEvent] = useState(false);
+  const [isCreatingOneFighters, setIsCreatingOneFighters] = useState(false);
+  const [isCreatingOneFights, setIsCreatingOneFights] = useState(false);
+  const [isPreparingFullOneCard, setIsPreparingFullOneCard] =
+    useState(false);
+
   const [isLoadingReferences, setIsLoadingReferences] = useState(false);
   const [referenceLoadError, setReferenceLoadError] = useState("");
 
@@ -1764,6 +1968,11 @@ export default function PanelIA(): ReactElement {
   const selectedBkfcNews = useMemo(
     () => bkfcNewsItems.find((item) => item.id === selectedBkfcNewsId) ?? null,
     [bkfcNewsItems, selectedBkfcNewsId]
+  );
+
+  const selectedOneNews = useMemo(
+    () => oneNewsItems.find((item) => item.id === selectedOneNewsId) ?? null,
+    [oneNewsItems, selectedOneNewsId]
   );
 
   const selectedExternalNews = useMemo(
@@ -1792,6 +2001,20 @@ export default function PanelIA(): ReactElement {
     isCreatingBkfcFighters ||
     isCreatingBkfcFights ||
     isPreparingFullBkfcCard;
+
+  const selectedOneEvent = useMemo(
+    () =>
+      oneEventItems.find((item) => item.id === selectedOneEventId) ?? null,
+    [oneEventItems, selectedOneEventId]
+  );
+
+  const isOneEventBusy =
+    isLoadingOneEvents ||
+    isResolvingOneEvent ||
+    isCreatingOneEvent ||
+    isCreatingOneFighters ||
+    isCreatingOneFights ||
+    isPreparingFullOneCard;
 
   const canCreateMissingUfcFighters =
     Boolean(
@@ -3191,6 +3414,664 @@ export default function PanelIA(): ReactElement {
     selectedBkfcNews,
   ]);
 
+
+
+  const reloadOfficialOneNews = useCallback(async (): Promise<void> => {
+    try {
+      setIsLoadingOneNews(true);
+      setOneNewsStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/one/news?refresh=${Date.now()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        }
+      );
+
+      const payload = (await response.json()) as OneOfficialNewsApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron cargar las noticias oficiales de ONE Championship."
+        );
+      }
+
+      setOneNewsItems(payload.items);
+      setOneNewsFetchedAt(payload.fetchedAt);
+      setOneNewsRelationsResolution(null);
+      setOneNewsBatchAnalysis(null);
+      setOneNewsBatchPreparation([]);
+      setShowAllOneNewsBatchItems(false);
+      setOneNewsBatchStatus({
+        type: "idle",
+        message: "",
+      });
+      setSelectedOneNewsId((currentId) =>
+        payload.items.some((item) => item.id === currentId) ? currentId : ""
+      );
+
+      setOneNewsStatus({
+        type: "success",
+        message: `${payload.count} noticias oficiales de ONE Championship cargadas.`,
+      });
+    } catch (error) {
+      setOneNewsItems([]);
+      setSelectedOneNewsId("");
+      setOneNewsFetchedAt("");
+      setOneNewsStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido cargando las noticias oficiales de ONE Championship.",
+      });
+    } finally {
+      setIsLoadingOneNews(false);
+    }
+  }, []);
+
+  const analyzeOfficialOneNews = useCallback(async (): Promise<void> => {
+    if (oneNewsItems.length === 0) {
+      setOneNewsBatchStatus({
+        type: "error",
+        message: "Carga primero las noticias oficiales de ONE Championship.",
+      });
+      return;
+    }
+
+    try {
+      setIsAnalyzingOneNewsBatch(true);
+      setOneNewsBatchStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/one/news/batch-resolve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            items: oneNewsItems,
+          }),
+        }
+      );
+
+      const payload =
+        (await response.json()) as OneNewsBatchResolveApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron analizar las noticias oficiales de ONE Championship."
+        );
+      }
+
+      setOneNewsBatchAnalysis(payload);
+      setOneNewsBatchStatus({
+        type: "success",
+        message: `${payload.count} noticias analizadas: ${payload.summary.existing} existentes, ${payload.summary.ready} nuevas aptas, ${payload.summary.withoutContent} sin contenido suficiente y ${payload.summary.requiresReview} para revisión.`,
+      });
+    } catch (error) {
+      setOneNewsBatchAnalysis(null);
+      setOneNewsBatchStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido analizando noticias ONE Championship.",
+      });
+    } finally {
+      setIsAnalyzingOneNewsBatch(false);
+    }
+  }, [oneNewsItems]);
+
+  const updateOneNewsBatchPreparationItem = useCallback(
+    (
+      sourceId: string,
+      changes: Partial<OneNewsBatchPreparationItem>
+    ): void => {
+      setOneNewsBatchPreparation((current) =>
+        current.map((item) =>
+          item.sourceId === sourceId ? { ...item, ...changes } : item
+        )
+      );
+    },
+    []
+  );
+
+  const prepareAllEligibleOneNews =
+    useCallback(async (): Promise<void> => {
+      if (!oneNewsBatchAnalysis?.ok) {
+        setOneNewsBatchStatus({
+          type: "error",
+          message:
+            "Analiza primero las noticias oficiales ONE Championship antes de preparar el lote.",
+        });
+        return;
+      }
+
+      const eligibleAnalysisItems = oneNewsBatchAnalysis.items.filter(
+        (item) => item.status === "nueva_apta"
+      );
+
+      const eligibleNews = eligibleAnalysisItems
+        .map((analysisItem) => {
+          const sourceItem = oneNewsItems.find(
+            (item) => item.id === analysisItem.sourceId
+          );
+
+          return sourceItem
+            ? {
+                analysis: analysisItem,
+                sourceItem,
+              }
+            : null;
+        })
+        .filter(
+          (
+            item
+          ): item is {
+            analysis: OneNewsBatchItem;
+            sourceItem: OneOfficialNewsItem;
+          } => item !== null
+        );
+
+      const confirmed = window.confirm(
+        `Se prepararán ${eligibleNews.length} noticias nuevas ONE Championship como borradores en Sanity. Las noticias existentes o inseguras se excluirán. ¿Continuar?`
+      );
+
+      if (!confirmed) {
+        setOneNewsBatchStatus({
+          type: "idle",
+          message: "",
+        });
+        return;
+      }
+
+      if (eligibleNews.length === 0) {
+        setOneNewsBatchStatus({
+          type: "error",
+          message:
+            "No hay noticias ONE Championship nuevas aptas. Las existentes, incompletas o inseguras se excluyen automáticamente.",
+        });
+        return;
+      }
+
+      setOneNewsBatchPreparation(
+        eligibleNews.map(({ sourceItem }) => ({
+          sourceId: sourceItem.id,
+          title: sourceItem.title,
+          status: "pendiente",
+          message: "En espera.",
+        }))
+      );
+      setIsPreparingOneNewsBatch(true);
+
+      let completed = 0;
+      let failed = 0;
+
+      try {
+        for (let index = 0; index < eligibleNews.length; index += 1) {
+          const { sourceItem } = eligibleNews[index];
+
+          updateOneNewsBatchPreparationItem(sourceItem.id, {
+            status: "procesando",
+            message: `Noticia ${index + 1} de ${eligibleNews.length}: transformando al español...`,
+          });
+
+          try {
+            const transformResponse = await fetch(
+              `${API_BASE_URL}/api/transformar-noticia-one`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Accept: "application/json",
+                },
+                body: JSON.stringify({
+                  title: sourceItem.title,
+                  summary: sourceItem.summary,
+                  bodyText: sourceItem.bodyText,
+                  sourceUrl:
+                    sourceItem.canonicalUrl || sourceItem.sourceUrl,
+                }),
+              }
+            );
+
+            const transformPayload =
+              (await transformResponse.json()) as TransformNewsApiResponse;
+
+            if (!transformResponse.ok || !transformPayload.ok) {
+              throw new Error(
+                !transformPayload.ok && transformPayload.error
+                  ? transformPayload.error
+                  : "No se pudo transformar la noticia ONE Championship al español."
+              );
+            }
+
+            updateOneNewsBatchPreparationItem(sourceItem.id, {
+              message: "Resolviendo relaciones editoriales reales...",
+            });
+
+            const relationResolution = resolveSuggestedNewsRelations({
+              suggestions: transformPayload.data.relacionesSugeridas,
+              referenceData,
+            });
+
+            const oneDisciplineOption = getOneNewsDisciplineOption(
+              sourceItem,
+              referenceData
+            );
+            const oneOption = findReferenceByLabel(
+              referenceData.organizacion,
+              "ONE Championship"
+            );
+
+            const initialState = getInitialFormState("noticia");
+            const batchForm: ContentFormState = {
+              ...initialState.form,
+              titulo: transformPayload.data.titulo,
+              extracto: transformPayload.data.extracto,
+              contenido: transformPayload.data.contenido,
+              fechaPublicacion:
+                getRequiredPublicationDateTimeLocalValue(sourceItem.publishedAt),
+              imagenPrincipal: sourceItem.imageUrl,
+              disciplina: relationResolution.resolved.disciplina
+                ? toReferenceValue(
+                    relationResolution.resolved.disciplina.value
+                  )
+                : oneDisciplineOption
+                ? toReferenceValue(oneDisciplineOption.value)
+                : undefined,
+              organizacionRelacionada:
+                relationResolution.resolved.organizacion
+                  ? toReferenceValue(
+                      relationResolution.resolved.organizacion.value
+                    )
+                  : oneOption
+                  ? toReferenceValue(oneOption.value)
+                  : undefined,
+              eventoRelacionado: relationResolution.resolved.evento
+                ? toReferenceValue(
+                    relationResolution.resolved.evento.value
+                  )
+                : undefined,
+              luchadoresRelacionados:
+                relationResolution.resolved.luchadores.map((fighter) =>
+                  toReferenceValue(fighter.value)
+                ),
+              fuente: "one",
+              fuenteUrl:
+                sourceItem.canonicalUrl || sourceItem.sourceUrl,
+              fuenteId: sourceItem.id,
+              destacada: false,
+            };
+
+            updateOneNewsBatchPreparationItem(sourceItem.id, {
+              message: "Generando documento y validando campos...",
+            });
+
+            const buildResult = buildContentOutput({
+              contentType: "noticia",
+              form: batchForm,
+              auxiliary: initialState.auxiliary,
+            });
+
+            if (!buildResult.ok || !buildResult.output) {
+              const errors = buildResult.issues
+                .filter((issue) => issue.severity === "error")
+                .map((issue) => issue.message)
+                .join(" · ");
+
+              throw new Error(
+                errors || "El builder bloqueó el documento de noticia ONE Championship."
+              );
+            }
+
+            updateOneNewsBatchPreparationItem(sourceItem.id, {
+              message: "Importando imagen y guardando borrador en Sanity...",
+            });
+
+            await saveDraft({
+              contentType: "noticia",
+              document: buildResult.output as Record<string, unknown>,
+            });
+
+            completed += 1;
+            updateOneNewsBatchPreparationItem(sourceItem.id, {
+              status: "completado",
+              message: `${
+                relationResolution.resolved.luchadores.length
+              } luchadores, ${
+                relationResolution.resolved.evento ? 1 : 0
+              } evento y trazabilidad ONE Championship guardados.`,
+            });
+          } catch (error) {
+            failed += 1;
+            updateOneNewsBatchPreparationItem(sourceItem.id, {
+              status: "fallido",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Error desconocido preparando esta noticia ONE Championship.",
+            });
+          }
+        }
+
+        await reloadReferenceEntities();
+        await analyzeOfficialOneNews();
+
+        setOneNewsBatchStatus({
+          type: failed === 0 ? "success" : "error",
+          message:
+            failed === 0
+              ? `Preparación masiva ONE Championship completada: ${completed} noticias guardadas como borrador.`
+              : `Preparación masiva ONE Championship terminada: ${completed} noticias completadas y ${failed} fallidas.`,
+        });
+      } catch (error) {
+        setOneNewsBatchStatus({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Error desconocido durante la preparación masiva de noticias ONE Championship.",
+        });
+      } finally {
+        setIsPreparingOneNewsBatch(false);
+      }
+    }, [
+      analyzeOfficialOneNews,
+      oneNewsBatchAnalysis,
+      oneNewsItems,
+      referenceData,
+      reloadReferenceEntities,
+      updateOneNewsBatchPreparationItem,
+    ]);
+
+  const applyOneNewsToForm = useCallback((): void => {
+    if (!selectedOneNews) {
+      setOneNewsStatus({
+        type: "error",
+        message: "Selecciona primero una noticia oficial de ONE Championship.",
+      });
+      return;
+    }
+
+    if (contentType !== "noticia") {
+      setOneNewsStatus({
+        type: "error",
+        message: "Selecciona el tipo de contenido Noticia antes de pasar la fuente al formulario.",
+      });
+      return;
+    }
+
+    const oneDisciplineOption = getOneNewsDisciplineOption(selectedOneNews, referenceData);
+    const oneOption = findReferenceByLabel(referenceData.organizacion, "ONE Championship");
+    const officialSummary =
+      selectedOneNews.summary?.trim() ||
+      createSourceExtract(selectedOneNews as unknown as UfcOfficialNewsItem) ||
+      selectedOneNews.title;
+    const officialBody =
+      selectedOneNews.bodyText?.trim() ||
+      selectedOneNews.summary?.trim() ||
+      selectedOneNews.title;
+    const publicationDate = getRequiredPublicationDateTimeLocalValue(selectedOneNews.publishedAt);
+
+    setOneNewsRelationsResolution(null);
+    resetDerivedUiState();
+
+    setForm((currentForm) => {
+      const nextForm: ContentFormState = {
+        ...currentForm,
+        titulo: selectedOneNews.title,
+        extracto: createSourceExtract(selectedOneNews as unknown as UfcOfficialNewsItem),
+        contenido: officialBody,
+        fuente: "one",
+        fuenteUrl:
+          selectedOneNews.canonicalUrl || selectedOneNews.sourceUrl,
+        fuenteId: selectedOneNews.id,
+        destacada: false,
+      };
+
+      if (publicationDate) {
+        nextForm.fechaPublicacion = publicationDate;
+      }
+
+      if (selectedOneNews.imageUrl) {
+        nextForm.imagenPrincipal = selectedOneNews.imageUrl;
+      }
+
+      if (oneDisciplineOption) {
+        nextForm.disciplina = toReferenceValue(oneDisciplineOption.value);
+      }
+
+      if (oneOption) {
+        nextForm.organizacionRelacionada = toReferenceValue(oneOption.value);
+      }
+
+      return clearInvalidDependentReferences(nextForm, auxiliary, referenceData);
+    });
+
+    setAuxiliary((currentAuxiliary) => ({
+      ...currentAuxiliary,
+      anguloEditorial:
+        "Reescritura informativa en español a partir de una fuente oficial de ONE Championship, con enfoque propio de Full Fight News.",
+      hechoPrincipal: officialSummary,
+      contextoPrevio: officialBody,
+      tono: "informativo, directo y periodístico",
+      seoObjetivo: selectedOneNews.title,
+      instruccionesRedaccion: createOneEditorialInstructions(selectedOneNews),
+    }));
+
+    const missingRelations: string[] = [];
+
+    if (!oneDisciplineOption) {
+      missingRelations.push(inferOneNewsDisciplineLabel(selectedOneNews));
+    }
+
+    if (!oneOption) {
+      missingRelations.push("ONE Championship");
+    }
+
+    setOneNewsStatus({
+      type: "success",
+      message:
+        missingRelations.length === 0
+          ? "Noticia oficial ONE Championship cargada y mapeada: contenido, relaciones y trazabilidad listas para generar el output."
+          : `Noticia ONE Championship cargada. Revisa manualmente estas referencias no encontradas en Sanity: ${missingRelations.join(
+              ", "
+            )}.`,
+    });
+  }, [
+    auxiliary,
+    contentType,
+    referenceData,
+    resetDerivedUiState,
+    selectedOneNews,
+  ]);
+
+  const transformOneNewsToSpanish = useCallback(async (): Promise<void> => {
+    if (!selectedOneNews) {
+      setOneNewsStatus({
+        type: "error",
+        message: "Selecciona primero una noticia oficial de ONE Championship.",
+      });
+      return;
+    }
+
+    if (contentType !== "noticia") {
+      setOneNewsStatus({
+        type: "error",
+        message:
+          "Selecciona el tipo de contenido Noticia antes de transformar la fuente.",
+      });
+      return;
+    }
+
+    try {
+      setIsTransformingOneNews(true);
+      setOneNewsStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(`${API_BASE_URL}/api/transformar-noticia-one`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          title: selectedOneNews.title,
+          summary: selectedOneNews.summary,
+          bodyText: selectedOneNews.bodyText,
+          sourceUrl:
+            selectedOneNews.canonicalUrl || selectedOneNews.sourceUrl,
+        }),
+      });
+
+      const payload = (await response.json()) as TransformNewsApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudo transformar la noticia ONE Championship al español."
+        );
+      }
+
+      const oneDisciplineOption = getOneNewsDisciplineOption(selectedOneNews, referenceData);
+      const oneOption = findReferenceByLabel(referenceData.organizacion, "ONE Championship");
+      const publicationDate = getRequiredPublicationDateTimeLocalValue(selectedOneNews.publishedAt);
+      const relationResolution = resolveSuggestedNewsRelations({
+        suggestions: payload.data.relacionesSugeridas,
+        referenceData,
+      });
+
+      setOneNewsRelationsResolution(relationResolution);
+      resetDerivedUiState();
+
+      setForm((currentForm) => {
+        const nextForm: ContentFormState = {
+          ...currentForm,
+          titulo: payload.data.titulo,
+          extracto: payload.data.extracto,
+          contenido: payload.data.contenido,
+          fuente: "one",
+          fuenteUrl:
+            selectedOneNews.canonicalUrl ||
+            selectedOneNews.sourceUrl,
+          fuenteId: selectedOneNews.id,
+          destacada: false,
+        };
+
+        if (publicationDate) {
+          nextForm.fechaPublicacion = publicationDate;
+        }
+
+        if (selectedOneNews.imageUrl) {
+          nextForm.imagenPrincipal = selectedOneNews.imageUrl;
+        }
+
+        if (relationResolution.resolved.disciplina) {
+          nextForm.disciplina = toReferenceValue(
+            relationResolution.resolved.disciplina.value
+          );
+        } else if (oneDisciplineOption) {
+          nextForm.disciplina = toReferenceValue(oneDisciplineOption.value);
+        }
+
+        if (relationResolution.resolved.organizacion) {
+          nextForm.organizacionRelacionada = toReferenceValue(
+            relationResolution.resolved.organizacion.value
+          );
+        } else if (oneOption) {
+          nextForm.organizacionRelacionada = toReferenceValue(oneOption.value);
+        }
+
+        if (relationResolution.resolved.evento) {
+          nextForm.eventoRelacionado = toReferenceValue(
+            relationResolution.resolved.evento.value
+          );
+        } else {
+          nextForm.eventoRelacionado = undefined;
+        }
+
+        nextForm.luchadoresRelacionados =
+          relationResolution.resolved.luchadores.map((fighter) =>
+            toReferenceValue(fighter.value)
+          );
+
+        return clearInvalidDependentReferences(
+          nextForm,
+          auxiliary,
+          referenceData
+        );
+      });
+
+      setAuxiliary((currentAuxiliary) => ({
+        ...currentAuxiliary,
+        anguloEditorial:
+          "Noticia reescrita en español desde una fuente oficial de ONE Championship con enfoque propio de Full Fight News.",
+        hechoPrincipal: payload.data.extracto,
+        contextoPrevio:
+          selectedOneNews.bodyText?.trim() ||
+          selectedOneNews.summary?.trim() ||
+          selectedOneNews.title,
+        tono: "informativo, directo y periodístico",
+        seoObjetivo: payload.data.titulo,
+        instruccionesRedaccion: createOneEditorialInstructions(selectedOneNews),
+      }));
+
+      const unresolvedCount =
+        relationResolution.unresolved.luchadores.length +
+        (relationResolution.unresolved.evento ? 1 : 0) +
+        (relationResolution.unresolved.organizacion ? 1 : 0) +
+        (relationResolution.unresolved.disciplina ? 1 : 0);
+
+      const resolvedRelationCount =
+        relationResolution.resolved.luchadores.length +
+        (relationResolution.resolved.evento ? 1 : 0) +
+        (relationResolution.resolved.organizacion ? 1 : 0) +
+        (relationResolution.resolved.disciplina ? 1 : 0);
+
+      setOneNewsStatus({
+        type: "success",
+        message:
+          unresolvedCount === 0
+            ? `Noticia ONE Championship transformada y relacionada automáticamente: ${resolvedRelationCount} referencias reales resueltas y trazabilidad añadida.`
+            : `Noticia ONE Championship transformada: ${resolvedRelationCount} referencias resueltas, ${unresolvedCount} sugerencias pendientes y trazabilidad añadida.`,
+      });
+    } catch (error) {
+      setOneNewsStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido transformando la noticia ONE Championship al español.",
+      });
+    } finally {
+      setIsTransformingOneNews(false);
+    }
+  }, [
+    auxiliary,
+    contentType,
+    referenceData,
+    resetDerivedUiState,
+    selectedOneNews,
+  ]);
+
   const reloadOfficialUfcEvents = useCallback(async (): Promise<void> => {
     try {
       setIsLoadingOfficialEvents(true);
@@ -4466,6 +5347,489 @@ export default function PanelIA(): ReactElement {
     resetDerivedUiState,
     selectedBkfcEvent,
   ]);
+
+  const reloadOfficialOneEvents = useCallback(async (): Promise<void> => {
+    try {
+      setIsLoadingOneEvents(true);
+      setOneEventSourceStatus({ type: "idle", message: "" });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/one/events?refresh=${Date.now()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        }
+      );
+
+      const payload = (await response.json()) as OneOfficialEventsApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron cargar los eventos oficiales de ONE."
+        );
+      }
+
+      setOneEventItems(payload.items);
+      setOneEventsFetchedAt(payload.fetchedAt);
+      setOneEventResolution(null);
+      setSelectedOneEventId((currentId) =>
+        payload.items.some((item) => item.id === currentId) ? currentId : ""
+      );
+      setOneEventSourceStatus({
+        type: "success",
+        message: `${payload.count} eventos oficiales de ONE cargados.`,
+      });
+    } catch (error) {
+      setOneEventItems([]);
+      setSelectedOneEventId("");
+      setOneEventsFetchedAt("");
+      setOneEventResolution(null);
+      setOneEventSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido cargando los eventos oficiales de ONE.",
+      });
+    } finally {
+      setIsLoadingOneEvents(false);
+    }
+  }, []);
+
+  const requestOneEventResolution = useCallback(
+    async (
+      targetEvent: OneOfficialEventItem
+    ): Promise<OneEventResolutionSuccess> => {
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/one/events/resolve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ event: targetEvent }),
+        }
+      );
+
+      const payload = (await response.json()) as OneEventResolution;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudo resolver la cartelera ONE contra Sanity."
+        );
+      }
+
+      return payload;
+    },
+    []
+  );
+
+  const resolveSelectedOneEvent = useCallback(
+    async (
+      eventOverride?: OneOfficialEventItem
+    ): Promise<OneEventResolutionSuccess | null> => {
+      const targetEvent = eventOverride ?? selectedOneEvent;
+
+      if (!targetEvent) {
+        setOneEventSourceStatus({
+          type: "error",
+          message: "Selecciona primero un evento oficial de ONE.",
+        });
+        return null;
+      }
+
+      try {
+        setIsResolvingOneEvent(true);
+        setOneEventSourceStatus({ type: "idle", message: "" });
+
+        const resolution = await requestOneEventResolution(targetEvent);
+        setOneEventResolution(resolution);
+        setOneEventSourceStatus({
+          type: "success",
+          message: resolution.event.found
+            ? `${resolution.counts.readyFights} combates listos, ${resolution.counts.existingFights} existentes y ${resolution.counts.pendingFights} pendientes.`
+            : "Cartelera analizada. El evento todavía no existe en Sanity.",
+        });
+
+        return resolution;
+      } catch (error) {
+        setOneEventResolution(null);
+        setOneEventSourceStatus({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Error desconocido resolviendo la cartelera ONE.",
+        });
+        return null;
+      } finally {
+        setIsResolvingOneEvent(false);
+      }
+    },
+    [requestOneEventResolution, selectedOneEvent]
+  );
+
+  const runOneEventBulkAction = useCallback(
+    async (
+      path:
+        | "create-event"
+        | "create-fighters"
+        | "create-fights",
+      targetEvent?: OneOfficialEventItem
+    ): Promise<UfcBulkActionResponse | Record<string, unknown>> => {
+      const body = {
+        confirm: true,
+        event: targetEvent,
+      };
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/one/events/${path}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(body),
+        }
+      );
+
+      const payload = (await response.json()) as
+        | UfcBulkActionResponse
+        | Record<string, unknown>;
+
+      if (!response.ok || !("ok" in payload) || payload.ok !== true) {
+        const error =
+          "error" in payload && typeof payload.error === "string"
+            ? payload.error
+            : `No se pudo completar la acción ONE: ${path}.`;
+        throw new Error(error);
+      }
+
+      return payload;
+    },
+    []
+  );
+
+  const createSelectedOneEvent = useCallback(async (): Promise<void> => {
+    if (!selectedOneEvent) {
+      setOneEventSourceStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de ONE.",
+      });
+      return;
+    }
+
+    try {
+      setIsCreatingOneEvent(true);
+      setOneEventSourceStatus({
+        type: "success",
+        message: "Transformando y guardando el evento ONE como borrador...",
+      });
+
+      await runOneEventBulkAction("create-event", selectedOneEvent);
+      await reloadReferenceEntities();
+      const resolution = await requestOneEventResolution(selectedOneEvent);
+      setOneEventResolution(resolution);
+      setOneEventSourceStatus({
+        type: "success",
+        message: resolution.event.found
+          ? "Evento ONE creado y reconocido correctamente en Sanity."
+          : "El evento se creó, pero aún no aparece en la resolución.",
+      });
+    } catch (error) {
+      setOneEventSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido creando el evento ONE.",
+      });
+    } finally {
+      setIsCreatingOneEvent(false);
+    }
+  }, [
+    reloadReferenceEntities,
+    requestOneEventResolution,
+    runOneEventBulkAction,
+    selectedOneEvent,
+  ]);
+
+  const createMissingOneFighters = useCallback(async (): Promise<void> => {
+    if (!selectedOneEvent) {
+      setOneEventSourceStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de ONE.",
+      });
+      return;
+    }
+
+    try {
+      setIsCreatingOneFighters(true);
+      const payload = (await runOneEventBulkAction(
+        "create-fighters",
+        selectedOneEvent
+      )) as UfcBulkActionResponse;
+
+      await reloadReferenceEntities();
+      const resolution = await requestOneEventResolution(selectedOneEvent);
+      setOneEventResolution(resolution);
+      setOneEventSourceStatus({
+        type: "success",
+        message:
+          payload.ok && "summary" in payload
+            ? `${payload.summary.created} luchadores creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`
+            : "Luchadores ONE procesados.",
+      });
+    } catch (error) {
+      setOneEventSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido creando luchadores ONE.",
+      });
+    } finally {
+      setIsCreatingOneFighters(false);
+    }
+  }, [
+    reloadReferenceEntities,
+    requestOneEventResolution,
+    runOneEventBulkAction,
+    selectedOneEvent,
+  ]);
+
+  const createOneFights = useCallback(async (): Promise<void> => {
+    if (!selectedOneEvent) {
+      setOneEventSourceStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de ONE.",
+      });
+      return;
+    }
+
+    try {
+      setIsCreatingOneFights(true);
+      const payload = (await runOneEventBulkAction(
+        "create-fights",
+        selectedOneEvent
+      )) as UfcBulkActionResponse;
+
+      await reloadReferenceEntities();
+      const resolution = await requestOneEventResolution(selectedOneEvent);
+      setOneEventResolution(resolution);
+      setOneEventSourceStatus({
+        type: "success",
+        message:
+          payload.ok && "summary" in payload
+            ? `${payload.summary.created} combates creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`
+            : "Combates ONE procesados.",
+      });
+    } catch (error) {
+      setOneEventSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido creando combates ONE.",
+      });
+    } finally {
+      setIsCreatingOneFights(false);
+    }
+  }, [
+    reloadReferenceEntities,
+    requestOneEventResolution,
+    runOneEventBulkAction,
+    selectedOneEvent,
+  ]);
+
+  const prepareFullOneCard = useCallback(async (): Promise<void> => {
+    if (!selectedOneEvent) {
+      setOneEventSourceStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de ONE.",
+      });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Se preparará la cartelera de “${selectedOneEvent.name}”: evento, luchadores y combates con categorías ya resueltas. Las categorías pendientes se omitirán. ¿Continuar?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsPreparingFullOneCard(true);
+      setOneEventSourceStatus({
+        type: "success",
+        message: "Paso 1 de 4: analizando la cartelera ONE...",
+      });
+
+      let resolution = await requestOneEventResolution(selectedOneEvent);
+      setOneEventResolution(resolution);
+
+      if (!resolution.event.found) {
+        setOneEventSourceStatus({
+          type: "success",
+          message: "Paso 2 de 4: creando el evento ONE...",
+        });
+        await runOneEventBulkAction("create-event", selectedOneEvent);
+        await reloadReferenceEntities();
+        resolution = await requestOneEventResolution(selectedOneEvent);
+        setOneEventResolution(resolution);
+      }
+
+      if (resolution.counts.missingFighters > 0) {
+        setOneEventSourceStatus({
+          type: "success",
+          message: `Paso 3 de 4: creando ${resolution.counts.missingFighters} luchadores faltantes...`,
+        });
+        await runOneEventBulkAction("create-fighters", selectedOneEvent);
+        await reloadReferenceEntities();
+        resolution = await requestOneEventResolution(selectedOneEvent);
+        setOneEventResolution(resolution);
+      }
+
+      if (resolution.counts.pendingFights > 0) {
+        setOneEventSourceStatus({
+          type: "success",
+          message: `Paso 4 de 4: creando ${resolution.counts.pendingFights} combates con categorías resueltas...`,
+        });
+        await runOneEventBulkAction("create-fights", selectedOneEvent);
+        await reloadReferenceEntities();
+        resolution = await requestOneEventResolution(selectedOneEvent);
+        setOneEventResolution(resolution);
+      }
+
+      setOneEventSourceStatus({
+        type: "success",
+        message: `Cartelera ONE preparada: ${resolution.counts.existingFighters} luchadores, ${resolution.counts.existingFights} combates existentes y ${resolution.counts.pendingFights} combates pendientes. Se han omitido ${resolution.counts.unresolvedCategories} categorías sin resolver.`,
+      });
+    } catch (error) {
+      setOneEventSourceStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido preparando la cartelera ONE.",
+      });
+    } finally {
+      setIsPreparingFullOneCard(false);
+    }
+  }, [
+    reloadReferenceEntities,
+    requestOneEventResolution,
+    runOneEventBulkAction,
+    selectedOneEvent,
+  ]);
+
+  const applySelectedOneEventToForm = useCallback((): void => {
+    if (!selectedOneEvent) {
+      setOneEventSourceStatus({
+        type: "error",
+        message: "Selecciona primero un evento oficial de ONE.",
+      });
+      return;
+    }
+
+    if (contentType !== "evento") {
+      setOneEventSourceStatus({
+        type: "error",
+        message: "Selecciona el tipo de contenido Evento.",
+      });
+      return;
+    }
+
+    const disciplineOption =
+      findReferenceByLabel(
+        referenceData.disciplina,
+        selectedOneEvent.primaryDisciplineLabel || ""
+      ) ||
+      findReferenceByLabel(referenceData.disciplina, "MMA") ||
+      findReferenceByLabel(referenceData.disciplina, "Muay Thai") ||
+      findReferenceByLabel(referenceData.disciplina, "Kickboxing");
+    const organizationOption =
+      findReferenceByLabel(referenceData.organizacion, "ONE Championship") ||
+      findReferenceByLabel(referenceData.organizacion, "ONE");
+    const eventDate = toDateTimeLocalValue(selectedOneEvent.startDate);
+
+    resetDerivedUiState();
+
+    setForm((currentForm) => {
+      const nextForm: ContentFormState = {
+        ...currentForm,
+        nombre: selectedOneEvent.name,
+        ciudad: selectedOneEvent.city || "",
+        pais: selectedOneEvent.country || "",
+        recinto: selectedOneEvent.venue || "",
+        cartelPrincipal: selectedOneEvent.mainEvent || "",
+        dondeVer: selectedOneEvent.watchText || "",
+        descripcionCorta: selectedOneEvent.description || "",
+        descripcion: selectedOneEvent.description || "",
+        estado: selectedOneEvent.status,
+      };
+
+      if (eventDate) {
+        nextForm.fecha = eventDate;
+      }
+
+      if (selectedOneEvent.imageUrl) {
+        nextForm.imagen = selectedOneEvent.imageUrl;
+      }
+
+      if (disciplineOption) {
+        nextForm.disciplina = toReferenceValue(disciplineOption.value);
+      }
+
+      if (organizationOption) {
+        nextForm.organizacion = toReferenceValue(organizationOption.value);
+      }
+
+      return clearInvalidDependentReferences(
+        nextForm,
+        auxiliary,
+        referenceData
+      );
+    });
+
+    setAuxiliary((currentAuxiliary) => ({
+      ...currentAuxiliary,
+      tipoEvento: "Evento oficial ONE",
+      importanciaEditorial:
+        selectedOneEvent.description ||
+        "Evento oficial de ONE pendiente de revisión editorial.",
+      combateEstelarTexto: selectedOneEvent.mainEvent || "",
+      contextoCartelera: selectedOneEvent.description || "",
+      clavesNarrativas: createEventEditorialInstructions(
+        selectedOneEvent as unknown as UfcOfficialEventItem
+      ).replace(/UFC/g, "ONE"),
+      publicoObjetivo: "Aficionados a los deportes de combate",
+      tono: "informativo, directo y editorial",
+    }));
+
+    setOneEventSourceStatus({
+      type: "success",
+      message:
+        disciplineOption && organizationOption
+          ? "Evento ONE cargado en el formulario con sus referencias."
+          : "Evento ONE cargado. Revisa la disciplina detectada y la organización ONE Championship.",
+    });
+  }, [
+    auxiliary,
+    contentType,
+    referenceData,
+    resetDerivedUiState,
+    selectedOneEvent,
+  ]);
+
+
 
   const applyOfficialEventToForm = useCallback((): void => {
     if (!selectedOfficialEvent) {
@@ -6856,6 +8220,516 @@ export default function PanelIA(): ReactElement {
           </section>
         ) : null}
 
+
+
+        {contentType === "noticia" ? (
+          <section style={styles.sourceCard}>
+            <div style={styles.sourceHeader}>
+              <div>
+                <p style={styles.sourceEyebrow}>Tercer conector oficial</p>
+                <h2 style={styles.sectionTitle}>Bandeja de noticias ONE Championship</h2>
+                <p style={styles.metaText}>
+                  Selecciona una noticia oficial de ONE Championship, pásala al formulario,
+                  transfórmala al español y guárdala como borrador con
+                  trazabilidad real.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void reloadOfficialOneNews();
+                }}
+                style={
+                  isLoadingOneNews
+                    ? styles.buttonDisabled
+                    : styles.secondaryButton
+                }
+                disabled={isLoadingOneNews || isPreparingOneNewsBatch}
+              >
+                {isLoadingOneNews
+                  ? "Actualizando ONE..."
+                  : oneNewsItems.length > 0
+                  ? "Actualizar noticias ONE"
+                  : "Cargar noticias ONE"}
+              </button>
+            </div>
+
+            {oneNewsStatus.type !== "idle" ? (
+              <div
+                style={
+                  oneNewsStatus.type === "success"
+                    ? styles.feedbackSuccess
+                    : styles.feedbackError
+                }
+              >
+                {oneNewsStatus.message}
+              </div>
+            ) : null}
+
+            {oneNewsFetchedAt ? (
+              <p style={styles.sourceTimestamp}>
+                Última consulta: {" "}
+                {new Date(oneNewsFetchedAt).toLocaleString("es-ES")}
+              </p>
+            ) : null}
+
+            {oneNewsItems.length > 0 ? (
+              <div style={styles.batchCard}>
+                <div style={styles.batchHeader}>
+                  <div>
+                    <p style={styles.sourceEyebrow}>Análisis masivo</p>
+                    <h3 style={styles.batchTitle}>Noticias oficiales ONE Championship</h3>
+                    <p style={styles.metaText}>
+                      Comprueba duplicados, noticias aptas y contenido que
+                      requiere revisión antes de transformar.
+                    </p>
+                  </div>
+
+                  <div style={styles.batchHeaderActions}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void analyzeOfficialOneNews();
+                      }}
+                      style={
+                        isAnalyzingOneNewsBatch || isPreparingOneNewsBatch
+                          ? styles.buttonDisabled
+                          : styles.secondaryButton
+                      }
+                      disabled={
+                        isAnalyzingOneNewsBatch || isPreparingOneNewsBatch
+                      }
+                    >
+                      {isAnalyzingOneNewsBatch
+                        ? "Analizando noticias..."
+                        : "Analizar noticias ONE"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void prepareAllEligibleOneNews();
+                      }}
+                      style={
+                        isPreparingOneNewsBatch ||
+                        !oneNewsBatchAnalysis?.ok ||
+                        oneNewsBatchAnalysis.summary.ready === 0
+                          ? styles.buttonDisabled
+                          : styles.button
+                      }
+                      disabled={
+                        isPreparingOneNewsBatch ||
+                        isAnalyzingOneNewsBatch ||
+                        !oneNewsBatchAnalysis?.ok ||
+                        oneNewsBatchAnalysis.summary.ready === 0
+                      }
+                    >
+                      {isPreparingOneNewsBatch
+                        ? "Preparando noticias nuevas..."
+                        : `Preparar ${oneNewsBatchAnalysis?.ok ? oneNewsBatchAnalysis.summary.ready : 0} nuevas aptas`}
+                    </button>
+                  </div>
+                </div>
+
+                {oneNewsBatchStatus.type !== "idle" ? (
+                  <div
+                    aria-live="polite"
+                    style={
+                      oneNewsBatchStatus.type === "success"
+                        ? styles.feedbackSuccess
+                        : styles.feedbackError
+                    }
+                  >
+                    {oneNewsBatchStatus.message}
+                  </div>
+                ) : null}
+
+                {oneNewsBatchPreparation.length > 0 ? (
+                  <div style={styles.batchProgressList}>
+                    {oneNewsBatchPreparation.map((item) => (
+                      <div key={item.sourceId} style={styles.batchProgressItem}>
+                        <div style={styles.batchProgressText}>
+                          <strong>{item.title}</strong>
+                          <span style={styles.batchItemMeta}>{item.message}</span>
+                        </div>
+
+                        <span
+                          style={
+                            item.status === "completado"
+                              ? styles.batchStatusOk
+                              : item.status === "fallido"
+                              ? styles.batchStatusError
+                              : styles.batchStatusPending
+                          }
+                        >
+                          {item.status === "pendiente"
+                            ? "Pendiente"
+                            : item.status === "procesando"
+                            ? "Procesando"
+                            : item.status === "completado"
+                            ? "Completado"
+                            : "Fallido"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {oneNewsBatchAnalysis?.ok ? (
+                  <>
+                    <div style={styles.batchSummaryGrid}>
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>Ya existen</span>
+                        <strong>{oneNewsBatchAnalysis.summary.existing}</strong>
+                      </div>
+
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>Nuevas aptas</span>
+                        <strong>{oneNewsBatchAnalysis.summary.ready}</strong>
+                      </div>
+
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>Sin contenido</span>
+                        <strong>{oneNewsBatchAnalysis.summary.withoutContent}</strong>
+                      </div>
+
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>Requieren revisión</span>
+                        <strong>{oneNewsBatchAnalysis.summary.requiresReview}</strong>
+                      </div>
+                    </div>
+
+                    <div style={styles.batchList}>
+                      {(showAllOneNewsBatchItems
+                        ? oneNewsBatchAnalysis.items
+                        : oneNewsBatchAnalysis.items.slice(0, 6)
+                      ).map((item) => {
+                        const sourceItem = oneNewsItems.find(
+                          (newsItem) => newsItem.id === item.sourceId
+                        );
+
+                        return (
+                          <div key={item.sourceId} style={styles.batchItem}>
+                            <div style={styles.batchItemMain}>
+                              <strong>{item.title}</strong>
+                              <span style={styles.batchItemMeta}>
+                                {item.status === "existente"
+                                  ? "Ya existe en Sanity"
+                                  : item.status === "nueva_apta"
+                                  ? "Nueva y apta para transformar"
+                                  : item.status === "sin_contenido"
+                                  ? "Sin contenido suficiente"
+                                  : "Requiere revisión"}
+                                {item.matchStrategy
+                                  ? ` · coincidencia por ${item.matchStrategy}`
+                                  : ""}
+                              </span>
+
+                              {item.reasons.length > 0 ? (
+                                <span style={styles.batchError}>
+                                  {item.reasons.join(" · ")}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div style={styles.batchItemActions}>
+                              <span
+                                style={
+                                  item.status === "existente"
+                                    ? styles.batchStatusOk
+                                    : item.status === "nueva_apta"
+                                    ? styles.batchStatusPending
+                                    : styles.batchStatusError
+                                }
+                              >
+                                {item.status === "existente"
+                                  ? "Existente"
+                                  : item.status === "nueva_apta"
+                                  ? "Nueva apta"
+                                  : item.status === "sin_contenido"
+                                  ? "Sin contenido"
+                                  : "Revisar"}
+                              </span>
+
+                              {sourceItem ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedOneNewsId(sourceItem.id);
+                                    setOneNewsRelationsResolution(null);
+                                    setOneNewsStatus({
+                                      type: "idle",
+                                      message: "",
+                                    });
+                                  }}
+                                  style={
+                                    isPreparingOneNewsBatch
+                                      ? styles.buttonDisabled
+                                      : styles.secondaryButton
+                                  }
+                                  disabled={isPreparingOneNewsBatch}
+                                >
+                                  Seleccionar
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {oneNewsBatchAnalysis.items.length > 6 ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowAllOneNewsBatchItems((current) => !current)
+                        }
+                        style={styles.tertiaryButton}
+                      >
+                        {showAllOneNewsBatchItems
+                          ? "Mostrar menos noticias"
+                          : `Ver las ${oneNewsBatchAnalysis.items.length} noticias ONE Championship analizadas`}
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            {oneNewsItems.length > 0 ? (
+              <div style={styles.sourceLayout}>
+                <div style={styles.sourceList}>
+                  {oneNewsItems.map((item) => {
+                    const isSelected = item.id === selectedOneNewsId;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedOneNewsId(item.id);
+                          setOneNewsRelationsResolution(null);
+                          setOneNewsStatus({
+                            type: "idle",
+                            message: "",
+                          });
+                        }}
+                        style={
+                          isSelected
+                            ? styles.sourceItemSelected
+                            : styles.sourceItem
+                        }
+                      >
+                        <span style={styles.sourceItemTitle}>{item.title}</span>
+
+                        {item.summary ? (
+                          <span style={styles.sourceItemSummary}>
+                            {item.summary}
+                          </span>
+                        ) : null}
+
+                        <span style={styles.sourceItemMeta}>
+                          {item.publishedAt
+                            ? new Date(item.publishedAt).toLocaleString("es-ES")
+                            : "Fecha no disponible"}
+                          {" · "}
+                          {item.bodyText
+                            ? "Contenido completo"
+                            : "Sin cuerpo completo"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={styles.sourcePreview}>
+                  {selectedOneNews ? (
+                    <>
+                      {selectedOneNews.imageUrl ? (
+                        <img
+                          src={selectedOneNews.imageUrl}
+                          alt=""
+                          style={styles.sourceImage}
+                        />
+                      ) : null}
+
+                      <div style={styles.sourcePreviewContent}>
+                        <p style={styles.sourceEyebrow}>Noticia ONE seleccionada</p>
+                        <h3 style={styles.sourcePreviewTitle}>
+                          {selectedOneNews.title}
+                        </h3>
+
+                        {selectedOneNews.summary ? (
+                          <p style={styles.sourcePreviewSummary}>
+                            {selectedOneNews.summary}
+                          </p>
+                        ) : null}
+
+                        <div style={styles.sourcePreviewActions}>
+                          <button
+                            type="button"
+                            onClick={applyOneNewsToForm}
+                            style={styles.button}
+                            disabled={isTransformingOneNews}
+                          >
+                            Pasar al formulario
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void transformOneNewsToSpanish();
+                            }}
+                            style={
+                              isTransformingOneNews
+                                ? styles.buttonDisabled
+                                : styles.secondaryButton
+                            }
+                            disabled={isTransformingOneNews}
+                          >
+                            {isTransformingOneNews
+                              ? "Transformando..."
+                              : "Transformar a español"}
+                          </button>
+
+                          <a
+                            href={selectedOneNews.canonicalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={styles.sourceLink}
+                          >
+                            Abrir fuente oficial
+                          </a>
+                        </div>
+
+                        {oneNewsRelationsResolution ? (
+                          <div style={styles.newsRelationsCard}>
+                            <div style={styles.newsRelationsHeader}>
+                              <div>
+                                <p style={styles.sourceEyebrow}>
+                                  Relaciones editoriales sugeridas
+                                </p>
+                                <strong>
+                                  Coincidencias reales encontradas en Sanity
+                                </strong>
+                              </div>
+
+                              <span
+                                style={
+                                  oneNewsRelationsResolution.unresolved.luchadores
+                                    .length > 0 ||
+                                  oneNewsRelationsResolution.unresolved.evento ||
+                                  oneNewsRelationsResolution.unresolved
+                                    .organizacion ||
+                                  oneNewsRelationsResolution.unresolved.disciplina
+                                    ? styles.batchStatusPending
+                                    : styles.batchStatusOk
+                                }
+                              >
+                                {oneNewsRelationsResolution.unresolved.luchadores
+                                  .length > 0 ||
+                                oneNewsRelationsResolution.unresolved.evento ||
+                                oneNewsRelationsResolution.unresolved
+                                  .organizacion ||
+                                oneNewsRelationsResolution.unresolved.disciplina
+                                  ? "Revisión parcial"
+                                  : "Todo resuelto"}
+                              </span>
+                            </div>
+
+                            <div style={styles.newsRelationsGrid}>
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.automationStatLabel}>
+                                  Disciplina
+                                </span>
+                                <strong>
+                                  {oneNewsRelationsResolution.resolved.disciplina
+                                    ?.label ||
+                                    oneNewsRelationsResolution.unresolved
+                                      .disciplina ||
+                                    "Sin sugerencia"}
+                                </strong>
+                              </div>
+
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.automationStatLabel}>
+                                  Organización
+                                </span>
+                                <strong>
+                                  {oneNewsRelationsResolution.resolved.organizacion
+                                    ?.label ||
+                                    oneNewsRelationsResolution.unresolved
+                                      .organizacion ||
+                                    "Sin sugerencia"}
+                                </strong>
+                              </div>
+
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.automationStatLabel}>
+                                  Evento
+                                </span>
+                                <strong>
+                                  {oneNewsRelationsResolution.resolved.evento
+                                    ?.label ||
+                                    oneNewsRelationsResolution.unresolved.evento ||
+                                    "Sin evento claro"}
+                                </strong>
+                              </div>
+                            </div>
+
+                            <div style={styles.newsRelationGroup}>
+                              <span style={styles.automationStatLabel}>
+                                Luchadores resueltos
+                              </span>
+                              <span style={styles.newsRelationTags}>
+                                {oneNewsRelationsResolution.resolved.luchadores
+                                  .length > 0
+                                  ? oneNewsRelationsResolution.resolved.luchadores
+                                      .map((fighter) => fighter.label)
+                                      .join(" · ")
+                                  : "Ninguno"}
+                              </span>
+                            </div>
+
+                            {oneNewsRelationsResolution.unresolved.luchadores
+                              .length > 0 ? (
+                              <div style={styles.newsRelationWarning}>
+                                Sin coincidencia exacta en Sanity: {" "}
+                                {oneNewsRelationsResolution.unresolved.luchadores.join(
+                                  " · "
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        <p style={styles.sourceBodyPreview}>
+                          {selectedOneNews.bodyText
+                            ? `${selectedOneNews.bodyText.slice(0, 900)}${
+                                selectedOneNews.bodyText.length > 900
+                                  ? "..."
+                                  : ""
+                              }`
+                            : "Esta noticia ONE Championship no contiene un cuerpo completo fiable. Se usará el resumen disponible y podrás completar el contenido manualmente."}
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <p style={styles.emptyText}>
+                      Selecciona una noticia ONE Championship de la bandeja para revisar sus datos.
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p style={styles.emptyText}>
+                Pulsa “Cargar noticias ONE” para consultar la fuente oficial.
+              </p>
+            )}
+          </section>
+        ) : null}
+
         {contentType === "noticia" ? (
           <section style={styles.sourceCard}>
             <div style={styles.sourceHeader}>
@@ -8137,6 +10011,390 @@ export default function PanelIA(): ReactElement {
             ) : (
               <p style={styles.emptyText}>
                 Pulsa “Cargar eventos BKFC” para consultar la fuente oficial.
+              </p>
+            )}
+          </section>
+        ) : null}
+
+        {contentType === "evento" ? (
+          <section style={styles.sourceCard}>
+            <div style={styles.sourceHeader}>
+              <div>
+                <p style={styles.sourceEyebrow}>Tercer conector oficial</p>
+                <h2 style={styles.sectionTitle}>Bandeja de eventos ONE Championship</h2>
+                <p style={styles.metaText}>
+                  Carga eventos oficiales de ONE, crea eventos coherentes y prepara luchadores y combates respetando la disciplina de cada pelea.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void reloadOfficialOneEvents();
+                }}
+                style={
+                  isLoadingOneEvents
+                    ? styles.buttonDisabled
+                    : styles.secondaryButton
+                }
+                disabled={isOneEventBusy}
+              >
+                {isLoadingOneEvents
+                  ? "Actualizando eventos..."
+                  : oneEventItems.length > 0
+                  ? "Actualizar eventos ONE"
+                  : "Cargar eventos ONE"}
+              </button>
+            </div>
+
+            {oneEventsFetchedAt ? (
+              <p style={styles.metaText}>
+                Última lectura:{" "}
+                {new Date(oneEventsFetchedAt).toLocaleString("es-ES")}
+              </p>
+            ) : null}
+
+            {oneEventSourceStatus.type !== "idle" ? (
+              <div
+                style={
+                  oneEventSourceStatus.type === "success"
+                    ? styles.feedbackSuccess
+                    : styles.feedbackError
+                }
+              >
+                {oneEventSourceStatus.message}
+              </div>
+            ) : null}
+
+            {oneEventItems.length > 0 ? (
+              <div style={styles.sourceLayout}>
+                <div style={styles.sourceList}>
+                  {oneEventItems.map((item) => {
+                    const isSelected = item.id === selectedOneEventId;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedOneEventId(item.id);
+                          setOneEventResolution(null);
+                          setOneEventSourceStatus({
+                            type: "idle",
+                            message: "",
+                          });
+                        }}
+                        style={
+                          isSelected
+                            ? styles.sourceItemSelected
+                            : styles.sourceItem
+                        }
+                      >
+                        <span style={styles.sourceItemTitle}>{item.name}</span>
+
+                        {item.mainEvent ? (
+                          <span style={styles.sourceItemSummary}>
+                            {item.mainEvent}
+                          </span>
+                        ) : null}
+
+                        <span style={styles.sourceItemMeta}>
+                          {item.startDate
+                            ? new Date(item.startDate).toLocaleString("es-ES")
+                            : "Fecha no disponible"}
+                          {" · "}
+                          {item.status}
+                          {" · "}
+                          {item.fightCard?.length ?? 0} combates
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={styles.sourcePreview}>
+                  {selectedOneEvent ? (
+                    <>
+                      {selectedOneEvent.imageUrl ? (
+                        <img
+                          src={selectedOneEvent.imageUrl}
+                          alt=""
+                          style={styles.sourceImage}
+                        />
+                      ) : null}
+
+                      <div style={styles.sourcePreviewContent}>
+                        <p style={styles.sourceEyebrow}>Evento ONE seleccionado</p>
+                        <h3 style={styles.sourcePreviewTitle}>
+                          {selectedOneEvent.name}
+                        </h3>
+
+                        <p style={styles.sourcePreviewSummary}>
+                          {[
+                            selectedOneEvent.mainEvent,
+                            selectedOneEvent.locationText,
+                            selectedOneEvent.watchText,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+
+                        <div style={styles.sourcePreviewActions}>
+                          <button
+                            type="button"
+                            onClick={applySelectedOneEventToForm}
+                            style={styles.secondaryButton}
+                            disabled={isOneEventBusy}
+                          >
+                            Pasar al formulario
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void createSelectedOneEvent();
+                            }}
+                            style={
+                              isCreatingOneEvent
+                                ? styles.buttonDisabled
+                                : styles.button
+                            }
+                            disabled={
+                              isOneEventBusy ||
+                              Boolean(oneEventResolution?.ok &&
+                                oneEventResolution.event.found)
+                            }
+                          >
+                            {isCreatingOneEvent
+                              ? "Creando evento..."
+                              : oneEventResolution?.ok &&
+                                oneEventResolution.event.found
+                              ? "Evento ya creado"
+                              : "Crear evento en Sanity"}
+                          </button>
+
+                          <a
+                            href={selectedOneEvent.canonicalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={styles.sourceLink}
+                          >
+                            Abrir fuente oficial
+                          </a>
+                        </div>
+
+                        <div style={styles.automationCard}>
+                          <div style={styles.automationHeader}>
+                            <div>
+                              <p style={styles.sourceEyebrow}>
+                                Automatización ONE
+                              </p>
+                              <h4 style={styles.automationTitle}>
+                                Preparar cartelera completa
+                              </h4>
+                            </div>
+
+                            <div style={styles.automationTopActions}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void resolveSelectedOneEvent();
+                                }}
+                                style={
+                                  isResolvingOneEvent
+                                    ? styles.buttonDisabled
+                                    : styles.secondaryButton
+                                }
+                                disabled={isOneEventBusy}
+                              >
+                                {isResolvingOneEvent
+                                  ? "Analizando..."
+                                  : "Analizar cartelera"}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void prepareFullOneCard();
+                                }}
+                                style={
+                                  isPreparingFullOneCard
+                                    ? styles.buttonDisabled
+                                    : styles.button
+                                }
+                                disabled={isOneEventBusy}
+                              >
+                                {isPreparingFullOneCard
+                                  ? "Preparando..."
+                                  : "Preparar cartelera completa"}
+                              </button>
+                            </div>
+                          </div>
+
+                          {oneEventResolution?.ok ? (
+                            <>
+                              <div style={styles.automationStats}>
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Evento
+                                  </span>
+                                  <strong>
+                                    {oneEventResolution.event.found
+                                      ? "Encontrado"
+                                      : "Pendiente"}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Luchadores
+                                  </span>
+                                  <strong>
+                                    {oneEventResolution.counts.existingFighters}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Faltantes
+                                  </span>
+                                  <strong>
+                                    {oneEventResolution.counts.missingFighters}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Combates listos
+                                  </span>
+                                  <strong>
+                                    {oneEventResolution.counts.readyFights}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Combates existentes
+                                  </span>
+                                  <strong>
+                                    {oneEventResolution.counts.existingFights}
+                                  </strong>
+                                </div>
+
+                                <div style={styles.automationStat}>
+                                  <span style={styles.automationStatLabel}>
+                                    Categorías pendientes
+                                  </span>
+                                  <strong>
+                                    {
+                                      oneEventResolution.counts
+                                        .unresolvedCategories
+                                    }
+                                  </strong>
+                                </div>
+                              </div>
+
+                              {oneEventResolution.counts.unresolvedCategories >
+                              0 ? (
+                                <div style={styles.automationWarning}>
+                                  La fuente mantiene{" "}
+                                  {
+                                    oneEventResolution.counts
+                                      .unresolvedCategories
+                                  }{" "}
+                                  categoría sin resolver. Solo se crearán
+                                  relaciones seguras.
+                                </div>
+                              ) : null}
+
+                              <div style={styles.automationActions}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void createSelectedOneEvent();
+                                  }}
+                                  style={
+                                    !oneEventResolution.event.found &&
+                                    !isOneEventBusy
+                                      ? styles.secondaryButton
+                                      : styles.buttonDisabled
+                                  }
+                                  disabled={
+                                    oneEventResolution.event.found ||
+                                    isOneEventBusy
+                                  }
+                                >
+                                  Crear evento
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void createMissingOneFighters();
+                                  }}
+                                  style={
+                                    oneEventResolution.counts
+                                      .missingFighters > 0 && !isOneEventBusy
+                                      ? styles.secondaryButton
+                                      : styles.buttonDisabled
+                                  }
+                                  disabled={
+                                    oneEventResolution.counts
+                                      .missingFighters === 0 || isOneEventBusy
+                                  }
+                                >
+                                  {isCreatingOneFighters
+                                    ? "Creando luchadores..."
+                                    : `Crear luchadores (${oneEventResolution.counts.missingFighters})`}
+                                </button>
+
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void createOneFights();
+                                  }}
+                                  style={
+                                    oneEventResolution.event.found &&
+                                    oneEventResolution.counts.pendingFights >
+                                      0 &&
+                                    !isOneEventBusy
+                                      ? styles.button
+                                      : styles.buttonDisabled
+                                  }
+                                  disabled={
+                                    !oneEventResolution.event.found ||
+                                    oneEventResolution.counts.pendingFights ===
+                                      0 ||
+                                    isOneEventBusy
+                                  }
+                                >
+                                  {isCreatingOneFights
+                                    ? "Creando combates..."
+                                    : `Crear combates (${oneEventResolution.counts.pendingFights})`}
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <p style={styles.inlineEmptyState}>
+                              Analiza la cartelera para comprobar el evento,
+                              luchadores, categorías y combates disponibles.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <p style={styles.emptyText}>
+                      Selecciona un evento ONE para revisar y preparar sus
+                      datos.
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p style={styles.emptyText}>
+                Pulsa “Cargar eventos ONE” para consultar la fuente oficial.
               </p>
             )}
           </section>
