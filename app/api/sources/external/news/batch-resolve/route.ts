@@ -69,6 +69,7 @@ type ExistingNewsDoc = {
   titulo?: string;
   fuenteId?: string;
   fuenteUrl?: string;
+  _createdAt?: string;
 };
 
 const MAX_BATCH_ITEMS = 15;
@@ -166,6 +167,47 @@ function normalizeText(value: string): string {
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeSourceUrl(value: string | undefined): string {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value.trim());
+
+    url.hash = "";
+
+    for (const key of Array.from(url.searchParams.keys())) {
+      const normalizedKey = key.toLowerCase();
+
+      if (
+        normalizedKey.startsWith("utm_") ||
+        normalizedKey === "fbclid" ||
+        normalizedKey === "gclid" ||
+        normalizedKey === "igshid" ||
+        normalizedKey === "ref" ||
+        normalizedKey === "outputtype"
+      ) {
+        url.searchParams.delete(key);
+      }
+    }
+
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return value.trim().replace(/\/+$/, "");
+  }
+}
+
+function getExternalItemDuplicateKeys(item: ExternalNewsItem): string[] {
+  return [
+    item.id ? `id:${item.id}` : "",
+    item.canonicalUrl ? `url:${item.canonicalUrl}` : "",
+    item.sourceUrl ? `url:${item.sourceUrl}` : "",
+    item.canonicalUrl ? `url-normalized:${normalizeSourceUrl(item.canonicalUrl)}` : "",
+    item.sourceUrl ? `url-normalized:${normalizeSourceUrl(item.sourceUrl)}` : "",
+  ].filter(Boolean);
 }
 
 function getSearchText(item: ExternalNewsItem): string {
@@ -299,35 +341,57 @@ function buildExistingKeySet(existingNews: ExistingNewsDoc[]): Set<string> {
 
     if (item.fuenteUrl) {
       keys.add(`url:${item.fuenteUrl}`);
+      keys.add(`url-normalized:${normalizeSourceUrl(item.fuenteUrl)}`);
     }
   }
 
   return keys;
 }
 
+
+function getDuplicateReadClient() {
+  const token = process.env.SANITY_API_WRITE_TOKEN;
+
+  return client.withConfig({
+    useCdn: false,
+    token,
+    perspective: token ? "raw" : "published",
+  });
+}
+
 async function fetchExistingNews(items: ExternalNewsItem[]): Promise<ExistingNewsDoc[]> {
-  const ids = items.map((item) => item.id).filter(Boolean);
-  const urls = items
-    .flatMap((item) => [item.canonicalUrl, item.sourceUrl])
-    .filter(Boolean);
+  const ids = Array.from(new Set(items.map((item) => item.id).filter(Boolean)));
+  const urls = Array.from(
+    new Set(
+      items
+        .flatMap((item) => [item.canonicalUrl, item.sourceUrl])
+        .filter(Boolean)
+    )
+  );
 
   if (ids.length === 0 && urls.length === 0) {
     return [];
   }
 
-  return client.fetch<ExistingNewsDoc[]>(
+  const duplicateClient = getDuplicateReadClient();
+
+  return duplicateClient.fetch<ExistingNewsDoc[]>(
     `
       *[_type == "noticia" && (
         fuenteId in $ids ||
-        fuenteUrl in $urls
-      )] {
+        fuenteUrl in $urls ||
+        defined(fuenteId) ||
+        defined(fuenteUrl)
+      )] | order(_createdAt desc)[0...1500] {
         _id,
+        _createdAt,
         titulo,
         fuenteId,
         fuenteUrl
       }
     `,
-    { ids, urls }
+    { ids, urls },
+    { cache: "no-store" }
   );
 }
 
@@ -339,10 +403,8 @@ function classifyExternalNewsItem(
     const searchText = getSearchText(item);
     const bodyLength = item.bodyText?.trim().length ?? 0;
     const warnings = getQualityWarnings(item);
-    const isDuplicate =
-      existingKeys.has(`id:${item.id}`) ||
-      existingKeys.has(`url:${item.canonicalUrl}`) ||
-      existingKeys.has(`url:${item.sourceUrl}`);
+    const duplicateKeys = getExternalItemDuplicateKeys(item);
+    const isDuplicate = duplicateKeys.some((key) => existingKeys.has(key));
     const isCombatRelevant = hasAnyKeyword(searchText, COMBAT_KEYWORDS);
     const isHighRelevance = hasAnyKeyword(searchText, HIGH_RELEVANCE_KEYWORDS);
     const disciplineLabel = inferDisciplineLabel(searchText);

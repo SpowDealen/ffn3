@@ -2133,6 +2133,57 @@ export default function PanelIA(): ReactElement {
     [selectedExternalNews]
   );
 
+  const markExternalBatchItemsAsCreated = useCallback((createdIds: string[]): void => {
+    const uniqueCreatedIds = Array.from(new Set(createdIds.filter(Boolean)));
+
+    if (uniqueCreatedIds.length === 0) {
+      return;
+    }
+
+    const createdIdSet = new Set(uniqueCreatedIds);
+
+    setExternalNewsBatchAnalysis((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const nextItems = current.items.map((item) => {
+        if (!createdIdSet.has(item.id)) {
+          return item;
+        }
+
+        return {
+          ...item,
+          status: "duplicada" as ExternalNewsBatchResolveStatus,
+          reason:
+            "Borrador creado en Sanity desde esta tanda. Al volver a preparar la fuente debe detectarse como duplicada.",
+          warnings: Array.from(
+            new Set([
+              ...item.warnings,
+              "Creada como borrador en esta sesión del laboratorio.",
+            ])
+          ),
+        };
+      });
+
+      const nextSummary: ExternalNewsBatchResolveSummary = {
+        total: nextItems.length,
+        aptas: nextItems.filter((item) => item.status === "apta").length,
+        revision: nextItems.filter((item) => item.status === "revision").length,
+        insuficientes: nextItems.filter((item) => item.status === "insuficiente").length,
+        descartadas: nextItems.filter((item) => item.status === "descartar").length,
+        duplicadas: nextItems.filter((item) => item.status === "duplicada").length,
+        errores: nextItems.filter((item) => item.status === "error").length,
+      };
+
+      return {
+        ...current,
+        summary: nextSummary,
+        items: nextItems,
+      };
+    });
+  }, []);
+
   const selectedOfficialEvent = useMemo(
     () =>
       officialEventItems.find((item) => item.id === selectedOfficialEventId) ??
@@ -2981,6 +3032,7 @@ export default function PanelIA(): ReactElement {
         type: "success",
         message: `Borrador creado desde ${selectedExternalNews.sourceName || selectedExternalNewsSource?.name || "fuente externa"}: ${selectedExternalNews.title}`,
       });
+      markExternalBatchItemsAsCreated([selectedExternalNews.id]);
 
       await reloadReferenceEntities();
     } catch (error) {
@@ -3000,6 +3052,7 @@ export default function PanelIA(): ReactElement {
     definition.schemaFields,
     externalNewsBatchAnalysis,
     referenceData,
+    markExternalBatchItemsAsCreated,
     reloadReferenceEntities,
     selectedExternalNews,
     selectedExternalNewsSource,
@@ -3295,6 +3348,12 @@ export default function PanelIA(): ReactElement {
         attempted: batchResults.length,
       };
 
+      markExternalBatchItemsAsCreated(
+        batchResults
+          .filter((item) => item.status === "creado")
+          .map((item) => item.id)
+      );
+
       setExternalNewsBatchStatus({
         type: summary.errors > 0 ? "error" : "success",
         message: `Borradores externos en lote: ${summary.created} creados, ${summary.skipped} omitidos, ${summary.errors} errores.`,
@@ -3321,6 +3380,7 @@ export default function PanelIA(): ReactElement {
     definition.schemaFields,
     externalNewsBatchAnalysis,
     externalNewsItems,
+    markExternalBatchItemsAsCreated,
     referenceData,
     reloadReferenceEntities,
     selectedExternalNewsSource,
