@@ -92,6 +92,58 @@ type ExternalNewsAnalysisSummary = {
 };
 
 
+type ExternalNewsBatchResolveStatus =
+  | "apta"
+  | "revision"
+  | "insuficiente"
+  | "descartar"
+  | "duplicada"
+  | "error";
+
+type ExternalNewsBatchResolveItem = {
+  id: string;
+  title: string;
+  sourceName: string;
+  url: string;
+  status: ExternalNewsBatchResolveStatus;
+  reason: string;
+  relevancia: "alta" | "media" | "baja" | "descartar";
+  confidence: number;
+  disciplineLabel: string;
+  organizationLabel: string;
+  fighterHints: string[];
+  warnings: string[];
+};
+
+type ExternalNewsBatchResolveSummary = {
+  total: number;
+  aptas: number;
+  revision: number;
+  insuficientes: number;
+  descartadas: number;
+  duplicadas: number;
+  errores: number;
+};
+
+type ExternalNewsBatchResolveData = {
+  source: ExternalSourceId;
+  sourceName: string;
+  resolvedAt: string;
+  summary: ExternalNewsBatchResolveSummary;
+  items: ExternalNewsBatchResolveItem[];
+};
+
+type ExternalNewsBatchResolveResponse =
+  | {
+      ok: true;
+      data: ExternalNewsBatchResolveData;
+    }
+  | {
+      ok: false;
+      error?: string;
+    };
+
+
 const ENABLED_EXTERNAL_NEWS_SOURCES = getEnabledExternalNewsSources();
 const DEFAULT_EXTERNAL_NEWS_SOURCE_ID: ExternalSourceId =
   ENABLED_EXTERNAL_NEWS_SOURCES[0]?.id ?? "marca";
@@ -1919,6 +1971,17 @@ export default function PanelIA(): ReactElement {
       type: "idle",
       message: "",
     });
+  const [externalNewsBatchAnalysis, setExternalNewsBatchAnalysis] =
+    useState<ExternalNewsBatchResolveData | null>(null);
+  const [isPreparingExternalNewsBatch, setIsPreparingExternalNewsBatch] =
+    useState(false);
+  const [externalNewsBatchStatus, setExternalNewsBatchStatus] =
+    useState<OfficialSourceStatus>({
+      type: "idle",
+      message: "",
+    });
+  const [showAllExternalNewsBatchItems, setShowAllExternalNewsBatchItems] =
+    useState(false);
 
   const [officialEventItems, setOfficialEventItems] = useState<
     UfcOfficialEventItem[]
@@ -2171,6 +2234,12 @@ export default function PanelIA(): ReactElement {
           type: "idle",
           message: "",
         });
+        setExternalNewsBatchAnalysis(null);
+        setExternalNewsBatchStatus({
+          type: "idle",
+          message: "",
+        });
+        setShowAllExternalNewsBatchItems(false);
 
         const response = await fetch(
           `${API_BASE_URL}/api/sources/external/news?source=${sourceId}&refresh=${Date.now()}`,
@@ -2193,6 +2262,12 @@ export default function PanelIA(): ReactElement {
         setExternalNewsItems(payload.items);
         setExternalNewsFetchedAt(payload.fetchedAt);
         setExternalNewsAnalysisSummary(null);
+        setExternalNewsBatchAnalysis(null);
+        setExternalNewsBatchStatus({
+          type: "idle",
+          message: "",
+        });
+        setShowAllExternalNewsBatchItems(false);
         setSelectedExternalNewsId((currentId) =>
           payload.items.some((item) => item.id === currentId)
             ? currentId
@@ -2207,6 +2282,12 @@ export default function PanelIA(): ReactElement {
         setSelectedExternalNewsId("");
         setExternalNewsFetchedAt("");
         setExternalNewsAnalysisSummary(null);
+        setExternalNewsBatchAnalysis(null);
+        setExternalNewsBatchStatus({
+          type: "idle",
+          message: "",
+        });
+        setShowAllExternalNewsBatchItems(false);
         setExternalNewsStatus({
           type: "error",
           message:
@@ -2220,6 +2301,72 @@ export default function PanelIA(): ReactElement {
     },
     [API_BASE_URL, selectedExternalNewsSource, selectedExternalSourceId]
   );
+
+
+  const prepareExternalNewsBatch = useCallback(async (): Promise<void> => {
+    if (externalNewsItems.length === 0) {
+      setExternalNewsBatchStatus({
+        type: "error",
+        message: `Carga primero noticias externas de ${selectedExternalNewsSource?.name ?? "la fuente seleccionada"}.`,
+      });
+      return;
+    }
+
+    try {
+      setIsPreparingExternalNewsBatch(true);
+      setExternalNewsBatchStatus({
+        type: "success",
+        message: `Preparando ${externalNewsItems.length} noticias de ${selectedExternalNewsSource?.name ?? "la fuente seleccionada"}...`,
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/external/news/batch-resolve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            source: selectedExternalSourceId,
+            items: externalNewsItems,
+          }),
+        }
+      );
+
+      const payload = (await response.json()) as ExternalNewsBatchResolveResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          payload && !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron preparar las noticias externas."
+        );
+      }
+
+      setExternalNewsBatchAnalysis(payload.data);
+      setShowAllExternalNewsBatchItems(false);
+      setExternalNewsBatchStatus({
+        type: "success",
+        message: `Preparación completada: ${payload.data.summary.aptas} aptas, ${payload.data.summary.revision} para revisión, ${payload.data.summary.insuficientes} insuficientes, ${payload.data.summary.duplicadas} duplicadas.`,
+      });
+    } catch (error) {
+      setExternalNewsBatchAnalysis(null);
+      setExternalNewsBatchStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido preparando noticias externas.",
+      });
+    } finally {
+      setIsPreparingExternalNewsBatch(false);
+    }
+  }, [
+    API_BASE_URL,
+    externalNewsItems,
+    selectedExternalNewsSource,
+    selectedExternalSourceId,
+  ]);
 
   const applyExternalNewsToForm = useCallback(async (): Promise<void> => {
     if (!selectedExternalNews) {
@@ -8923,6 +9070,12 @@ export default function PanelIA(): ReactElement {
                       setSelectedExternalNewsId("");
                       setExternalNewsFetchedAt("");
                       setExternalNewsAnalysisSummary(null);
+                      setExternalNewsBatchAnalysis(null);
+                      setExternalNewsBatchStatus({
+                        type: "idle",
+                        message: "",
+                      });
+                      setShowAllExternalNewsBatchItems(false);
                       setExternalNewsStatus({
                         type: "idle",
                         message: "",
@@ -8957,6 +9110,29 @@ export default function PanelIA(): ReactElement {
                     ? `Actualizar ${selectedExternalNewsSource?.name ?? "fuente"}`
                     : `Cargar ${selectedExternalNewsSource?.name ?? "fuente"}`}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    void prepareExternalNewsBatch();
+                  }}
+                  style={
+                    isPreparingExternalNewsBatch ||
+                    isLoadingExternalNews ||
+                    externalNewsItems.length === 0
+                      ? styles.buttonDisabled
+                      : styles.secondaryButton
+                  }
+                  disabled={
+                    isPreparingExternalNewsBatch ||
+                    isLoadingExternalNews ||
+                    externalNewsItems.length === 0
+                  }
+                >
+                  {isPreparingExternalNewsBatch
+                    ? "Preparando fuente..."
+                    : "Preparar noticias de esta fuente"}
+                </button>
               </div>
             </div>
 
@@ -8972,11 +9148,138 @@ export default function PanelIA(): ReactElement {
               </div>
             ) : null}
 
+            {externalNewsBatchStatus.type !== "idle" ? (
+              <div
+                style={
+                  externalNewsBatchStatus.type === "success"
+                    ? styles.feedbackSuccess
+                    : styles.feedbackError
+                }
+              >
+                {externalNewsBatchStatus.message}
+              </div>
+            ) : null}
+
             {externalNewsFetchedAt ? (
               <p style={styles.sourceTimestamp}>
                 Última consulta: {" "}
                 {new Date(externalNewsFetchedAt).toLocaleString("es-ES")}
               </p>
+            ) : null}
+
+            {externalNewsBatchAnalysis ? (
+              <div style={styles.batchCard}>
+                <div style={styles.batchHeader}>
+                  <div>
+                    <p style={styles.sourceEyebrow}>Preparación masiva controlada</p>
+                    <h3 style={styles.batchTitle}>
+                      {externalNewsBatchAnalysis.sourceName} · {externalNewsBatchAnalysis.summary.total} noticias revisadas
+                    </h3>
+                    <p style={styles.metaText}>
+                      Clasificación editorial previa. No crea borradores: solo separa lo apto, lo revisable y lo que conviene descartar antes de seguir.
+                    </p>
+                  </div>
+
+                  <span style={styles.batchStatusOk}>
+                    {new Date(externalNewsBatchAnalysis.resolvedAt).toLocaleString("es-ES")}
+                  </span>
+                </div>
+
+                <div style={styles.batchSummaryGrid}>
+                  <div style={styles.newsRelationGroup}>
+                    <span style={styles.automationStatLabel}>Aptas</span>
+                    <strong>{externalNewsBatchAnalysis.summary.aptas}</strong>
+                  </div>
+                  <div style={styles.newsRelationGroup}>
+                    <span style={styles.automationStatLabel}>Revisión</span>
+                    <strong>{externalNewsBatchAnalysis.summary.revision}</strong>
+                  </div>
+                  <div style={styles.newsRelationGroup}>
+                    <span style={styles.automationStatLabel}>Insuficientes</span>
+                    <strong>{externalNewsBatchAnalysis.summary.insuficientes}</strong>
+                  </div>
+                  <div style={styles.newsRelationGroup}>
+                    <span style={styles.automationStatLabel}>Duplicadas</span>
+                    <strong>{externalNewsBatchAnalysis.summary.duplicadas}</strong>
+                  </div>
+                  <div style={styles.newsRelationGroup}>
+                    <span style={styles.automationStatLabel}>Descartadas</span>
+                    <strong>{externalNewsBatchAnalysis.summary.descartadas}</strong>
+                  </div>
+                  <div style={styles.newsRelationGroup}>
+                    <span style={styles.automationStatLabel}>Errores</span>
+                    <strong>{externalNewsBatchAnalysis.summary.errores}</strong>
+                  </div>
+                </div>
+
+                <div style={styles.batchList}>
+                  {(showAllExternalNewsBatchItems
+                    ? externalNewsBatchAnalysis.items
+                    : externalNewsBatchAnalysis.items.slice(0, 6)
+                  ).map((item) => {
+                    const statusStyle =
+                      item.status === "apta"
+                        ? styles.batchStatusOk
+                        : item.status === "error" || item.status === "descartar"
+                        ? styles.batchStatusError
+                        : styles.batchStatusPending;
+
+                    return (
+                      <div key={item.id} style={styles.batchItem}>
+                        <div style={styles.batchItemMain}>
+                          <strong>{item.title}</strong>
+                          <span style={styles.batchItemMeta}>
+                            {item.reason} · relevancia {item.relevancia} · confianza {item.confidence}/100
+                          </span>
+                          <span style={styles.batchItemMeta}>
+                            {item.disciplineLabel || "Sin disciplina"} · {item.organizationLabel || "Sin organización"}
+                            {item.fighterHints.length > 0
+                              ? ` · ${item.fighterHints.join(" · ")}`
+                              : ""}
+                          </span>
+                          {item.warnings.length > 0 ? (
+                            <span style={styles.batchItemMeta}>
+                              Avisos: {item.warnings.join(" | ")}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div style={styles.batchItemActions}>
+                          <span style={statusStyle}>{item.status.toUpperCase()}</span>
+                          <button
+                            type="button"
+                            style={styles.tertiaryButton}
+                            onClick={() => {
+                              setSelectedExternalNewsId(item.id);
+                              setExternalNewsAnalysisSummary(null);
+                              setExternalNewsStatus({
+                                type: "idle",
+                                message: "",
+                              });
+                            }}
+                          >
+                            Revisar
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {externalNewsBatchAnalysis.items.length > 6 ? (
+                  <button
+                    type="button"
+                    style={styles.tertiaryButton}
+                    onClick={() => {
+                      setShowAllExternalNewsBatchItems((current) => !current);
+                    }}
+                  >
+                    {showAllExternalNewsBatchItems
+                      ? "Ver menos"
+                      : `Ver todas (${externalNewsBatchAnalysis.items.length})`}
+                  </button>
+                ) : null}
+              </div>
             ) : null}
 
             {externalNewsItems.length > 0 ? (
