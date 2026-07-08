@@ -73,6 +73,24 @@ type ExternalEditorialAnalysisResponse =
       error?: string;
     };
 
+type ExternalNewsAnalysisSummary = {
+  sourceName: string;
+  title: string;
+  appliedAt: string;
+  relevancia: "alta" | "media" | "baja" | "descartar";
+  debeCrearNoticia: boolean;
+  necesitaRevisionManual: boolean;
+  razonRevisionManual: string;
+  motivoRelevancia: string;
+  confianzaRelaciones: number;
+  disciplina: string;
+  organizacion: string;
+  evento: string;
+  combate: string;
+  luchadores: string[];
+  warnings: string[];
+};
+
 
 const ENABLED_EXTERNAL_NEWS_SOURCES = getEnabledExternalNewsSources();
 const DEFAULT_EXTERNAL_NEWS_SOURCE_ID: ExternalSourceId =
@@ -819,6 +837,27 @@ function createExternalEditorialInstructions(item: ExternalNewsItem): string {
     `Fuente externa: ${item.sourceName}.`,
     `URL de referencia: ${item.canonicalUrl || item.sourceUrl}`,
   ].join("\n");
+}
+
+function getExternalNewsQualityNotes(item: ExternalNewsItem): string[] {
+  const notes: string[] = [];
+  const bodyLength = item.bodyText?.trim().length ?? 0;
+
+  if (bodyLength === 0) {
+    notes.push("Sin cuerpo completo fiable: el formulario usará el resumen y conviene completar el contenido manualmente.");
+  } else if (bodyLength < 600) {
+    notes.push("Cuerpo corto: revisa que haya contexto suficiente antes de guardar el borrador.");
+  }
+
+  if (!item.publishedAt) {
+    notes.push("Fecha no disponible: revisa la fecha de publicación antes de guardar.");
+  }
+
+  if (!item.image?.url) {
+    notes.push("Sin imagen principal: el borrador quedará sin imagen importable desde la fuente.");
+  }
+
+  return notes;
 }
 
 function getExternalNewsSearchText(item: ExternalNewsItem): string {
@@ -1871,7 +1910,10 @@ export default function PanelIA(): ReactElement {
   const [externalNewsItems, setExternalNewsItems] = useState<ExternalNewsItem[]>([]);
   const [selectedExternalNewsId, setSelectedExternalNewsId] = useState("");
   const [isLoadingExternalNews, setIsLoadingExternalNews] = useState(false);
+  const [isAnalyzingExternalNews, setIsAnalyzingExternalNews] = useState(false);
   const [externalNewsFetchedAt, setExternalNewsFetchedAt] = useState("");
+  const [externalNewsAnalysisSummary, setExternalNewsAnalysisSummary] =
+    useState<ExternalNewsAnalysisSummary | null>(null);
   const [externalNewsStatus, setExternalNewsStatus] =
     useState<OfficialSourceStatus>({
       type: "idle",
@@ -2000,6 +2042,11 @@ export default function PanelIA(): ReactElement {
     () =>
       externalNewsItems.find((item) => item.id === selectedExternalNewsId) ?? null,
     [externalNewsItems, selectedExternalNewsId]
+  );
+
+  const selectedExternalNewsQualityNotes = useMemo(
+    () => (selectedExternalNews ? getExternalNewsQualityNotes(selectedExternalNews) : []),
+    [selectedExternalNews]
   );
 
   const selectedOfficialEvent = useMemo(
@@ -2145,6 +2192,7 @@ export default function PanelIA(): ReactElement {
 
         setExternalNewsItems(payload.items);
         setExternalNewsFetchedAt(payload.fetchedAt);
+        setExternalNewsAnalysisSummary(null);
         setSelectedExternalNewsId((currentId) =>
           payload.items.some((item) => item.id === currentId)
             ? currentId
@@ -2158,6 +2206,7 @@ export default function PanelIA(): ReactElement {
         setExternalNewsItems([]);
         setSelectedExternalNewsId("");
         setExternalNewsFetchedAt("");
+        setExternalNewsAnalysisSummary(null);
         setExternalNewsStatus({
           type: "error",
           message:
@@ -2190,6 +2239,8 @@ export default function PanelIA(): ReactElement {
       return;
     }
 
+    setIsAnalyzingExternalNews(true);
+    setExternalNewsAnalysisSummary(null);
     setExternalNewsStatus({
       type: "success",
       message: "Analizando noticia externa con criterio editorial...",
@@ -2229,6 +2280,7 @@ export default function PanelIA(): ReactElement {
         message:
           `${message} No se ha cargado el formulario para evitar relaciones incorrectas.`,
       });
+      setIsAnalyzingExternalNews(false);
       return;
     }
 
@@ -2237,6 +2289,7 @@ export default function PanelIA(): ReactElement {
         type: "error",
         message: "No se pudo analizar la noticia externa.",
       });
+      setIsAnalyzingExternalNews(false);
       return;
     }
 
@@ -2384,6 +2437,33 @@ export default function PanelIA(): ReactElement {
     ]
       .filter(Boolean)
       .join(" · ");
+
+    setExternalNewsAnalysisSummary({
+      sourceName: selectedExternalNews.sourceName || selectedExternalNewsSource?.name || "Fuente externa",
+      title: selectedExternalNews.title,
+      appliedAt: new Date().toISOString(),
+      relevancia: analysis.relevancia,
+      debeCrearNoticia: analysis.debeCrearNoticia,
+      necesitaRevisionManual: analysis.necesitaRevisionManual,
+      razonRevisionManual: analysis.razonRevisionManual,
+      motivoRelevancia: analysis.motivoRelevancia,
+      confianzaRelaciones: analysis.confianzaRelaciones,
+      disciplina: resolved.disciplina?.label || "Sin disciplina resuelta",
+      organizacion: resolved.organizacion?.label || "Sin organización resuelta",
+      evento: resolved.evento?.label || "Sin evento resuelto",
+      combate: resolved.combate?.label || "Sin combate resuelto",
+      luchadores: Array.from(
+        new Set(
+          [
+            ...resolved.luchadoresPrincipales.map((fighter) => fighter.label),
+            ...resolved.luchadoresSecundarios.map((fighter) => fighter.label),
+          ].filter(Boolean)
+        )
+      ),
+      warnings,
+    });
+
+    setIsAnalyzingExternalNews(false);
 
     const reviewMessage = analysis.necesitaRevisionManual
       ? ` Revisión recomendada: ${analysis.razonRevisionManual || "la noticia mezcla contexto o relaciones con confianza limitada."}`
@@ -8842,6 +8922,7 @@ export default function PanelIA(): ReactElement {
                       setExternalNewsItems([]);
                       setSelectedExternalNewsId("");
                       setExternalNewsFetchedAt("");
+                      setExternalNewsAnalysisSummary(null);
                       setExternalNewsStatus({
                         type: "idle",
                         message: "",
@@ -8910,6 +8991,7 @@ export default function PanelIA(): ReactElement {
                         type="button"
                         onClick={() => {
                           setSelectedExternalNewsId(item.id);
+                          setExternalNewsAnalysisSummary(null);
                           setExternalNewsStatus({
                             type: "idle",
                             message: "",
@@ -8976,9 +9058,16 @@ export default function PanelIA(): ReactElement {
                             onClick={() => {
                               void applyExternalNewsToForm();
                             }}
-                            style={styles.button}
+                            style={
+                              isAnalyzingExternalNews
+                                ? styles.buttonDisabled
+                                : styles.button
+                            }
+                            disabled={isAnalyzingExternalNews}
                           >
-                            Analizar y pasar al formulario
+                            {isAnalyzingExternalNews
+                              ? "Analizando fuente externa..."
+                              : "Analizar y pasar al formulario"}
                           </button>
 
                           <a
@@ -9061,6 +9150,101 @@ export default function PanelIA(): ReactElement {
                             “Analizar y pasar al formulario”.
                           </p>
                         </div>
+
+                        {selectedExternalNewsQualityNotes.length > 0 ? (
+                          <div style={styles.newsRelationWarning}>
+                            <strong>Control de calidad previo</strong>
+                            <ul style={styles.compactList}>
+                              {selectedExternalNewsQualityNotes.map((note) => (
+                                <li key={note}>{note}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+
+                        {externalNewsAnalysisSummary ? (
+                          <div style={styles.newsRelationsCard}>
+                            <div style={styles.newsRelationsHeader}>
+                              <div>
+                                <p style={styles.sourceEyebrow}>Último análisis aplicado</p>
+                                <strong>{externalNewsAnalysisSummary.sourceName}</strong>
+                              </div>
+
+                              <span
+                                style={
+                                  externalNewsAnalysisSummary.debeCrearNoticia &&
+                                  externalNewsAnalysisSummary.relevancia !== "descartar"
+                                    ? styles.batchStatusOk
+                                    : styles.batchStatusPending
+                                }
+                              >
+                                {externalNewsAnalysisSummary.relevancia.toUpperCase()} · confianza {externalNewsAnalysisSummary.confianzaRelaciones}/100
+                              </span>
+                            </div>
+
+                            <div style={styles.newsRelationsGrid}>
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.sourceEyebrow}>Disciplina</span>
+                                <span style={styles.newsRelationTags}>
+                                  {externalNewsAnalysisSummary.disciplina}
+                                </span>
+                              </div>
+
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.sourceEyebrow}>Organización</span>
+                                <span style={styles.newsRelationTags}>
+                                  {externalNewsAnalysisSummary.organizacion}
+                                </span>
+                              </div>
+
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.sourceEyebrow}>Luchadores</span>
+                                <span style={styles.newsRelationTags}>
+                                  {externalNewsAnalysisSummary.luchadores.length > 0
+                                    ? externalNewsAnalysisSummary.luchadores.join(" · ")
+                                    : "Sin luchadores resueltos"}
+                                </span>
+                              </div>
+
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.sourceEyebrow}>Evento / combate</span>
+                                <span style={styles.newsRelationTags}>
+                                  {externalNewsAnalysisSummary.evento}
+                                  {externalNewsAnalysisSummary.combate !== "Sin combate resuelto"
+                                    ? ` · ${externalNewsAnalysisSummary.combate}`
+                                    : ""}
+                                </span>
+                              </div>
+                            </div>
+
+                            {externalNewsAnalysisSummary.motivoRelevancia ? (
+                              <p style={styles.metaText}>
+                                {externalNewsAnalysisSummary.motivoRelevancia}
+                              </p>
+                            ) : null}
+
+                            {externalNewsAnalysisSummary.necesitaRevisionManual ? (
+                              <div style={styles.newsRelationWarning}>
+                                <strong>Revisión manual recomendada</strong>
+                                <p style={styles.metaText}>
+                                  {externalNewsAnalysisSummary.razonRevisionManual ||
+                                    "El análisis recomienda revisar relaciones o contexto antes de guardar."}
+                                </p>
+                              </div>
+                            ) : null}
+
+                            {externalNewsAnalysisSummary.warnings.length > 0 ? (
+                              <div style={styles.newsRelationWarning}>
+                                <strong>Avisos del análisis</strong>
+                                <ul style={styles.compactList}>
+                                  {externalNewsAnalysisSummary.warnings.map((warning) => (
+                                    <li key={warning}>{warning}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
 
                         <p style={styles.sourceBodyPreview}>
                           {selectedExternalNews.bodyText
@@ -11081,6 +11265,12 @@ const styles: Record<string, CSSProperties> = {
     border: "1px solid rgba(245,158,11,0.28)",
     fontSize: 12,
     lineHeight: 1.5,
+  },
+  compactList: {
+    margin: "8px 0 0",
+    paddingLeft: 18,
+    display: "grid",
+    gap: 4,
   },
   sourceBodyPreview: {
     margin: 0,
