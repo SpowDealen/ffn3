@@ -1963,6 +1963,7 @@ export default function PanelIA(): ReactElement {
   const [selectedExternalNewsId, setSelectedExternalNewsId] = useState("");
   const [isLoadingExternalNews, setIsLoadingExternalNews] = useState(false);
   const [isAnalyzingExternalNews, setIsAnalyzingExternalNews] = useState(false);
+  const [isCreatingExternalNewsDraft, setIsCreatingExternalNewsDraft] = useState(false);
   const [externalNewsFetchedAt, setExternalNewsFetchedAt] = useState("");
   const [externalNewsAnalysisSummary, setExternalNewsAnalysisSummary] =
     useState<ExternalNewsAnalysisSummary | null>(null);
@@ -2628,6 +2629,354 @@ export default function PanelIA(): ReactElement {
     definition.schemaFields,
     referenceData,
     resetDerivedUiState,
+    selectedExternalNews,
+    selectedExternalNewsSource,
+  ]);
+
+
+
+  const createExternalNewsDraftFromSelected = useCallback(async (): Promise<void> => {
+    if (!selectedExternalNews) {
+      setExternalNewsStatus({
+        type: "error",
+        message: `Selecciona primero una noticia externa de ${selectedExternalNewsSource?.name ?? "la fuente seleccionada"}.`,
+      });
+      return;
+    }
+
+    if (contentType !== "noticia") {
+      setExternalNewsStatus({
+        type: "error",
+        message:
+          "Selecciona el tipo de contenido Noticia antes de crear el borrador externo.",
+      });
+      return;
+    }
+
+    const selectedBatchItem = externalNewsBatchAnalysis?.items.find(
+      (item) => item.id === selectedExternalNews.id
+    );
+
+    if (
+      selectedBatchItem &&
+      !["apta", "revision"].includes(selectedBatchItem.status)
+    ) {
+      const shouldContinue = window.confirm(
+        `La preparación masiva marcó esta noticia como ${selectedBatchItem.status.toUpperCase()}: ${selectedBatchItem.reason}. ¿Quieres crear el borrador igualmente?`
+      );
+
+      if (!shouldContinue) {
+        return;
+      }
+    }
+
+    const qualityNotes = getExternalNewsQualityNotes(selectedExternalNews);
+
+    if (qualityNotes.length > 0) {
+      const shouldContinue = window.confirm(
+        `Esta noticia tiene avisos antes de guardar:\n\n- ${qualityNotes.join("\n- ")}\n\n¿Quieres analizarla y crear el borrador igualmente?`
+      );
+
+      if (!shouldContinue) {
+        return;
+      }
+    }
+
+    try {
+      setIsCreatingExternalNewsDraft(true);
+      setExternalNewsAnalysisSummary(null);
+      setExternalNewsStatus({
+        type: "success",
+        message: "Analizando noticia externa y preparando borrador en Sanity...",
+      });
+      setSaveDraftStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const analysisResponse = await fetch(
+        `${API_BASE_URL}/api/sources/external/news/analyze`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ item: selectedExternalNews }),
+        }
+      );
+
+      const analysisPayload =
+        (await analysisResponse.json()) as ExternalEditorialAnalysisResponse;
+
+      if (!analysisResponse.ok || !analysisPayload.ok) {
+        throw new Error(
+          analysisPayload && !analysisPayload.ok && analysisPayload.error
+            ? analysisPayload.error
+            : "No se pudo analizar la noticia externa."
+        );
+      }
+
+      const { analysis, resolved, warnings } = analysisPayload.data;
+
+      if (
+        !analysis.debeCrearNoticia ||
+        analysis.relevancia === "descartar" ||
+        analysis.necesitaRevisionManual ||
+        analysis.confianzaRelaciones < 60 ||
+        !resolved.disciplina
+      ) {
+        const cautionMessages = [
+          !analysis.debeCrearNoticia
+            ? "El análisis no recomienda crear noticia automáticamente."
+            : "",
+          analysis.relevancia === "descartar"
+            ? "La relevancia aparece como DESCARTAR."
+            : "",
+          analysis.necesitaRevisionManual
+            ? `Revisión manual recomendada: ${analysis.razonRevisionManual || "relaciones o contexto con confianza limitada."}`
+            : "",
+          analysis.confianzaRelaciones < 60
+            ? `Confianza de relaciones baja: ${analysis.confianzaRelaciones}/100.`
+            : "",
+          !resolved.disciplina ? "No hay disciplina resuelta." : "",
+        ].filter(Boolean);
+
+        const shouldContinue = window.confirm(
+          `${cautionMessages.join("\n")}\n\n¿Quieres crear el borrador igualmente?`
+        );
+
+        if (!shouldContinue) {
+          setExternalNewsAnalysisSummary({
+            sourceName:
+              selectedExternalNews.sourceName ||
+              selectedExternalNewsSource?.name ||
+              "Fuente externa",
+            title: selectedExternalNews.title,
+            appliedAt: new Date().toISOString(),
+            relevancia: analysis.relevancia,
+            debeCrearNoticia: analysis.debeCrearNoticia,
+            necesitaRevisionManual: analysis.necesitaRevisionManual,
+            razonRevisionManual: analysis.razonRevisionManual,
+            motivoRelevancia: analysis.motivoRelevancia,
+            confianzaRelaciones: analysis.confianzaRelaciones,
+            disciplina: resolved.disciplina?.label || "Sin disciplina resuelta",
+            organizacion: resolved.organizacion?.label || "Sin organización resuelta",
+            evento: resolved.evento?.label || "Sin evento resuelto",
+            combate: resolved.combate?.label || "Sin combate resuelto",
+            luchadores: Array.from(
+              new Set(
+                [
+                  ...resolved.luchadoresPrincipales.map((fighter) => fighter.label),
+                  ...resolved.luchadoresSecundarios.map((fighter) => fighter.label),
+                ].filter(Boolean)
+              )
+            ),
+            warnings,
+          });
+          setExternalNewsStatus({
+            type: "error",
+            message:
+              "Creación de borrador cancelada. El análisis queda visible para revisión manual.",
+          });
+          return;
+        }
+      }
+
+      const sourceExtract = createExternalSourceExtract(selectedExternalNews);
+      const safeExternalExtract = createSafeNewsExtract(
+        analysis.hechoPrincipal || sourceExtract || selectedExternalNews.title
+      );
+      const sourceBody =
+        selectedExternalNews.bodyText?.trim() ||
+        selectedExternalNews.excerpt?.trim() ||
+        selectedExternalNews.title;
+      const publicationDate =
+        toDateTimeLocalValue(selectedExternalNews.publishedAt) ||
+        getRequiredPublicationDateTimeLocalValue(undefined);
+      const externalSourceValue = getAvailableFieldOptionValue(
+        definition.schemaFields,
+        "fuente",
+        [analysis.fuenteFormulario, "otra", "otro"]
+      );
+      const resolvedFighters = [
+        ...resolved.luchadoresPrincipales,
+        ...resolved.luchadoresSecundarios,
+      ];
+      const uniqueFighterIds = Array.from(
+        new Set(resolvedFighters.map((fighter) => fighter.id).filter(Boolean))
+      );
+      const resolvedDisciplineRef = resolved.disciplina
+        ? referenceData.disciplina.find((option) => {
+            const optionLabel = option.label.trim().toLowerCase();
+            const resolvedLabel =
+              resolved.disciplina?.label.trim().toLowerCase() ?? "";
+
+            return (
+              option.value === resolved.disciplina?.id ||
+              optionLabel === resolvedLabel ||
+              optionLabel.replace(/[-\s]/g, "") ===
+                resolvedLabel.replace(/[-\s]/g, "")
+            );
+          })?.value ?? resolved.disciplina.id
+        : "";
+
+      const initialState = getInitialFormState("noticia");
+      const draftForm: ContentFormState = {
+        ...initialState.form,
+        titulo: selectedExternalNews.title,
+        extracto: safeExternalExtract,
+        contenido: sourceBody,
+        fechaPublicacion: publicationDate,
+        fuente: externalSourceValue,
+        fuenteUrl:
+          selectedExternalNews.canonicalUrl || selectedExternalNews.sourceUrl,
+        fuenteId: selectedExternalNews.id,
+        destacada: analysis.relevancia === "alta",
+      };
+
+      if (selectedExternalNews.image?.url) {
+        draftForm.imagenPrincipal = selectedExternalNews.image.url;
+      }
+
+      if (resolvedDisciplineRef) {
+        draftForm.disciplina = toReferenceValue(resolvedDisciplineRef);
+      }
+
+      if (resolved.organizacion) {
+        draftForm.organizacionRelacionada = toReferenceValue(
+          resolved.organizacion.id
+        );
+      }
+
+      if (resolved.evento) {
+        draftForm.eventoRelacionado = toReferenceValue(resolved.evento.id);
+      } else if (resolved.combate?.eventoId) {
+        draftForm.eventoRelacionado = toReferenceValue(resolved.combate.eventoId);
+      }
+
+      if (resolved.combate) {
+        draftForm.combateRelacionado = toReferenceValue(resolved.combate.id);
+      }
+
+      if (uniqueFighterIds.length > 0) {
+        draftForm.luchadoresRelacionados = uniqueFighterIds.map((fighterId) =>
+          toReferenceValue(fighterId)
+        );
+      }
+
+      const draftAuxiliary: AuxiliaryFormState = {
+        ...initialState.auxiliary,
+        ...(resolvedDisciplineRef
+          ? { disciplina: toReferenceValue(resolvedDisciplineRef) }
+          : {}),
+        anguloEditorial:
+          analysis.anguloEditorial ||
+          "Reescritura informativa en español a partir de una fuente externa, con criterio editorial propio de Full Fight News.",
+        hechoPrincipal: analysis.hechoPrincipal || sourceExtract,
+        contextoPrevio: analysis.contextoPrevio || sourceBody,
+        tono: "informativo, directo y periodístico",
+        seoObjetivo: selectedExternalNews.title,
+        instruccionesRedaccion:
+          analysis.instruccionesRedaccion ||
+          createExternalEditorialInstructions(selectedExternalNews),
+      };
+
+      const cleanedDraftForm = clearInvalidDependentReferences(
+        draftForm,
+        draftAuxiliary,
+        referenceData
+      );
+
+      if (resolvedDisciplineRef) {
+        cleanedDraftForm.disciplina = toReferenceValue(resolvedDisciplineRef);
+      }
+
+      const buildResult = buildContentOutput({
+        contentType: "noticia",
+        form: cleanedDraftForm,
+        auxiliary: draftAuxiliary,
+      });
+
+      if (!buildResult.ok || !buildResult.output) {
+        const errors = buildResult.issues
+          .filter((issue) => issue.severity === "error")
+          .map((issue) => issue.message)
+          .join(" · ");
+
+        throw new Error(errors || "El builder bloqueó el documento de noticia.");
+      }
+
+      const saveResponse = await saveDraft({
+        contentType: "noticia",
+        document: buildResult.output as Record<string, unknown>,
+      });
+
+      setForm(cleanedDraftForm);
+      setAuxiliary(draftAuxiliary);
+      setResult({
+        ok: true,
+        output: buildResult.output as Record<string, unknown>,
+        issues: buildResult.issues,
+      });
+      setExternalNewsAnalysisSummary({
+        sourceName:
+          selectedExternalNews.sourceName ||
+          selectedExternalNewsSource?.name ||
+          "Fuente externa",
+        title: selectedExternalNews.title,
+        appliedAt: new Date().toISOString(),
+        relevancia: analysis.relevancia,
+        debeCrearNoticia: analysis.debeCrearNoticia,
+        necesitaRevisionManual: analysis.necesitaRevisionManual,
+        razonRevisionManual: analysis.razonRevisionManual,
+        motivoRelevancia: analysis.motivoRelevancia,
+        confianzaRelaciones: analysis.confianzaRelaciones,
+        disciplina: resolved.disciplina?.label || "Sin disciplina resuelta",
+        organizacion: resolved.organizacion?.label || "Sin organización resuelta",
+        evento: resolved.evento?.label || "Sin evento resuelto",
+        combate: resolved.combate?.label || "Sin combate resuelto",
+        luchadores: Array.from(
+          new Set(
+            [
+              ...resolved.luchadoresPrincipales.map((fighter) => fighter.label),
+              ...resolved.luchadoresSecundarios.map((fighter) => fighter.label),
+            ].filter(Boolean)
+          )
+        ),
+        warnings,
+      });
+      setSaveDraftStatus({
+        type: "success",
+        message:
+          saveResponse.message ||
+          `Borrador externo guardado correctamente${
+            saveResponse.documentId ? ` (${saveResponse.documentId})` : ""
+          }.`,
+      });
+      setExternalNewsStatus({
+        type: "success",
+        message: `Borrador creado desde ${selectedExternalNews.sourceName || selectedExternalNewsSource?.name || "fuente externa"}: ${selectedExternalNews.title}`,
+      });
+
+      await reloadReferenceEntities();
+    } catch (error) {
+      setExternalNewsStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido creando el borrador externo.",
+      });
+    } finally {
+      setIsCreatingExternalNewsDraft(false);
+    }
+  }, [
+    API_BASE_URL,
+    contentType,
+    definition.schemaFields,
+    externalNewsBatchAnalysis,
+    referenceData,
+    reloadReferenceEntities,
     selectedExternalNews,
     selectedExternalNewsSource,
   ]);
@@ -9082,7 +9431,7 @@ export default function PanelIA(): ReactElement {
                       });
                     }}
                     style={styles.sourceSelect}
-                    disabled={isLoadingExternalNews}
+                    disabled={isLoadingExternalNews || isCreatingExternalNewsDraft}
                   >
                     {ENABLED_EXTERNAL_NEWS_SOURCES.map((source) => (
                       <option key={source.id} value={source.id}>
@@ -9098,11 +9447,11 @@ export default function PanelIA(): ReactElement {
                     void reloadExternalNews(selectedExternalSourceId);
                   }}
                   style={
-                    isLoadingExternalNews
+                    isLoadingExternalNews || isCreatingExternalNewsDraft
                       ? styles.buttonDisabled
                       : styles.secondaryButton
                   }
-                  disabled={isLoadingExternalNews}
+                  disabled={isLoadingExternalNews || isCreatingExternalNewsDraft}
                 >
                   {isLoadingExternalNews
                     ? `Actualizando ${selectedExternalNewsSource?.name ?? "fuente"}...`
@@ -9118,6 +9467,7 @@ export default function PanelIA(): ReactElement {
                   }}
                   style={
                     isPreparingExternalNewsBatch ||
+                    isCreatingExternalNewsDraft ||
                     isLoadingExternalNews ||
                     externalNewsItems.length === 0
                       ? styles.buttonDisabled
@@ -9125,6 +9475,7 @@ export default function PanelIA(): ReactElement {
                   }
                   disabled={
                     isPreparingExternalNewsBatch ||
+                    isCreatingExternalNewsDraft ||
                     isLoadingExternalNews ||
                     externalNewsItems.length === 0
                   }
@@ -9362,15 +9713,32 @@ export default function PanelIA(): ReactElement {
                               void applyExternalNewsToForm();
                             }}
                             style={
-                              isAnalyzingExternalNews
+                              isAnalyzingExternalNews || isCreatingExternalNewsDraft
                                 ? styles.buttonDisabled
                                 : styles.button
                             }
-                            disabled={isAnalyzingExternalNews}
+                            disabled={isAnalyzingExternalNews || isCreatingExternalNewsDraft}
                           >
                             {isAnalyzingExternalNews
                               ? "Analizando fuente externa..."
                               : "Analizar y pasar al formulario"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void createExternalNewsDraftFromSelected();
+                            }}
+                            style={
+                              isCreatingExternalNewsDraft || isAnalyzingExternalNews
+                                ? styles.buttonDisabled
+                                : styles.secondaryButton
+                            }
+                            disabled={isCreatingExternalNewsDraft || isAnalyzingExternalNews}
+                          >
+                            {isCreatingExternalNewsDraft
+                              ? "Creando borrador externo..."
+                              : "Crear borrador de esta noticia"}
                           </button>
 
                           <a
