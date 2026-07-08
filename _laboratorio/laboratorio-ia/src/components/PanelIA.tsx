@@ -143,6 +143,21 @@ type ExternalNewsBatchResolveResponse =
       error?: string;
     };
 
+type ExternalNewsBatchDraftResult = {
+  id: string;
+  title: string;
+  status: "creado" | "omitido" | "error";
+  message: string;
+  documentId?: string;
+};
+
+type ExternalNewsBatchDraftSummary = {
+  created: number;
+  skipped: number;
+  errors: number;
+  attempted: number;
+};
+
 
 const ENABLED_EXTERNAL_NEWS_SOURCES = getEnabledExternalNewsSources();
 const DEFAULT_EXTERNAL_NEWS_SOURCE_ID: ExternalSourceId =
@@ -1984,6 +1999,11 @@ export default function PanelIA(): ReactElement {
   const [showAllExternalNewsBatchItems, setShowAllExternalNewsBatchItems] =
     useState(false);
 
+  const [isCreatingExternalNewsBatchDrafts, setIsCreatingExternalNewsBatchDrafts] =
+    useState(false);
+  const [externalNewsBatchDraftResults, setExternalNewsBatchDraftResults] =
+    useState<ExternalNewsBatchDraftResult[]>([]);
+
   const [officialEventItems, setOfficialEventItems] = useState<
     UfcOfficialEventItem[]
   >([]);
@@ -2236,6 +2256,7 @@ export default function PanelIA(): ReactElement {
           message: "",
         });
         setExternalNewsBatchAnalysis(null);
+        setExternalNewsBatchDraftResults([]);
         setExternalNewsBatchStatus({
           type: "idle",
           message: "",
@@ -2264,6 +2285,7 @@ export default function PanelIA(): ReactElement {
         setExternalNewsFetchedAt(payload.fetchedAt);
         setExternalNewsAnalysisSummary(null);
         setExternalNewsBatchAnalysis(null);
+        setExternalNewsBatchDraftResults([]);
         setExternalNewsBatchStatus({
           type: "idle",
           message: "",
@@ -2284,6 +2306,7 @@ export default function PanelIA(): ReactElement {
         setExternalNewsFetchedAt("");
         setExternalNewsAnalysisSummary(null);
         setExternalNewsBatchAnalysis(null);
+        setExternalNewsBatchDraftResults([]);
         setExternalNewsBatchStatus({
           type: "idle",
           message: "",
@@ -2345,6 +2368,7 @@ export default function PanelIA(): ReactElement {
       }
 
       setExternalNewsBatchAnalysis(payload.data);
+      setExternalNewsBatchDraftResults([]);
       setShowAllExternalNewsBatchItems(false);
       setExternalNewsBatchStatus({
         type: "success",
@@ -2978,6 +3002,327 @@ export default function PanelIA(): ReactElement {
     referenceData,
     reloadReferenceEntities,
     selectedExternalNews,
+    selectedExternalNewsSource,
+  ]);
+
+  const createExternalNewsDraftsFromBatch = useCallback(async (): Promise<void> => {
+    if (contentType !== "noticia") {
+      setExternalNewsBatchStatus({
+        type: "error",
+        message:
+          "Selecciona el tipo de contenido Noticia antes de crear borradores externos en lote.",
+      });
+      return;
+    }
+
+    if (!externalNewsBatchAnalysis) {
+      setExternalNewsBatchStatus({
+        type: "error",
+        message: "Prepara primero las noticias de la fuente externa.",
+      });
+      return;
+    }
+
+    const eligibleBatchItems = externalNewsBatchAnalysis.items.filter(
+      (item) => item.status === "apta"
+    );
+
+    if (eligibleBatchItems.length === 0) {
+      setExternalNewsBatchStatus({
+        type: "error",
+        message: "No hay noticias aptas para crear borradores en lote.",
+      });
+      return;
+    }
+
+    const itemsById = new Map(externalNewsItems.map((item) => [item.id, item]));
+    const eligibleExternalItems = eligibleBatchItems
+      .map((batchItem) => itemsById.get(batchItem.id))
+      .filter((item): item is ExternalNewsItem => Boolean(item));
+
+    if (eligibleExternalItems.length === 0) {
+      setExternalNewsBatchStatus({
+        type: "error",
+        message: "No se pudieron emparejar las noticias aptas con la bandeja cargada.",
+      });
+      return;
+    }
+
+    const MAX_BATCH_DRAFTS = 5;
+    const itemsToCreate = eligibleExternalItems.slice(0, MAX_BATCH_DRAFTS);
+    const omittedByLimit = Math.max(eligibleExternalItems.length - MAX_BATCH_DRAFTS, 0);
+    const shouldContinue = window.confirm(
+      `Se crearán hasta ${itemsToCreate.length} borradores externos aptos de ${selectedExternalNewsSource?.name ?? "la fuente seleccionada"}.${
+        omittedByLimit > 0
+          ? `\n\nHay ${omittedByLimit} noticias aptas adicionales que se dejarán para otra tanda.`
+          : ""
+      }\n\n¿Quieres continuar?`
+    );
+
+    if (!shouldContinue) {
+      return;
+    }
+
+    const batchResults: ExternalNewsBatchDraftResult[] = [];
+
+    try {
+      setIsCreatingExternalNewsBatchDrafts(true);
+      setExternalNewsBatchDraftResults([]);
+      setExternalNewsBatchStatus({
+        type: "success",
+        message: `Creando ${itemsToCreate.length} borradores externos aptos...`,
+      });
+      setSaveDraftStatus({
+        type: "idle",
+        message: "",
+      });
+
+      for (const externalItem of itemsToCreate) {
+        try {
+          const qualityNotes = getExternalNewsQualityNotes(externalItem);
+
+          if (qualityNotes.some((note) => note.toLowerCase().includes("cuerpo"))) {
+            batchResults.push({
+              id: externalItem.id,
+              title: externalItem.title,
+              status: "omitido",
+              message: `Omitida por calidad insuficiente: ${qualityNotes.join(" | ")}`,
+            });
+            setExternalNewsBatchDraftResults([...batchResults]);
+            continue;
+          }
+
+          const analysisResponse = await fetch(
+            `${API_BASE_URL}/api/sources/external/news/analyze`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ item: externalItem }),
+            }
+          );
+
+          const analysisPayload =
+            (await analysisResponse.json()) as ExternalEditorialAnalysisResponse;
+
+          if (!analysisResponse.ok || !analysisPayload.ok) {
+            throw new Error(
+              analysisPayload && !analysisPayload.ok && analysisPayload.error
+                ? analysisPayload.error
+                : "No se pudo analizar la noticia externa."
+            );
+          }
+
+          const { analysis, resolved } = analysisPayload.data;
+
+          const blockingWarnings = [
+            !analysis.debeCrearNoticia
+              ? "El análisis no recomienda crear noticia."
+              : "",
+            analysis.relevancia === "descartar"
+              ? "Relevancia marcada como DESCARTAR."
+              : "",
+            !resolved.disciplina ? "Sin disciplina resuelta." : "",
+          ].filter(Boolean);
+
+          if (blockingWarnings.length > 0) {
+            batchResults.push({
+              id: externalItem.id,
+              title: externalItem.title,
+              status: "omitido",
+              message: blockingWarnings.join(" | "),
+            });
+            setExternalNewsBatchDraftResults([...batchResults]);
+            continue;
+          }
+
+          const sourceExtract = createExternalSourceExtract(externalItem);
+          const safeExternalExtract = createSafeNewsExtract(
+            analysis.hechoPrincipal || sourceExtract || externalItem.title
+          );
+          const sourceBody =
+            externalItem.bodyText?.trim() ||
+            externalItem.excerpt?.trim() ||
+            externalItem.title;
+          const publicationDate =
+            toDateTimeLocalValue(externalItem.publishedAt) ||
+            getRequiredPublicationDateTimeLocalValue(undefined);
+          const externalSourceValue = getAvailableFieldOptionValue(
+            definition.schemaFields,
+            "fuente",
+            [analysis.fuenteFormulario, "otra", "otro"]
+          );
+          const resolvedFighters = [
+            ...resolved.luchadoresPrincipales,
+            ...resolved.luchadoresSecundarios,
+          ];
+          const uniqueFighterIds = Array.from(
+            new Set(resolvedFighters.map((fighter) => fighter.id).filter(Boolean))
+          );
+          const resolvedDisciplineRef = resolved.disciplina
+            ? referenceData.disciplina.find((option) => {
+                const optionLabel = option.label.trim().toLowerCase();
+                const resolvedLabel =
+                  resolved.disciplina?.label.trim().toLowerCase() ?? "";
+
+                return (
+                  option.value === resolved.disciplina?.id ||
+                  optionLabel === resolvedLabel ||
+                  optionLabel.replace(/[-\s]/g, "") ===
+                    resolvedLabel.replace(/[-\s]/g, "")
+                );
+              })?.value ?? resolved.disciplina.id
+            : "";
+
+          const initialState = getInitialFormState("noticia");
+          const draftForm: ContentFormState = {
+            ...initialState.form,
+            titulo: externalItem.title,
+            extracto: safeExternalExtract,
+            contenido: sourceBody,
+            fechaPublicacion: publicationDate,
+            fuente: externalSourceValue,
+            fuenteUrl: externalItem.canonicalUrl || externalItem.sourceUrl,
+            fuenteId: externalItem.id,
+            destacada: analysis.relevancia === "alta",
+          };
+
+          if (externalItem.image?.url) {
+            draftForm.imagenPrincipal = externalItem.image.url;
+          }
+
+          if (resolvedDisciplineRef) {
+            draftForm.disciplina = toReferenceValue(resolvedDisciplineRef);
+          }
+
+          if (resolved.organizacion) {
+            draftForm.organizacionRelacionada = toReferenceValue(
+              resolved.organizacion.id
+            );
+          }
+
+          if (resolved.evento) {
+            draftForm.eventoRelacionado = toReferenceValue(resolved.evento.id);
+          } else if (resolved.combate?.eventoId) {
+            draftForm.eventoRelacionado = toReferenceValue(resolved.combate.eventoId);
+          }
+
+          if (resolved.combate) {
+            draftForm.combateRelacionado = toReferenceValue(resolved.combate.id);
+          }
+
+          if (uniqueFighterIds.length > 0) {
+            draftForm.luchadoresRelacionados = uniqueFighterIds.map((fighterId) =>
+              toReferenceValue(fighterId)
+            );
+          }
+
+          const draftAuxiliary: AuxiliaryFormState = {
+            ...initialState.auxiliary,
+            ...(resolvedDisciplineRef
+              ? { disciplina: toReferenceValue(resolvedDisciplineRef) }
+              : {}),
+            anguloEditorial:
+              analysis.anguloEditorial ||
+              "Reescritura informativa en español a partir de una fuente externa, con criterio editorial propio de Full Fight News.",
+            hechoPrincipal: analysis.hechoPrincipal || sourceExtract,
+            contextoPrevio: analysis.contextoPrevio || sourceBody,
+            tono: "informativo, directo y periodístico",
+            seoObjetivo: externalItem.title,
+            instruccionesRedaccion:
+              analysis.instruccionesRedaccion ||
+              createExternalEditorialInstructions(externalItem),
+          };
+
+          const cleanedDraftForm = clearInvalidDependentReferences(
+            draftForm,
+            draftAuxiliary,
+            referenceData
+          );
+
+          if (resolvedDisciplineRef) {
+            cleanedDraftForm.disciplina = toReferenceValue(resolvedDisciplineRef);
+          }
+
+          const buildResult = buildContentOutput({
+            contentType: "noticia",
+            form: cleanedDraftForm,
+            auxiliary: draftAuxiliary,
+          });
+
+          if (!buildResult.ok || !buildResult.output) {
+            const errors = buildResult.issues
+              .filter((issue) => issue.severity === "error")
+              .map((issue) => issue.message)
+              .join(" · ");
+
+            throw new Error(errors || "El builder bloqueó el documento de noticia.");
+          }
+
+
+          const saveResponse = await saveDraft({
+            contentType: "noticia",
+            document: buildResult.output as Record<string, unknown>,
+          });
+
+          batchResults.push({
+            id: externalItem.id,
+            title: externalItem.title,
+            status: "creado",
+            message: saveResponse.message || "Borrador creado correctamente.",
+            documentId: saveResponse.documentId,
+          });
+          setExternalNewsBatchDraftResults([...batchResults]);
+        } catch (error) {
+          batchResults.push({
+            id: externalItem.id,
+            title: externalItem.title,
+            status: "error",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Error desconocido creando el borrador.",
+          });
+          setExternalNewsBatchDraftResults([...batchResults]);
+        }
+      }
+
+      const summary: ExternalNewsBatchDraftSummary = {
+        created: batchResults.filter((item) => item.status === "creado").length,
+        skipped: batchResults.filter((item) => item.status === "omitido").length,
+        errors: batchResults.filter((item) => item.status === "error").length,
+        attempted: batchResults.length,
+      };
+
+      setExternalNewsBatchStatus({
+        type: summary.errors > 0 ? "error" : "success",
+        message: `Borradores externos en lote: ${summary.created} creados, ${summary.skipped} omitidos, ${summary.errors} errores.`,
+      });
+      if (summary.created > 0) {
+        setSaveDraftStatus({
+          type: "success",
+          message: `${summary.created} borradores externos guardados en Sanity.`,
+        });
+      } else {
+        setSaveDraftStatus({
+          type: "idle",
+          message: "",
+        });
+      }
+
+      await reloadReferenceEntities();
+    } finally {
+      setIsCreatingExternalNewsBatchDrafts(false);
+    }
+  }, [
+    API_BASE_URL,
+    contentType,
+    definition.schemaFields,
+    externalNewsBatchAnalysis,
+    externalNewsItems,
+    referenceData,
+    reloadReferenceEntities,
     selectedExternalNewsSource,
   ]);
 
@@ -9420,6 +9765,7 @@ export default function PanelIA(): ReactElement {
                       setExternalNewsFetchedAt("");
                       setExternalNewsAnalysisSummary(null);
                       setExternalNewsBatchAnalysis(null);
+                      setExternalNewsBatchDraftResults([]);
                       setExternalNewsBatchStatus({
                         type: "idle",
                         message: "",
@@ -9563,6 +9909,31 @@ export default function PanelIA(): ReactElement {
                   </div>
                 </div>
 
+                <div style={styles.sourcePreviewActions}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void createExternalNewsDraftsFromBatch();
+                    }}
+                    style={
+                      isCreatingExternalNewsBatchDrafts ||
+                      isPreparingExternalNewsBatch ||
+                      externalNewsBatchAnalysis.summary.aptas === 0
+                        ? styles.buttonDisabled
+                        : styles.secondaryButton
+                    }
+                    disabled={
+                      isCreatingExternalNewsBatchDrafts ||
+                      isPreparingExternalNewsBatch ||
+                      externalNewsBatchAnalysis.summary.aptas === 0
+                    }
+                  >
+                    {isCreatingExternalNewsBatchDrafts
+                      ? "Creando borradores aptos..."
+                      : `Crear borradores aptos (${externalNewsBatchAnalysis.summary.aptas})`}
+                  </button>
+                </div>
+
                 <div style={styles.batchList}>
                   {(showAllExternalNewsBatchItems
                     ? externalNewsBatchAnalysis.items
@@ -9629,6 +10000,45 @@ export default function PanelIA(): ReactElement {
                       ? "Ver menos"
                       : `Ver todas (${externalNewsBatchAnalysis.items.length})`}
                   </button>
+                ) : null}
+
+                {externalNewsBatchDraftResults.length > 0 ? (
+                  <div style={styles.newsRelationsCard}>
+                    <div style={styles.newsRelationsHeader}>
+                      <div>
+                        <p style={styles.sourceEyebrow}>
+                          Resultado de creación en lote
+                        </p>
+                        <strong>
+                          {externalNewsBatchDraftResults.filter((item) => item.status === "creado").length} creados · {externalNewsBatchDraftResults.filter((item) => item.status === "omitido").length} omitidos · {externalNewsBatchDraftResults.filter((item) => item.status === "error").length} errores
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div style={styles.batchList}>
+                      {externalNewsBatchDraftResults.map((item) => {
+                        const statusStyle =
+                          item.status === "creado"
+                            ? styles.batchStatusOk
+                            : item.status === "error"
+                            ? styles.batchStatusError
+                            : styles.batchStatusPending;
+
+                        return (
+                          <div key={`${item.id}-${item.status}`} style={styles.batchItem}>
+                            <div style={styles.batchItemMain}>
+                              <strong>{item.title}</strong>
+                              <span style={styles.batchItemMeta}>
+                                {item.message}
+                                {item.documentId ? ` · ${item.documentId}` : ""}
+                              </span>
+                            </div>
+                            <span style={statusStyle}>{item.status.toUpperCase()}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ) : null}
               </div>
             ) : null}
