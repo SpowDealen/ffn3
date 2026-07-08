@@ -19,7 +19,12 @@ import type {
   ValidationIssue,
 } from "../types";
 import type { ReferenceEntityOption } from "../data/referenceEntities";
-import type { ExternalNewsFetchResult, ExternalNewsItem } from "../sources/types";
+import type {
+  ExternalNewsFetchResult,
+  ExternalNewsItem,
+  ExternalSourceId,
+} from "../sources/types";
+import { getEnabledExternalNewsSources } from "../sources/sourceRegistry";
 
 
 type ExternalEditorialAnalysisResponse =
@@ -67,6 +72,11 @@ type ExternalEditorialAnalysisResponse =
       ok: false;
       error?: string;
     };
+
+
+const ENABLED_EXTERNAL_NEWS_SOURCES = getEnabledExternalNewsSources();
+const DEFAULT_EXTERNAL_NEWS_SOURCE_ID: ExternalSourceId =
+  ENABLED_EXTERNAL_NEWS_SOURCES[0]?.id ?? "marca";
 
 type BuildResultState = {
   ok: boolean;
@@ -1856,6 +1866,8 @@ export default function PanelIA(): ReactElement {
   const [showAllOneNewsBatchItems, setShowAllOneNewsBatchItems] =
     useState(false);
 
+  const [selectedExternalSourceId, setSelectedExternalSourceId] =
+    useState<ExternalSourceId>(DEFAULT_EXTERNAL_NEWS_SOURCE_ID);
   const [externalNewsItems, setExternalNewsItems] = useState<ExternalNewsItem[]>([]);
   const [selectedExternalNewsId, setSelectedExternalNewsId] = useState("");
   const [isLoadingExternalNews, setIsLoadingExternalNews] = useState(false);
@@ -1976,6 +1988,14 @@ export default function PanelIA(): ReactElement {
     [oneNewsItems, selectedOneNewsId]
   );
 
+  const selectedExternalNewsSource = useMemo(
+    () =>
+      ENABLED_EXTERNAL_NEWS_SOURCES.find(
+        (source) => source.id === selectedExternalSourceId
+      ) ?? ENABLED_EXTERNAL_NEWS_SOURCES[0],
+    [selectedExternalSourceId]
+  );
+
   const selectedExternalNews = useMemo(
     () =>
       externalNewsItems.find((item) => item.id === selectedExternalNewsId) ?? null,
@@ -2091,63 +2111,72 @@ export default function PanelIA(): ReactElement {
   }, [auxiliary]);
 
 
-  const reloadExternalMarcaNews = useCallback(async (): Promise<void> => {
-    try {
-      setIsLoadingExternalNews(true);
-      setExternalNewsStatus({
-        type: "idle",
-        message: "",
-      });
+  const reloadExternalNews = useCallback(
+    async (sourceId: ExternalSourceId = selectedExternalSourceId): Promise<void> => {
+      const sourceDefinition =
+        ENABLED_EXTERNAL_NEWS_SOURCES.find((source) => source.id === sourceId) ??
+        selectedExternalNewsSource;
+      const sourceName = sourceDefinition?.name ?? sourceId;
 
-      const response = await fetch(
-        `${API_BASE_URL}/api/sources/external/news?source=marca&refresh=${Date.now()}`,
-        {
-          headers: {
-            Accept: "application/json",
-          },
-        }
-      );
+      try {
+        setIsLoadingExternalNews(true);
+        setExternalNewsStatus({
+          type: "idle",
+          message: "",
+        });
 
-      const payload = (await response.json()) as ExternalNewsFetchResult;
-
-      if (!response.ok || !payload.ok) {
-        throw new Error(
-          payload.error || "No se pudieron cargar las noticias externas de Marca."
+        const response = await fetch(
+          `${API_BASE_URL}/api/sources/external/news?source=${sourceId}&refresh=${Date.now()}`,
+          {
+            headers: {
+              Accept: "application/json",
+            },
+          }
         );
-      }
 
-      setExternalNewsItems(payload.items);
-      setExternalNewsFetchedAt(payload.fetchedAt);
-      setSelectedExternalNewsId((currentId) =>
-        payload.items.some((item) => item.id === currentId)
-          ? currentId
-          : payload.items[0]?.id || ""
-      );
-      setExternalNewsStatus({
-        type: "success",
-        message: `${payload.count} noticias externas de Marca cargadas.`,
-      });
-    } catch (error) {
-      setExternalNewsItems([]);
-      setSelectedExternalNewsId("");
-      setExternalNewsFetchedAt("");
-      setExternalNewsStatus({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido cargando noticias externas de Marca.",
-      });
-    } finally {
-      setIsLoadingExternalNews(false);
-    }
-  }, []);
+        const payload = (await response.json()) as ExternalNewsFetchResult;
+
+        if (!response.ok || !payload.ok) {
+          throw new Error(
+            payload.error ||
+              `No se pudieron cargar las noticias externas de ${sourceName}.`
+          );
+        }
+
+        setExternalNewsItems(payload.items);
+        setExternalNewsFetchedAt(payload.fetchedAt);
+        setSelectedExternalNewsId((currentId) =>
+          payload.items.some((item) => item.id === currentId)
+            ? currentId
+            : payload.items[0]?.id || ""
+        );
+        setExternalNewsStatus({
+          type: "success",
+          message: `${payload.count} noticias externas de ${payload.sourceName || sourceName} cargadas.`,
+        });
+      } catch (error) {
+        setExternalNewsItems([]);
+        setSelectedExternalNewsId("");
+        setExternalNewsFetchedAt("");
+        setExternalNewsStatus({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : `Error desconocido cargando noticias externas de ${sourceName}.`,
+        });
+      } finally {
+        setIsLoadingExternalNews(false);
+      }
+    },
+    [API_BASE_URL, selectedExternalNewsSource, selectedExternalSourceId]
+  );
 
   const applyExternalNewsToForm = useCallback(async (): Promise<void> => {
     if (!selectedExternalNews) {
       setExternalNewsStatus({
         type: "error",
-        message: "Selecciona primero una noticia externa de Marca.",
+        message: `Selecciona primero una noticia externa de ${selectedExternalNewsSource?.name ?? "la fuente seleccionada"}.`,
       });
       return;
     }
@@ -2373,6 +2402,7 @@ export default function PanelIA(): ReactElement {
     referenceData,
     resetDerivedUiState,
     selectedExternalNews,
+    selectedExternalNewsSource,
   ]);
 
   const reloadOfficialUfcNews = useCallback(async (): Promise<void> => {
@@ -8793,32 +8823,60 @@ export default function PanelIA(): ReactElement {
           <section style={styles.sourceCard}>
             <div style={styles.sourceHeader}>
               <div>
-                <p style={styles.sourceEyebrow}>Fuente externa conectada</p>
-                <h2 style={styles.sectionTitle}>Bandeja externa Marca</h2>
+                <p style={styles.sourceEyebrow}>Fuentes externas conectadas</p>
+                <h2 style={styles.sectionTitle}>Bandeja de fuentes externas</h2>
                 <p style={styles.metaText}>
                   Carga noticias externas de deportes de combate, revisa el contenido
                   y pásalo al formulario como borrador editorial de Full Fight News.
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  void reloadExternalMarcaNews();
-                }}
-                style={
-                  isLoadingExternalNews
-                    ? styles.buttonDisabled
-                    : styles.secondaryButton
-                }
-                disabled={isLoadingExternalNews}
-              >
-                {isLoadingExternalNews
-                  ? "Actualizando Marca..."
-                  : externalNewsItems.length > 0
-                  ? "Actualizar Marca"
-                  : "Cargar Marca"}
-              </button>
+              <div style={styles.sourceHeaderActions}>
+                <label style={styles.sourceSelectLabel}>
+                  Fuente externa
+                  <select
+                    value={selectedExternalSourceId}
+                    onChange={(event) => {
+                      const nextSourceId = event.target.value as ExternalSourceId;
+                      setSelectedExternalSourceId(nextSourceId);
+                      setExternalNewsItems([]);
+                      setSelectedExternalNewsId("");
+                      setExternalNewsFetchedAt("");
+                      setExternalNewsStatus({
+                        type: "idle",
+                        message: "",
+                      });
+                    }}
+                    style={styles.sourceSelect}
+                    disabled={isLoadingExternalNews}
+                  >
+                    {ENABLED_EXTERNAL_NEWS_SOURCES.map((source) => (
+                      <option key={source.id} value={source.id}>
+                        {source.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    void reloadExternalNews(selectedExternalSourceId);
+                  }}
+                  style={
+                    isLoadingExternalNews
+                      ? styles.buttonDisabled
+                      : styles.secondaryButton
+                  }
+                  disabled={isLoadingExternalNews}
+                >
+                  {isLoadingExternalNews
+                    ? `Actualizando ${selectedExternalNewsSource?.name ?? "fuente"}...`
+                    : externalNewsItems.length > 0
+                    ? `Actualizar ${selectedExternalNewsSource?.name ?? "fuente"}`
+                    : `Cargar ${selectedExternalNewsSource?.name ?? "fuente"}`}
+                </button>
+              </div>
             </div>
 
             {externalNewsStatus.type !== "idle" ? (
@@ -8872,6 +8930,8 @@ export default function PanelIA(): ReactElement {
                         ) : null}
 
                         <span style={styles.sourceItemMeta}>
+                          {item.sourceName || selectedExternalNewsSource?.name}
+                          {" · "}
                           {item.publishedAt
                             ? new Date(item.publishedAt).toLocaleString("es-ES")
                             : "Fecha no disponible"}
@@ -8918,7 +8978,7 @@ export default function PanelIA(): ReactElement {
                             }}
                             style={styles.button}
                           >
-                            Pasar al formulario
+                            Analizar y pasar al formulario
                           </button>
 
                           <a
@@ -8938,7 +8998,7 @@ export default function PanelIA(): ReactElement {
                           <div style={styles.newsRelationsHeader}>
                             <div>
                               <p style={styles.sourceEyebrow}>
-                                Detección inicial
+                                Detección inicial orientativa
                               </p>
                               <strong>
                                 {inferExternalNewsDisciplineLabel(selectedExternalNews) ||
@@ -8947,7 +9007,7 @@ export default function PanelIA(): ReactElement {
                             </div>
 
                             <span style={styles.batchStatusPending}>
-                              Revisión editorial
+                              Pendiente de análisis IA
                             </span>
                           </div>
 
@@ -8996,9 +9056,9 @@ export default function PanelIA(): ReactElement {
                           </div>
 
                           <p style={styles.metaText}>
-                            Esta versión detecta disciplina, organización y luchadores
-                            por coincidencia exacta contra Sanity. La clasificación
-                            “apta / revisión / descartar” irá en el siguiente bloque.
+                            Esta tarjeta solo muestra una detección rápida antes del análisis
+                            editorial. Las relaciones definitivas se aplican al pulsar
+                            “Analizar y pasar al formulario”.
                           </p>
                         </div>
 
@@ -9015,14 +9075,14 @@ export default function PanelIA(): ReactElement {
                     </>
                   ) : (
                     <p style={styles.emptyText}>
-                      Selecciona una noticia externa de Marca para revisar sus datos.
+                      Selecciona una noticia externa de {selectedExternalNewsSource?.name ?? "la fuente activa"} para revisar sus datos.
                     </p>
                   )}
                 </div>
               </div>
             ) : (
               <p style={styles.emptyText}>
-                Pulsa “Cargar Marca” para consultar noticias externas de deportes de combate.
+                Pulsa “Cargar {selectedExternalNewsSource?.name ?? "fuente"}” para consultar noticias externas de deportes de combate.
               </p>
             )}
           </section>
@@ -10850,6 +10910,30 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "flex-start",
     gap: 16,
     flexWrap: "wrap",
+  },
+  sourceHeaderActions: {
+    display: "flex",
+    alignItems: "flex-end",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  sourceSelectLabel: {
+    display: "grid",
+    gap: 6,
+    minWidth: 180,
+    fontSize: 12,
+    fontWeight: 700,
+    opacity: 0.9,
+  },
+  sourceSelect: {
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.08)",
+    color: "#f5f7fa",
+    padding: "11px 14px",
+    outline: "none",
+    fontSize: 14,
+    fontWeight: 700,
   },
   sourceEyebrow: {
     margin: "0 0 6px",

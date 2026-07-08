@@ -1,3 +1,4 @@
+import { asAdapter } from "./asAdapter";
 import { marcaAdapter } from "./marcaAdapter";
 import type {
   ExternalNewsAdapter,
@@ -9,6 +10,7 @@ export const externalNewsAdapters: Record<
   ExternalNewsAdapter
 > = {
   marca: marcaAdapter,
+  "as": asAdapter,
 };
 
 export function getExternalNewsAdapter(
@@ -17,4 +19,4 @@ export function getExternalNewsAdapter(
   return externalNewsAdapters[source];
 }
 
-export { marcaAdapter };
+export { asAdapter, marcaAdapter };

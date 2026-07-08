@@ -16,25 +16,29 @@ import {
   uniqueStrings,
 } from "../normalizeExternalNews";
 
-const MARCA_BASE_URL = "https://www.marca.com";
-const MARCA_SOURCE = getExternalNewsSource("marca");
-const MARCA_SOURCE_NAME = MARCA_SOURCE?.name ?? "Marca";
-const MAX_LISTING_LINKS = 30;
+const AS_BASE_URL = "https://as.com";
+const AS_SOURCE = getExternalNewsSource("as");
+const AS_SOURCE_NAME = AS_SOURCE?.name ?? "AS";
+const MAX_LISTING_LINKS = 40;
 const MAX_ITEMS = 12;
 const MIN_BODY_LENGTH = 120;
 const MAX_BODY_LENGTH = 25_000;
 
-const MARCA_START_URLS = [
-  `${MARCA_BASE_URL}/combates.html`,
-  `${MARCA_BASE_URL}/boxeo.html`,
+const AS_START_URLS = [
+  `${AS_BASE_URL}/noticias/deportes-combate/`,
+  `${AS_BASE_URL}/noticias/ufc-ultimate-fighting-championship/`,
+  `${AS_BASE_URL}/masdeporte/`,
 ] as const;
 
 const COMBAT_KEYWORDS = [
   "ufc",
   "mma",
+  "artes marciales mixtas",
   "boxeo",
-  "combates",
   "combate",
+  "combates",
+  "deportes combate",
+  "deportes de combate",
   "lucha",
   "bkfc",
   "bare-knuckle",
@@ -43,12 +47,20 @@ const COMBAT_KEYWORDS = [
   "jijitsu",
   "grappling",
   "kickboxing",
+  "muay thai",
   "muay-thai",
+  "bellator",
+  "pfl",
+  "one championship",
+  "glory",
+  "canelo",
+  "topuria",
+  "mcgregor",
 ] as const;
 
 type JsonLdRecord = Record<string, unknown>;
 
-type MarcaArticleCandidate = {
+type AsArticleCandidate = {
   url: string;
   listingTitle?: string;
 };
@@ -71,7 +83,7 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function isProbablyCombatUrl(value: string): boolean {
+function isProbablyCombatText(value: string): boolean {
   const normalizedValue = value.toLowerCase();
 
   return COMBAT_KEYWORDS.some((keyword) =>
@@ -79,36 +91,52 @@ function isProbablyCombatUrl(value: string): boolean {
   );
 }
 
-function isValidMarcaArticleUrl(value: string): boolean {
-  if (!value) {
+function isLikelyAsArticlePath(pathname: string): boolean {
+  if (!pathname || pathname === "/") {
+    return false;
+  }
+
+  if (
+    pathname.includes("/noticias/") ||
+    pathname.includes("/album/") ||
+    pathname.includes("/videos/") ||
+    pathname.includes("/directo/") ||
+    pathname.includes("/radio/") ||
+    pathname.includes("/apuestas/") ||
+    pathname.includes("/resultados/") ||
+    pathname.includes("/tag/")
+  ) {
+    return false;
+  }
+
+  if (!pathname.startsWith("/masdeporte/")) {
+    return false;
+  }
+
+  return (
+    /-n\/?$/i.test(pathname) ||
+    /-f20\d{4}-n\/?$/i.test(pathname) ||
+    /\/20\d{2}\//.test(pathname)
+  );
+}
+
+function isValidAsArticleCandidate(href: string, text: string): boolean {
+  if (!href) {
     return false;
   }
 
   try {
-    const url = new URL(normalizeUrl(value, MARCA_BASE_URL));
+    const url = new URL(normalizeUrl(href, AS_BASE_URL));
 
-    if (!url.hostname.endsWith("marca.com")) {
+    if (!url.hostname.endsWith("as.com")) {
       return false;
     }
 
-    if (!url.pathname.endsWith(".html")) {
+    if (!isLikelyAsArticlePath(url.pathname)) {
       return false;
     }
 
-    if (!/\/20\d{2}\/\d{2}\/\d{2}\//.test(url.pathname)) {
-      return false;
-    }
-
-    if (
-      url.pathname.includes("/album/") ||
-      url.pathname.includes("/videos/") ||
-      url.pathname.includes("/radio/") ||
-      url.pathname.includes("/apuestas/")
-    ) {
-      return false;
-    }
-
-    return isProbablyCombatUrl(`${url.pathname} ${url.search}`);
+    return isProbablyCombatText(`${url.pathname} ${url.search} ${text}`);
   } catch {
     return false;
   }
@@ -247,7 +275,7 @@ function getJsonLdRecords($: cheerio.CheerioAPI): JsonLdRecord[] {
 
       records.push(parsedJson);
     } catch {
-      // Algunos scripts JSON-LD de medios llegan incompletos o con caracteres rotos.
+      // Algunos medios dejan JSON-LD parcial o escapado. No debe tumbar la fuente.
     }
   });
 
@@ -351,9 +379,9 @@ function getJsonLdAuthors(record: JsonLdRecord | undefined): string[] {
   return [];
 }
 
-function extractArticleUrls(html: string): MarcaArticleCandidate[] {
+function extractArticleUrls(html: string): AsArticleCandidate[] {
   const $ = cheerio.load(html);
-  const candidates = new Map<string, MarcaArticleCandidate>();
+  const candidates = new Map<string, AsArticleCandidate>();
 
   $("a[href]").each((_: number, element: AnyNode) => {
     if (candidates.size >= MAX_LISTING_LINKS) {
@@ -361,12 +389,13 @@ function extractArticleUrls(html: string): MarcaArticleCandidate[] {
     }
 
     const href = $(element).attr("href")?.trim() ?? "";
+    const listingTitle = cleanOptionalInlineText($(element).text()) ?? "";
 
-    if (!isValidMarcaArticleUrl(href)) {
+    if (!isValidAsArticleCandidate(href, listingTitle)) {
       return;
     }
 
-    const canonicalUrl = createCanonicalUrl(href, MARCA_BASE_URL);
+    const canonicalUrl = createCanonicalUrl(href, AS_BASE_URL);
 
     if (!canonicalUrl || candidates.has(canonicalUrl)) {
       return;
@@ -374,7 +403,7 @@ function extractArticleUrls(html: string): MarcaArticleCandidate[] {
 
     candidates.set(canonicalUrl, {
       url: canonicalUrl,
-      listingTitle: cleanOptionalInlineText($(element).text()),
+      listingTitle: listingTitle || undefined,
     });
   });
 
@@ -393,7 +422,7 @@ function extractTags($: cheerio.CheerioAPI): string[] {
   });
 
   $(
-    '[class*="tag"] a, [class*="tags"] a, [data-testid*="tag"] a',
+    '[class*="tag"] a, [class*="tags"] a, [data-testid*="tag"] a, [rel="tag"]',
   ).each((_: number, element: AnyNode) => {
     const value = $(element).text();
 
@@ -405,10 +434,24 @@ function extractTags($: cheerio.CheerioAPI): string[] {
   return uniqueStrings(tags);
 }
 
+function isNoiseParagraph(paragraph: string): boolean {
+  return (
+    /^publicidad$/i.test(paragraph) ||
+    /^síguenos en/i.test(paragraph) ||
+    /^también puedes seguirnos/i.test(paragraph) ||
+    /newsletter/i.test(paragraph) ||
+    /suscríbete/i.test(paragraph) ||
+    /preferir AS en Google/i.test(paragraph) ||
+    /normas de participación/i.test(paragraph) ||
+    /comenta esta noticia/i.test(paragraph)
+  );
+}
+
 function extractBodyFromSelectors($: cheerio.CheerioAPI): string | undefined {
   const selectors = [
     "article p",
     '[class*="article"] p',
+    '[class*="story"] p',
     '[class*="content"] p',
     '[class*="cuerpo"] p',
     '[class*="body"] p',
@@ -421,22 +464,14 @@ function extractBodyFromSelectors($: cheerio.CheerioAPI): string | undefined {
     $(selector).each((_: number, element: AnyNode) => {
       const paragraph = cleanText($(element).text());
 
-      if (!paragraph) {
-        return;
-      }
-
-      if (
-        /^publicidad$/i.test(paragraph) ||
-        /^síguenos en/i.test(paragraph) ||
-        /newsletter/i.test(paragraph)
-      ) {
+      if (!paragraph || isNoiseParagraph(paragraph)) {
         return;
       }
 
       paragraphs.push(paragraph);
     });
 
-    const bodyText = paragraphs.join("\n\n").trim();
+    const bodyText = uniqueStrings(paragraphs).join("\n\n").trim();
 
     if (bodyText.length >= MIN_BODY_LENGTH) {
       return bodyText.slice(0, MAX_BODY_LENGTH).trim();
@@ -468,6 +503,7 @@ function extractPublishedAt(
       'meta[property="article:published_time"]',
       'meta[name="date"]',
       'meta[name="DC.date.issued"]',
+      'meta[name="parsely-pub-date"]',
     ]) ||
     $("time[datetime]").first().attr("datetime");
 
@@ -546,11 +582,11 @@ function extractExcerpt(
 function extractCanonicalUrl($: cheerio.CheerioAPI, url: string): string {
   const canonicalHref = $('link[rel="canonical"]').first().attr("href");
 
-  return createCanonicalUrl(canonicalHref || url, MARCA_BASE_URL);
+  return createCanonicalUrl(canonicalHref || url, AS_BASE_URL);
 }
 
 async function fetchArticle(
-  candidate: MarcaArticleCandidate,
+  candidate: AsArticleCandidate,
   detectedAt: string,
 ): Promise<ExternalNewsItem | undefined> {
   const html = await fetchHtml(candidate.url);
@@ -586,8 +622,8 @@ async function fetchArticle(
   }
 
   return createExternalNewsItem({
-    source: "marca",
-    sourceName: MARCA_SOURCE_NAME,
+    source: "as",
+    sourceName: AS_SOURCE_NAME,
     title,
     sourceUrl: candidate.url,
     canonicalUrl,
@@ -606,13 +642,13 @@ async function fetchArticle(
   });
 }
 
-async function fetchMarcaNews(): Promise<ExternalNewsFetchResult> {
+async function fetchAsNews(): Promise<ExternalNewsFetchResult> {
   const fetchedAt = new Date().toISOString();
 
   try {
-    const candidatesByUrl = new Map<string, MarcaArticleCandidate>();
+    const candidatesByUrl = new Map<string, AsArticleCandidate>();
 
-    for (const startUrl of MARCA_START_URLS) {
+    for (const startUrl of AS_START_URLS) {
       try {
         const html = await fetchHtml(startUrl);
         const candidates = extractArticleUrls(html);
@@ -644,8 +680,8 @@ async function fetchMarcaNews(): Promise<ExternalNewsFetchResult> {
 
     return {
       ok: true,
-      source: "marca",
-      sourceName: MARCA_SOURCE_NAME,
+      source: "as",
+      sourceName: AS_SOURCE_NAME,
       fetchedAt,
       count: items.length,
       items,
@@ -654,12 +690,12 @@ async function fetchMarcaNews(): Promise<ExternalNewsFetchResult> {
     const message =
       error instanceof Error
         ? error.message
-        : "No se pudieron cargar las noticias externas de Marca.";
+        : "No se pudieron cargar las noticias externas de AS.";
 
     return {
       ok: false,
-      source: "marca",
-      sourceName: MARCA_SOURCE_NAME,
+      source: "as",
+      sourceName: AS_SOURCE_NAME,
       fetchedAt,
       count: 0,
       items: [],
@@ -668,15 +704,15 @@ async function fetchMarcaNews(): Promise<ExternalNewsFetchResult> {
   }
 }
 
-export const marcaAdapter: ExternalNewsAdapter = {
-  source: MARCA_SOURCE ?? {
-    id: "marca",
-    name: MARCA_SOURCE_NAME,
-    baseUrl: MARCA_BASE_URL,
+export const asAdapter: ExternalNewsAdapter = {
+  source: AS_SOURCE ?? {
+    id: "as",
+    name: AS_SOURCE_NAME,
+    baseUrl: AS_BASE_URL,
     enabled: true,
     language: "es",
     kind: "medio_externo",
     refreshIntervalSeconds: 300,
   },
-  fetchNews: fetchMarcaNews,
+  fetchNews: fetchAsNews,
 };

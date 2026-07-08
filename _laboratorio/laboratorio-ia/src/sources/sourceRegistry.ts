@@ -1,4 +1,6 @@
 import type {
+  ExternalNewsSourceDefinition,
+  ExternalSourceId,
   OfficialSourceDefinition,
   OfficialSourceId,
 } from "./types";
@@ -67,6 +69,27 @@ export const OFFICIAL_SOURCES: OfficialSourceDefinition[] = [
   },
 ];
 
+export const EXTERNAL_NEWS_SOURCES: ExternalNewsSourceDefinition[] = [
+  {
+    id: "marca",
+    name: "Marca",
+    baseUrl: "https://www.marca.com",
+    enabled: true,
+    language: "es",
+    kind: "medio_externo",
+    refreshIntervalSeconds: 300,
+  },
+  {
+    id: "as",
+    name: "AS",
+    baseUrl: "https://as.com",
+    enabled: true,
+    language: "es",
+    kind: "medio_externo",
+    refreshIntervalSeconds: 300,
+  },
+];
+
 export function getOfficialSource(
   sourceId: OfficialSourceId,
 ): OfficialSourceDefinition | undefined {
@@ -75,4 +98,14 @@ export function getOfficialSource(
 
 export function getEnabledOfficialSources(): OfficialSourceDefinition[] {
   return OFFICIAL_SOURCES.filter((source) => source.enabled);
+}
+
+export function getExternalNewsSource(
+  sourceId: ExternalSourceId,
+): ExternalNewsSourceDefinition | undefined {
+  return EXTERNAL_NEWS_SOURCES.find((source) => source.id === sourceId);
+}
+
+export function getEnabledExternalNewsSources(): ExternalNewsSourceDefinition[] {
+  return EXTERNAL_NEWS_SOURCES.filter((source) => source.enabled);
 }

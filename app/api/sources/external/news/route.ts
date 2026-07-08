@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getExternalNewsAdapter } from "@/_laboratorio/laboratorio-ia/src/sources/adapters";
+import { getExternalNewsSource } from "@/_laboratorio/laboratorio-ia/src/sources/sourceRegistry";
 import {
   isExternalSourceId,
   type ExternalNewsFetchResult,
@@ -7,6 +8,8 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const DEFAULT_EXTERNAL_SOURCE = "marca";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -27,11 +30,16 @@ function createErrorResponse(
   message: string,
   status: number,
 ): NextResponse<ExternalNewsFetchResult> {
+  const safeSource = isExternalSourceId(source) ? source : DEFAULT_EXTERNAL_SOURCE;
+  const sourceDefinition = isExternalSourceId(source)
+    ? getExternalNewsSource(source)
+    : undefined;
+
   return NextResponse.json(
     {
       ok: false,
-      source: isExternalSourceId(source) ? source : "marca",
-      sourceName: isExternalSourceId(source) ? source : "Fuente externa",
+      source: safeSource,
+      sourceName: sourceDefinition?.name ?? "Fuente externa",
       fetchedAt: new Date().toISOString(),
       count: 0,
       items: [],
@@ -49,7 +57,7 @@ export async function GET(
 ): Promise<NextResponse<ExternalNewsFetchResult>> {
   const sourceParam =
     request.nextUrl.searchParams.get("source")?.trim().toLowerCase() ||
-    "marca";
+    DEFAULT_EXTERNAL_SOURCE;
 
   if (!isExternalSourceId(sourceParam)) {
     return createErrorResponse(
