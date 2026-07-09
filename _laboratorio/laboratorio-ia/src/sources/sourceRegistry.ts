@@ -88,6 +88,15 @@ export const EXTERNAL_NEWS_SOURCES: ExternalNewsSourceDefinition[] = [
     kind: "medio_externo",
     refreshIntervalSeconds: 300,
   },
+  {
+    id: "eurosport",
+    name: "Eurosport España",
+    baseUrl: "https://www.eurosport.es",
+    enabled: true,
+    language: "es",
+    kind: "medio_externo",
+    refreshIntervalSeconds: 300,
+  },
 ];
 
 export function getOfficialSource(

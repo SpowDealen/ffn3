@@ -1,5 +1,6 @@
 import { asAdapter } from "./asAdapter";
 import { marcaAdapter } from "./marcaAdapter";
+import { eurosportAdapter } from "./eurosportAdapter";
 import type {
   ExternalNewsAdapter,
   ExternalSourceId,
@@ -11,6 +12,7 @@ export const externalNewsAdapters: Record<
 > = {
   marca: marcaAdapter,
   "as": asAdapter,
+  eurosport: eurosportAdapter,
 };
 
 export function getExternalNewsAdapter(
@@ -19,4 +21,4 @@ export function getExternalNewsAdapter(
   return externalNewsAdapters[source];
 }
 
-export { asAdapter, marcaAdapter };
+export { asAdapter, eurosportAdapter, marcaAdapter };
