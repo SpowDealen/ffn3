@@ -234,14 +234,17 @@ async function downloadExternalImage(
     );
   }
 
+  const imageOrigin = new URL(imageUrl).origin;
+
   const response = await fetch(imageUrl, {
     method: "GET",
     headers: {
       Accept:
-        "image/avif,image/webp,image/png,image/jpeg,image/*",
+        "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
       "User-Agent":
-        "Mozilla/5.0 (compatible; FullFightNewsImageImporter/1.0)",
-      Referer: "https://www.ufc.com/",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      Referer: `${imageOrigin}/`,
     },
     cache: "no-store",
     redirect: "follow",

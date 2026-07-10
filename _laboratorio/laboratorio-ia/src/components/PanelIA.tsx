@@ -404,6 +404,42 @@ type OneOfficialNewsApiResponse =
       items?: OneOfficialNewsItem[];
       error?: string;
     };
+type FekmOfficialNewsItem = {
+  id: string;
+  title: string;
+  summary?: string;
+  bodyText?: string;
+  sourceUrl: string;
+  canonicalUrl: string;
+  publishedAt?: string;
+  imageUrl?: string;
+  author?: string;
+  tags?: string[];
+  inferredDiscipline?: "kickboxing" | "muay_thai" | "mixed";
+};
+
+type FekmNewsBatchPreparationItem = {
+  sourceId: string;
+  title: string;
+  status: "pendiente" | "procesando" | "completado" | "fallido";
+  message: string;
+};
+
+type FekmNewsBatchItem = {
+  sourceId: string;
+  title: string;
+  canonicalUrl: string;
+  publishedAt?: string;
+  status: "existente" | "nueva_apta" | "sin_contenido" | "requiere_revision";
+  existingSanityId?: string;
+  existingTitle?: string;
+  matchStrategy?: "fuenteId" | "fuenteUrl" | "titulo";
+  reasons: string[];
+};
+
+type FekmNewsBatchResolveApiResponse =
+  | { ok: true; count: number; summary: { existing: number; ready: number; withoutContent: number; requiresReview: number }; items: FekmNewsBatchItem[] }
+  | { ok: false; error?: string };
 
 type OfficialSourceStatus =
   | {
@@ -1362,6 +1398,31 @@ function getOneNewsDisciplineOption(
   );
 }
 
+function createFekmEditorialInstructions(item: FekmOfficialNewsItem): string {
+  return [
+    "Reescribe la información en español con estilo periodístico propio de Full Fight News.",
+    "No copies literalmente el comunicado oficial ni reproduzcas párrafos extensos.",
+    "Conserva nombres, fechas, resultados, sedes y datos verificables sin inventar información.",
+    "Atribuye la información a la Federación Española de Kickboxing y Muaythai cuando corresponda.",
+    "Distingue Kickboxing y Muay Thai por el contexto real; no uses MMA por defecto.",
+    `Fuente oficial: ${item.canonicalUrl || item.sourceUrl}`,
+  ].join("\n");
+}
+
+function inferFekmNewsDisciplineLabel(item: FekmOfficialNewsItem): string {
+  if (item.inferredDiscipline === "muay_thai") return "Muay Thai";
+  if (item.inferredDiscipline === "kickboxing") return "Kickboxing";
+  const searchText = [item.title, item.summary, item.bodyText, ...(item.tags || [])]
+    .filter(Boolean).join(" ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/muay thai|muaythai|thai boxing/.test(searchText)) return "Muay Thai";
+  return "Kickboxing";
+}
+
+function getFekmNewsDisciplineOption(item: FekmOfficialNewsItem, referenceData: Record<ReferenceTarget, ReferenceEntityOption[]>): ReferenceEntityOption | undefined {
+  const inferredLabel = inferFekmNewsDisciplineLabel(item);
+  return findReferenceByLabel(referenceData.disciplina, inferredLabel) || findReferenceByLabel(referenceData.disciplina, "Kickboxing") || findReferenceByLabel(referenceData.disciplina, "Muay Thai");
+}
+
 function createEventEditorialInstructions(item: UfcOfficialEventItem): string {
   return [
     "Redacta una ficha de evento en español con estilo editorial propio de Full Fight News.",
@@ -1972,6 +2033,20 @@ export default function PanelIA(): ReactElement {
   const [showAllOneNewsBatchItems, setShowAllOneNewsBatchItems] =
     useState(false);
 
+  const [fekmNewsItems, setFekmNewsItems] = useState<FekmOfficialNewsItem[]>([]);
+  const [selectedFekmNewsId, setSelectedFekmNewsId] = useState("");
+  const [isLoadingFekmNews, setIsLoadingFekmNews] = useState(false);
+  const [isTransformingFekmNews, setIsTransformingFekmNews] = useState(false);
+  const [fekmNewsFetchedAt, setFekmNewsFetchedAt] = useState("");
+  const [fekmNewsStatus, setFekmNewsStatus] = useState<OfficialSourceStatus>({ type: "idle", message: "" });
+  const [fekmNewsRelationsResolution, setFekmNewsRelationsResolution] = useState<NewsRelationsResolution | null>(null);
+  const [fekmNewsBatchAnalysis, setFekmNewsBatchAnalysis] = useState<FekmNewsBatchResolveApiResponse | null>(null);
+  const [isAnalyzingFekmNewsBatch, setIsAnalyzingFekmNewsBatch] = useState(false);
+  const [fekmNewsBatchStatus, setFekmNewsBatchStatus] = useState<OfficialSourceStatus>({ type: "idle", message: "" });
+  const [isPreparingFekmNewsBatch, setIsPreparingFekmNewsBatch] = useState(false);
+  const [fekmNewsBatchPreparation, setFekmNewsBatchPreparation] = useState<FekmNewsBatchPreparationItem[]>([]);
+  const [showAllFekmNewsBatchItems, setShowAllFekmNewsBatchItems] = useState(false);
+
   const [selectedExternalSourceId, setSelectedExternalSourceId] =
     useState<ExternalSourceId>(DEFAULT_EXTERNAL_NEWS_SOURCE_ID);
   const [externalNewsItems, setExternalNewsItems] = useState<ExternalNewsItem[]>([]);
@@ -2112,6 +2187,11 @@ export default function PanelIA(): ReactElement {
   const selectedOneNews = useMemo(
     () => oneNewsItems.find((item) => item.id === selectedOneNewsId) ?? null,
     [oneNewsItems, selectedOneNewsId]
+  );
+
+  const selectedFekmNews = useMemo(
+    () => fekmNewsItems.find((item) => item.id === selectedFekmNewsId) ?? null,
+    [fekmNewsItems, selectedFekmNewsId]
   );
 
   const selectedExternalNewsSource = useMemo(
@@ -5083,6 +5163,662 @@ export default function PanelIA(): ReactElement {
     referenceData,
     resetDerivedUiState,
     selectedOneNews,
+  ]);
+
+  const reloadOfficialFekmNews = useCallback(async (): Promise<void> => {
+    try {
+      setIsLoadingFekmNews(true);
+      setFekmNewsStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/fekm/news?refresh=${Date.now()}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        }
+      );
+
+      const payload = (await response.json()) as OneOfficialNewsApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron cargar las noticias oficiales de FEKM."
+        );
+      }
+
+      setFekmNewsItems(payload.items);
+      setFekmNewsFetchedAt(payload.fetchedAt);
+      setFekmNewsRelationsResolution(null);
+      setFekmNewsBatchAnalysis(null);
+      setFekmNewsBatchPreparation([]);
+      setShowAllFekmNewsBatchItems(false);
+      setFekmNewsBatchStatus({
+        type: "idle",
+        message: "",
+      });
+      setSelectedFekmNewsId((currentId) =>
+        payload.items.some((item) => item.id === currentId) ? currentId : ""
+      );
+
+      setFekmNewsStatus({
+        type: "success",
+        message: `${payload.count} noticias oficiales de FEKM cargadas.`,
+      });
+    } catch (error) {
+      setFekmNewsItems([]);
+      setSelectedFekmNewsId("");
+      setFekmNewsFetchedAt("");
+      setFekmNewsStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido cargando las noticias oficiales de FEKM.",
+      });
+    } finally {
+      setIsLoadingFekmNews(false);
+    }
+  }, []);
+
+  const analyzeOfficialFekmNews = useCallback(async (): Promise<void> => {
+    if (fekmNewsItems.length === 0) {
+      setFekmNewsBatchStatus({
+        type: "error",
+        message: "Carga primero las noticias oficiales de FEKM.",
+      });
+      return;
+    }
+
+    try {
+      setIsAnalyzingFekmNewsBatch(true);
+      setFekmNewsBatchStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/sources/fekm/news/batch-resolve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            items: fekmNewsItems,
+          }),
+        }
+      );
+
+      const payload =
+        (await response.json()) as FekmNewsBatchResolveApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudieron analizar las noticias oficiales de FEKM."
+        );
+      }
+
+      setFekmNewsBatchAnalysis(payload);
+      setFekmNewsBatchStatus({
+        type: "success",
+        message: `${payload.count} noticias analizadas: ${payload.summary.existing} existentes, ${payload.summary.ready} nuevas aptas, ${payload.summary.withoutContent} sin contenido suficiente y ${payload.summary.requiresReview} para revisión.`,
+      });
+    } catch (error) {
+      setFekmNewsBatchAnalysis(null);
+      setFekmNewsBatchStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido analizando noticias FEKM.",
+      });
+    } finally {
+      setIsAnalyzingFekmNewsBatch(false);
+    }
+  }, [fekmNewsItems]);
+
+  const updateFekmNewsBatchPreparationItem = useCallback(
+    (
+      sourceId: string,
+      changes: Partial<FekmNewsBatchPreparationItem>
+    ): void => {
+      setFekmNewsBatchPreparation((current) =>
+        current.map((item) =>
+          item.sourceId === sourceId ? { ...item, ...changes } : item
+        )
+      );
+    },
+    []
+  );
+
+  const prepareAllEligibleFekmNews =
+    useCallback(async (): Promise<void> => {
+      if (!fekmNewsBatchAnalysis?.ok) {
+        setFekmNewsBatchStatus({
+          type: "error",
+          message:
+            "Analiza primero las noticias oficiales FEKM antes de preparar el lote.",
+        });
+        return;
+      }
+
+      const eligibleAnalysisItems = fekmNewsBatchAnalysis.items.filter(
+        (item) => item.status === "nueva_apta"
+      );
+
+      const eligibleNews = eligibleAnalysisItems
+        .map((analysisItem) => {
+          const sourceItem = fekmNewsItems.find(
+            (item) => item.id === analysisItem.sourceId
+          );
+
+          return sourceItem
+            ? {
+                analysis: analysisItem,
+                sourceItem,
+              }
+            : null;
+        })
+        .filter(
+          (
+            item
+          ): item is {
+            analysis: FekmNewsBatchItem;
+            sourceItem: OneOfficialNewsItem;
+          } => item !== null
+        );
+
+      const confirmed = window.confirm(
+        `Se prepararán ${eligibleNews.length} noticias nuevas FEKM como borradores en Sanity. Las noticias existentes o inseguras se excluirán. ¿Continuar?`
+      );
+
+      if (!confirmed) {
+        setFekmNewsBatchStatus({
+          type: "idle",
+          message: "",
+        });
+        return;
+      }
+
+      if (eligibleNews.length === 0) {
+        setFekmNewsBatchStatus({
+          type: "error",
+          message:
+            "No hay noticias FEKM nuevas aptas. Las existentes, incompletas o inseguras se excluyen automáticamente.",
+        });
+        return;
+      }
+
+      setFekmNewsBatchPreparation(
+        eligibleNews.map(({ sourceItem }) => ({
+          sourceId: sourceItem.id,
+          title: sourceItem.title,
+          status: "pendiente",
+          message: "En espera.",
+        }))
+      );
+      setIsPreparingFekmNewsBatch(true);
+
+      let completed = 0;
+      let failed = 0;
+
+      try {
+        for (let index = 0; index < eligibleNews.length; index += 1) {
+          const { sourceItem } = eligibleNews[index];
+
+          updateFekmNewsBatchPreparationItem(sourceItem.id, {
+            status: "procesando",
+            message: `Noticia ${index + 1} de ${eligibleNews.length}: transformando al español...`,
+          });
+
+          try {
+            const transformResponse = await fetch(
+              `${API_BASE_URL}/api/transformar-noticia-fekm`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Accept: "application/json",
+                },
+                body: JSON.stringify({
+                  title: sourceItem.title,
+                  summary: sourceItem.summary,
+                  bodyText: sourceItem.bodyText,
+                  sourceUrl:
+                    sourceItem.canonicalUrl || sourceItem.sourceUrl,
+                }),
+              }
+            );
+
+            const transformPayload =
+              (await transformResponse.json()) as TransformNewsApiResponse;
+
+            if (!transformResponse.ok || !transformPayload.ok) {
+              throw new Error(
+                !transformPayload.ok && transformPayload.error
+                  ? transformPayload.error
+                  : "No se pudo transformar la noticia FEKM al español."
+              );
+            }
+
+            updateFekmNewsBatchPreparationItem(sourceItem.id, {
+              message: "Resolviendo relaciones editoriales reales...",
+            });
+
+            const relationResolution = resolveSuggestedNewsRelations({
+              suggestions: transformPayload.data.relacionesSugeridas,
+              referenceData,
+            });
+
+            const oneDisciplineOption = getFekmNewsDisciplineOption(
+              sourceItem,
+              referenceData
+            );
+            const oneOption = findReferenceByLabel(
+              referenceData.organizacion,
+              "FEKM"
+            );
+
+            const initialState = getInitialFormState("noticia");
+            const batchForm: ContentFormState = {
+              ...initialState.form,
+              titulo: transformPayload.data.titulo,
+              extracto: transformPayload.data.extracto,
+              contenido: transformPayload.data.contenido,
+              fechaPublicacion:
+                getRequiredPublicationDateTimeLocalValue(sourceItem.publishedAt),
+              imagenPrincipal: sourceItem.imageUrl,
+              disciplina: relationResolution.resolved.disciplina
+                ? toReferenceValue(
+                    relationResolution.resolved.disciplina.value
+                  )
+                : oneDisciplineOption
+                ? toReferenceValue(oneDisciplineOption.value)
+                : undefined,
+              organizacionRelacionada:
+                relationResolution.resolved.organizacion
+                  ? toReferenceValue(
+                      relationResolution.resolved.organizacion.value
+                    )
+                  : oneOption
+                  ? toReferenceValue(oneOption.value)
+                  : undefined,
+              eventoRelacionado: relationResolution.resolved.evento
+                ? toReferenceValue(
+                    relationResolution.resolved.evento.value
+                  )
+                : undefined,
+              luchadoresRelacionados:
+                relationResolution.resolved.luchadores.map((fighter) =>
+                  toReferenceValue(fighter.value)
+                ),
+              fuente: "one",
+              fuenteUrl:
+                sourceItem.canonicalUrl || sourceItem.sourceUrl,
+              fuenteId: sourceItem.id,
+              destacada: false,
+            };
+
+            updateFekmNewsBatchPreparationItem(sourceItem.id, {
+              message: "Generando documento y validando campos...",
+            });
+
+            const buildResult = buildContentOutput({
+              contentType: "noticia",
+              form: batchForm,
+              auxiliary: initialState.auxiliary,
+            });
+
+            if (!buildResult.ok || !buildResult.output) {
+              const errors = buildResult.issues
+                .filter((issue) => issue.severity === "error")
+                .map((issue) => issue.message)
+                .join(" · ");
+
+              throw new Error(
+                errors || "El builder bloqueó el documento de noticia FEKM."
+              );
+            }
+
+            updateFekmNewsBatchPreparationItem(sourceItem.id, {
+              message: "Importando imagen y guardando borrador en Sanity...",
+            });
+
+            await saveDraft({
+              contentType: "noticia",
+              document: buildResult.output as Record<string, unknown>,
+            });
+
+            completed += 1;
+            updateFekmNewsBatchPreparationItem(sourceItem.id, {
+              status: "completado",
+              message: `${
+                relationResolution.resolved.luchadores.length
+              } luchadores, ${
+                relationResolution.resolved.evento ? 1 : 0
+              } evento y trazabilidad FEKM guardados.`,
+            });
+          } catch (error) {
+            failed += 1;
+            updateFekmNewsBatchPreparationItem(sourceItem.id, {
+              status: "fallido",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Error desconocido preparando esta noticia FEKM.",
+            });
+          }
+        }
+
+        await reloadReferenceEntities();
+        await analyzeOfficialFekmNews();
+
+        setFekmNewsBatchStatus({
+          type: failed === 0 ? "success" : "error",
+          message:
+            failed === 0
+              ? `Preparación masiva FEKM completada: ${completed} noticias guardadas como borrador.`
+              : `Preparación masiva FEKM terminada: ${completed} noticias completadas y ${failed} fallidas.`,
+        });
+      } catch (error) {
+        setFekmNewsBatchStatus({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Error desconocido durante la preparación masiva de noticias FEKM.",
+        });
+      } finally {
+        setIsPreparingFekmNewsBatch(false);
+      }
+    }, [
+      analyzeOfficialFekmNews,
+      fekmNewsBatchAnalysis,
+      fekmNewsItems,
+      referenceData,
+      reloadReferenceEntities,
+      updateFekmNewsBatchPreparationItem,
+    ]);
+
+  const applyFekmNewsToForm = useCallback((): void => {
+    if (!selectedFekmNews) {
+      setFekmNewsStatus({
+        type: "error",
+        message: "Selecciona primero una noticia oficial de FEKM.",
+      });
+      return;
+    }
+
+    if (contentType !== "noticia") {
+      setFekmNewsStatus({
+        type: "error",
+        message: "Selecciona el tipo de contenido Noticia antes de pasar la fuente al formulario.",
+      });
+      return;
+    }
+
+    const oneDisciplineOption = getFekmNewsDisciplineOption(selectedFekmNews, referenceData);
+    const oneOption = findReferenceByLabel(referenceData.organizacion, "FEKM");
+    const officialSummary =
+      selectedFekmNews.summary?.trim() ||
+      createSourceExtract(selectedFekmNews as unknown as UfcOfficialNewsItem) ||
+      selectedFekmNews.title;
+    const officialBody =
+      selectedFekmNews.bodyText?.trim() ||
+      selectedFekmNews.summary?.trim() ||
+      selectedFekmNews.title;
+    const publicationDate = getRequiredPublicationDateTimeLocalValue(selectedFekmNews.publishedAt);
+
+    setFekmNewsRelationsResolution(null);
+    resetDerivedUiState();
+
+    setForm((currentForm) => {
+      const nextForm: ContentFormState = {
+        ...currentForm,
+        titulo: selectedFekmNews.title,
+        extracto: createSourceExtract(selectedFekmNews as unknown as UfcOfficialNewsItem),
+        contenido: officialBody,
+        fuente: "one",
+        fuenteUrl:
+          selectedFekmNews.canonicalUrl || selectedFekmNews.sourceUrl,
+        fuenteId: selectedFekmNews.id,
+        destacada: false,
+      };
+
+      if (publicationDate) {
+        nextForm.fechaPublicacion = publicationDate;
+      }
+
+      if (selectedFekmNews.imageUrl) {
+        nextForm.imagenPrincipal = selectedFekmNews.imageUrl;
+      }
+
+      if (oneDisciplineOption) {
+        nextForm.disciplina = toReferenceValue(oneDisciplineOption.value);
+      }
+
+      if (oneOption) {
+        nextForm.organizacionRelacionada = toReferenceValue(oneOption.value);
+      }
+
+      return clearInvalidDependentReferences(nextForm, auxiliary, referenceData);
+    });
+
+    setAuxiliary((currentAuxiliary) => ({
+      ...currentAuxiliary,
+      anguloEditorial:
+        "Reescritura informativa en español a partir de una fuente oficial de FEKM, con enfoque propio de Full Fight News.",
+      hechoPrincipal: officialSummary,
+      contextoPrevio: officialBody,
+      tono: "informativo, directo y periodístico",
+      seoObjetivo: selectedFekmNews.title,
+      instruccionesRedaccion: createFekmEditorialInstructions(selectedFekmNews),
+    }));
+
+    const missingRelations: string[] = [];
+
+    if (!oneDisciplineOption) {
+      missingRelations.push(inferFekmNewsDisciplineLabel(selectedFekmNews));
+    }
+
+    if (!oneOption) {
+      missingRelations.push("FEKM");
+    }
+
+    setFekmNewsStatus({
+      type: "success",
+      message:
+        missingRelations.length === 0
+          ? "Noticia oficial FEKM cargada y mapeada: contenido, relaciones y trazabilidad listas para generar el output."
+          : `Noticia FEKM cargada. Revisa manualmente estas referencias no encontradas en Sanity: ${missingRelations.join(
+              ", "
+            )}.`,
+    });
+  }, [
+    auxiliary,
+    contentType,
+    referenceData,
+    resetDerivedUiState,
+    selectedFekmNews,
+  ]);
+
+  const transformFekmNewsToSpanish = useCallback(async (): Promise<void> => {
+    if (!selectedFekmNews) {
+      setFekmNewsStatus({
+        type: "error",
+        message: "Selecciona primero una noticia oficial de FEKM.",
+      });
+      return;
+    }
+
+    if (contentType !== "noticia") {
+      setFekmNewsStatus({
+        type: "error",
+        message:
+          "Selecciona el tipo de contenido Noticia antes de transformar la fuente.",
+      });
+      return;
+    }
+
+    try {
+      setIsTransformingFekmNews(true);
+      setFekmNewsStatus({
+        type: "idle",
+        message: "",
+      });
+
+      const response = await fetch(`${API_BASE_URL}/api/transformar-noticia-fekm`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          title: selectedFekmNews.title,
+          summary: selectedFekmNews.summary,
+          bodyText: selectedFekmNews.bodyText,
+          sourceUrl:
+            selectedFekmNews.canonicalUrl || selectedFekmNews.sourceUrl,
+        }),
+      });
+
+      const payload = (await response.json()) as TransformNewsApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && payload.error
+            ? payload.error
+            : "No se pudo transformar la noticia FEKM al español."
+        );
+      }
+
+      const oneDisciplineOption = getFekmNewsDisciplineOption(selectedFekmNews, referenceData);
+      const oneOption = findReferenceByLabel(referenceData.organizacion, "FEKM");
+      const publicationDate = getRequiredPublicationDateTimeLocalValue(selectedFekmNews.publishedAt);
+      const relationResolution = resolveSuggestedNewsRelations({
+        suggestions: payload.data.relacionesSugeridas,
+        referenceData,
+      });
+
+      setFekmNewsRelationsResolution(relationResolution);
+      resetDerivedUiState();
+
+      setForm((currentForm) => {
+        const nextForm: ContentFormState = {
+          ...currentForm,
+          titulo: payload.data.titulo,
+          extracto: payload.data.extracto,
+          contenido: payload.data.contenido,
+          fuente: "one",
+          fuenteUrl:
+            selectedFekmNews.canonicalUrl ||
+            selectedFekmNews.sourceUrl,
+          fuenteId: selectedFekmNews.id,
+          destacada: false,
+        };
+
+        if (publicationDate) {
+          nextForm.fechaPublicacion = publicationDate;
+        }
+
+        if (selectedFekmNews.imageUrl) {
+          nextForm.imagenPrincipal = selectedFekmNews.imageUrl;
+        }
+
+        if (relationResolution.resolved.disciplina) {
+          nextForm.disciplina = toReferenceValue(
+            relationResolution.resolved.disciplina.value
+          );
+        } else if (oneDisciplineOption) {
+          nextForm.disciplina = toReferenceValue(oneDisciplineOption.value);
+        }
+
+        if (relationResolution.resolved.organizacion) {
+          nextForm.organizacionRelacionada = toReferenceValue(
+            relationResolution.resolved.organizacion.value
+          );
+        } else if (oneOption) {
+          nextForm.organizacionRelacionada = toReferenceValue(oneOption.value);
+        }
+
+        if (relationResolution.resolved.evento) {
+          nextForm.eventoRelacionado = toReferenceValue(
+            relationResolution.resolved.evento.value
+          );
+        } else {
+          nextForm.eventoRelacionado = undefined;
+        }
+
+        nextForm.luchadoresRelacionados =
+          relationResolution.resolved.luchadores.map((fighter) =>
+            toReferenceValue(fighter.value)
+          );
+
+        return clearInvalidDependentReferences(
+          nextForm,
+          auxiliary,
+          referenceData
+        );
+      });
+
+      setAuxiliary((currentAuxiliary) => ({
+        ...currentAuxiliary,
+        anguloEditorial:
+          "Noticia reescrita en español desde una fuente oficial de FEKM con enfoque propio de Full Fight News.",
+        hechoPrincipal: payload.data.extracto,
+        contextoPrevio:
+          selectedFekmNews.bodyText?.trim() ||
+          selectedFekmNews.summary?.trim() ||
+          selectedFekmNews.title,
+        tono: "informativo, directo y periodístico",
+        seoObjetivo: payload.data.titulo,
+        instruccionesRedaccion: createFekmEditorialInstructions(selectedFekmNews),
+      }));
+
+      const unresolvedCount =
+        relationResolution.unresolved.luchadores.length +
+        (relationResolution.unresolved.evento ? 1 : 0) +
+        (relationResolution.unresolved.organizacion ? 1 : 0) +
+        (relationResolution.unresolved.disciplina ? 1 : 0);
+
+      const resolvedRelationCount =
+        relationResolution.resolved.luchadores.length +
+        (relationResolution.resolved.evento ? 1 : 0) +
+        (relationResolution.resolved.organizacion ? 1 : 0) +
+        (relationResolution.resolved.disciplina ? 1 : 0);
+
+      setFekmNewsStatus({
+        type: "success",
+        message:
+          unresolvedCount === 0
+            ? `Noticia FEKM transformada y relacionada automáticamente: ${resolvedRelationCount} referencias reales resueltas y trazabilidad añadida.`
+            : `Noticia FEKM transformada: ${resolvedRelationCount} referencias resueltas, ${unresolvedCount} sugerencias pendientes y trazabilidad añadida.`,
+      });
+    } catch (error) {
+      setFekmNewsStatus({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido transformando la noticia FEKM al español.",
+      });
+    } finally {
+      setIsTransformingFekmNews(false);
+    }
+  }, [
+    auxiliary,
+    contentType,
+    referenceData,
+    resetDerivedUiState,
+    selectedFekmNews,
   ]);
 
   const reloadOfficialUfcEvents = useCallback(async (): Promise<void> => {
@@ -9795,6 +10531,514 @@ export default function PanelIA(): ReactElement {
             ) : (
               <p style={styles.emptyText}>
                 Pulsa “Cargar noticias ONE” para consultar la fuente oficial.
+              </p>
+            )}
+          </section>
+        ) : null}
+
+        {contentType === "noticia" ? (
+          <section style={styles.sourceCard}>
+            <div style={styles.sourceHeader}>
+              <div>
+                <p style={styles.sourceEyebrow}>Cuarto conector oficial</p>
+                <h2 style={styles.sectionTitle}>Bandeja de noticias FEKM</h2>
+                <p style={styles.metaText}>
+                  Selecciona una noticia oficial de FEKM, pásala al formulario,
+                  transfórmala al español y guárdala como borrador con
+                  trazabilidad real.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void reloadOfficialFekmNews();
+                }}
+                style={
+                  isLoadingFekmNews
+                    ? styles.buttonDisabled
+                    : styles.secondaryButton
+                }
+                disabled={isLoadingFekmNews || isPreparingFekmNewsBatch}
+              >
+                {isLoadingFekmNews
+                  ? "Actualizando FEKM..."
+                  : fekmNewsItems.length > 0
+                  ? "Actualizar noticias FEKM"
+                  : "Cargar noticias FEKM"}
+              </button>
+            </div>
+
+            {fekmNewsStatus.type !== "idle" ? (
+              <div
+                style={
+                  fekmNewsStatus.type === "success"
+                    ? styles.feedbackSuccess
+                    : styles.feedbackError
+                }
+              >
+                {fekmNewsStatus.message}
+              </div>
+            ) : null}
+
+            {fekmNewsFetchedAt ? (
+              <p style={styles.sourceTimestamp}>
+                Última consulta: {" "}
+                {new Date(fekmNewsFetchedAt).toLocaleString("es-ES")}
+              </p>
+            ) : null}
+
+            {fekmNewsItems.length > 0 ? (
+              <div style={styles.batchCard}>
+                <div style={styles.batchHeader}>
+                  <div>
+                    <p style={styles.sourceEyebrow}>Análisis masivo</p>
+                    <h3 style={styles.batchTitle}>Noticias oficiales FEKM</h3>
+                    <p style={styles.metaText}>
+                      Comprueba duplicados, noticias aptas y contenido que
+                      requiere revisión antes de transformar.
+                    </p>
+                  </div>
+
+                  <div style={styles.batchHeaderActions}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void analyzeOfficialFekmNews();
+                      }}
+                      style={
+                        isAnalyzingFekmNewsBatch || isPreparingFekmNewsBatch
+                          ? styles.buttonDisabled
+                          : styles.secondaryButton
+                      }
+                      disabled={
+                        isAnalyzingFekmNewsBatch || isPreparingFekmNewsBatch
+                      }
+                    >
+                      {isAnalyzingFekmNewsBatch
+                        ? "Analizando noticias..."
+                        : "Analizar noticias FEKM"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void prepareAllEligibleFekmNews();
+                      }}
+                      style={
+                        isPreparingFekmNewsBatch ||
+                        !fekmNewsBatchAnalysis?.ok ||
+                        fekmNewsBatchAnalysis.summary.ready === 0
+                          ? styles.buttonDisabled
+                          : styles.button
+                      }
+                      disabled={
+                        isPreparingFekmNewsBatch ||
+                        isAnalyzingFekmNewsBatch ||
+                        !fekmNewsBatchAnalysis?.ok ||
+                        fekmNewsBatchAnalysis.summary.ready === 0
+                      }
+                    >
+                      {isPreparingFekmNewsBatch
+                        ? "Preparando noticias nuevas..."
+                        : `Preparar ${fekmNewsBatchAnalysis?.ok ? fekmNewsBatchAnalysis.summary.ready : 0} nuevas aptas`}
+                    </button>
+                  </div>
+                </div>
+
+                {fekmNewsBatchStatus.type !== "idle" ? (
+                  <div
+                    aria-live="polite"
+                    style={
+                      fekmNewsBatchStatus.type === "success"
+                        ? styles.feedbackSuccess
+                        : styles.feedbackError
+                    }
+                  >
+                    {fekmNewsBatchStatus.message}
+                  </div>
+                ) : null}
+
+                {fekmNewsBatchPreparation.length > 0 ? (
+                  <div style={styles.batchProgressList}>
+                    {fekmNewsBatchPreparation.map((item) => (
+                      <div key={item.sourceId} style={styles.batchProgressItem}>
+                        <div style={styles.batchProgressText}>
+                          <strong>{item.title}</strong>
+                          <span style={styles.batchItemMeta}>{item.message}</span>
+                        </div>
+
+                        <span
+                          style={
+                            item.status === "completado"
+                              ? styles.batchStatusOk
+                              : item.status === "fallido"
+                              ? styles.batchStatusError
+                              : styles.batchStatusPending
+                          }
+                        >
+                          {item.status === "pendiente"
+                            ? "Pendiente"
+                            : item.status === "procesando"
+                            ? "Procesando"
+                            : item.status === "completado"
+                            ? "Completado"
+                            : "Fallido"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {fekmNewsBatchAnalysis?.ok ? (
+                  <>
+                    <div style={styles.batchSummaryGrid}>
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>Ya existen</span>
+                        <strong>{fekmNewsBatchAnalysis.summary.existing}</strong>
+                      </div>
+
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>Nuevas aptas</span>
+                        <strong>{fekmNewsBatchAnalysis.summary.ready}</strong>
+                      </div>
+
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>Sin contenido</span>
+                        <strong>{fekmNewsBatchAnalysis.summary.withoutContent}</strong>
+                      </div>
+
+                      <div style={styles.automationStat}>
+                        <span style={styles.automationStatLabel}>Requieren revisión</span>
+                        <strong>{fekmNewsBatchAnalysis.summary.requiresReview}</strong>
+                      </div>
+                    </div>
+
+                    <div style={styles.batchList}>
+                      {(showAllFekmNewsBatchItems
+                        ? fekmNewsBatchAnalysis.items
+                        : fekmNewsBatchAnalysis.items.slice(0, 6)
+                      ).map((item) => {
+                        const sourceItem = fekmNewsItems.find(
+                          (newsItem) => newsItem.id === item.sourceId
+                        );
+
+                        return (
+                          <div key={item.sourceId} style={styles.batchItem}>
+                            <div style={styles.batchItemMain}>
+                              <strong>{item.title}</strong>
+                              <span style={styles.batchItemMeta}>
+                                {item.status === "existente"
+                                  ? "Ya existe en Sanity"
+                                  : item.status === "nueva_apta"
+                                  ? "Nueva y apta para transformar"
+                                  : item.status === "sin_contenido"
+                                  ? "Sin contenido suficiente"
+                                  : "Requiere revisión"}
+                                {item.matchStrategy
+                                  ? ` · coincidencia por ${item.matchStrategy}`
+                                  : ""}
+                              </span>
+
+                              {item.reasons.length > 0 ? (
+                                <span style={styles.batchError}>
+                                  {item.reasons.join(" · ")}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div style={styles.batchItemActions}>
+                              <span
+                                style={
+                                  item.status === "existente"
+                                    ? styles.batchStatusOk
+                                    : item.status === "nueva_apta"
+                                    ? styles.batchStatusPending
+                                    : styles.batchStatusError
+                                }
+                              >
+                                {item.status === "existente"
+                                  ? "Existente"
+                                  : item.status === "nueva_apta"
+                                  ? "Nueva apta"
+                                  : item.status === "sin_contenido"
+                                  ? "Sin contenido"
+                                  : "Revisar"}
+                              </span>
+
+                              {sourceItem ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedFekmNewsId(sourceItem.id);
+                                    setFekmNewsRelationsResolution(null);
+                                    setFekmNewsStatus({
+                                      type: "idle",
+                                      message: "",
+                                    });
+                                  }}
+                                  style={
+                                    isPreparingFekmNewsBatch
+                                      ? styles.buttonDisabled
+                                      : styles.secondaryButton
+                                  }
+                                  disabled={isPreparingFekmNewsBatch}
+                                >
+                                  Seleccionar
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {fekmNewsBatchAnalysis.items.length > 6 ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowAllFekmNewsBatchItems((current) => !current)
+                        }
+                        style={styles.tertiaryButton}
+                      >
+                        {showAllFekmNewsBatchItems
+                          ? "Mostrar menos noticias"
+                          : `Ver las ${fekmNewsBatchAnalysis.items.length} noticias FEKM analizadas`}
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            {fekmNewsItems.length > 0 ? (
+              <div style={styles.sourceLayout}>
+                <div style={styles.sourceList}>
+                  {fekmNewsItems.map((item) => {
+                    const isSelected = item.id === selectedFekmNewsId;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedFekmNewsId(item.id);
+                          setFekmNewsRelationsResolution(null);
+                          setFekmNewsStatus({
+                            type: "idle",
+                            message: "",
+                          });
+                        }}
+                        style={
+                          isSelected
+                            ? styles.sourceItemSelected
+                            : styles.sourceItem
+                        }
+                      >
+                        <span style={styles.sourceItemTitle}>{item.title}</span>
+
+                        {item.summary ? (
+                          <span style={styles.sourceItemSummary}>
+                            {item.summary}
+                          </span>
+                        ) : null}
+
+                        <span style={styles.sourceItemMeta}>
+                          {item.publishedAt
+                            ? new Date(item.publishedAt).toLocaleString("es-ES")
+                            : "Fecha no disponible"}
+                          {" · "}
+                          {item.bodyText
+                            ? "Contenido completo"
+                            : "Sin cuerpo completo"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={styles.sourcePreview}>
+                  {selectedFekmNews ? (
+                    <>
+                      {selectedFekmNews.imageUrl ? (
+                        <img
+                          src={selectedFekmNews.imageUrl}
+                          alt=""
+                          style={styles.sourceImage}
+                        />
+                      ) : null}
+
+                      <div style={styles.sourcePreviewContent}>
+                        <p style={styles.sourceEyebrow}>Noticia FEKM seleccionada</p>
+                        <h3 style={styles.sourcePreviewTitle}>
+                          {selectedFekmNews.title}
+                        </h3>
+
+                        {selectedFekmNews.summary ? (
+                          <p style={styles.sourcePreviewSummary}>
+                            {selectedFekmNews.summary}
+                          </p>
+                        ) : null}
+
+                        <div style={styles.sourcePreviewActions}>
+                          <button
+                            type="button"
+                            onClick={applyFekmNewsToForm}
+                            style={styles.button}
+                            disabled={isTransformingFekmNews}
+                          >
+                            Pasar al formulario
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void transformFekmNewsToSpanish();
+                            }}
+                            style={
+                              isTransformingFekmNews
+                                ? styles.buttonDisabled
+                                : styles.secondaryButton
+                            }
+                            disabled={isTransformingFekmNews}
+                          >
+                            {isTransformingFekmNews
+                              ? "Transformando..."
+                              : "Transformar a español"}
+                          </button>
+
+                          <a
+                            href={selectedFekmNews.canonicalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={styles.sourceLink}
+                          >
+                            Abrir fuente oficial
+                          </a>
+                        </div>
+
+                        {fekmNewsRelationsResolution ? (
+                          <div style={styles.newsRelationsCard}>
+                            <div style={styles.newsRelationsHeader}>
+                              <div>
+                                <p style={styles.sourceEyebrow}>
+                                  Relaciones editoriales sugeridas
+                                </p>
+                                <strong>
+                                  Coincidencias reales encontradas en Sanity
+                                </strong>
+                              </div>
+
+                              <span
+                                style={
+                                  fekmNewsRelationsResolution.unresolved.luchadores
+                                    .length > 0 ||
+                                  fekmNewsRelationsResolution.unresolved.evento ||
+                                  fekmNewsRelationsResolution.unresolved
+                                    .organizacion ||
+                                  fekmNewsRelationsResolution.unresolved.disciplina
+                                    ? styles.batchStatusPending
+                                    : styles.batchStatusOk
+                                }
+                              >
+                                {fekmNewsRelationsResolution.unresolved.luchadores
+                                  .length > 0 ||
+                                fekmNewsRelationsResolution.unresolved.evento ||
+                                fekmNewsRelationsResolution.unresolved
+                                  .organizacion ||
+                                fekmNewsRelationsResolution.unresolved.disciplina
+                                  ? "Revisión parcial"
+                                  : "Todo resuelto"}
+                              </span>
+                            </div>
+
+                            <div style={styles.newsRelationsGrid}>
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.automationStatLabel}>
+                                  Disciplina
+                                </span>
+                                <strong>
+                                  {fekmNewsRelationsResolution.resolved.disciplina
+                                    ?.label ||
+                                    fekmNewsRelationsResolution.unresolved
+                                      .disciplina ||
+                                    "Sin sugerencia"}
+                                </strong>
+                              </div>
+
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.automationStatLabel}>
+                                  Organización
+                                </span>
+                                <strong>
+                                  {fekmNewsRelationsResolution.resolved.organizacion
+                                    ?.label ||
+                                    fekmNewsRelationsResolution.unresolved
+                                      .organizacion ||
+                                    "Sin sugerencia"}
+                                </strong>
+                              </div>
+
+                              <div style={styles.newsRelationGroup}>
+                                <span style={styles.automationStatLabel}>
+                                  Evento
+                                </span>
+                                <strong>
+                                  {fekmNewsRelationsResolution.resolved.evento
+                                    ?.label ||
+                                    fekmNewsRelationsResolution.unresolved.evento ||
+                                    "Sin evento claro"}
+                                </strong>
+                              </div>
+                            </div>
+
+                            <div style={styles.newsRelationGroup}>
+                              <span style={styles.automationStatLabel}>
+                                Luchadores resueltos
+                              </span>
+                              <span style={styles.newsRelationTags}>
+                                {fekmNewsRelationsResolution.resolved.luchadores
+                                  .length > 0
+                                  ? fekmNewsRelationsResolution.resolved.luchadores
+                                      .map((fighter) => fighter.label)
+                                      .join(" · ")
+                                  : "Ninguno"}
+                              </span>
+                            </div>
+
+                            {fekmNewsRelationsResolution.unresolved.luchadores
+                              .length > 0 ? (
+                              <div style={styles.newsRelationWarning}>
+                                Sin coincidencia exacta en Sanity: {" "}
+                                {fekmNewsRelationsResolution.unresolved.luchadores.join(
+                                  " · "
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        <p style={styles.sourceBodyPreview}>
+                          {selectedFekmNews.bodyText
+                            ? `${selectedFekmNews.bodyText.slice(0, 900)}${
+                                selectedFekmNews.bodyText.length > 900
+                                  ? "..."
+                                  : ""
+                              }`
+                            : "Esta noticia FEKM no contiene un cuerpo completo fiable. Se usará el resumen disponible y podrás completar el contenido manualmente."}
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <p style={styles.emptyText}>
+                      Selecciona una noticia FEKM de la bandeja para revisar sus datos.
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p style={styles.emptyText}>
+                Pulsa “Cargar noticias FEKM” para consultar la fuente oficial.
               </p>
             )}
           </section>
