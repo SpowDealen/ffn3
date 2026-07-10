@@ -121,7 +121,7 @@ export type SourceDraftProposal = {
   output: Record<string, unknown>;
 };
 
-export const EXTERNAL_SOURCE_IDS = ["marca", "as", "eurosport", "espabox"] as const;
+export const EXTERNAL_SOURCE_IDS = ["marca", "as", "eurosport", "espabox", "mundodeportivo"] as const;
 
 export type ExternalSourceId = (typeof EXTERNAL_SOURCE_IDS)[number];
 

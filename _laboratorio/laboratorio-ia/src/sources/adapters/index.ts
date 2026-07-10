@@ -2,6 +2,7 @@ import { asAdapter } from "./asAdapter";
 import { marcaAdapter } from "./marcaAdapter";
 import { eurosportAdapter } from "./eurosportAdapter";
 import { espaboxAdapter } from "./espaboxAdapter";
+import { mundoDeportivoAdapter } from "./mundodeportivoAdapter";
 import type {
   ExternalNewsAdapter,
   ExternalSourceId,
@@ -15,6 +16,7 @@ export const externalNewsAdapters: Record<
   "as": asAdapter,
   eurosport: eurosportAdapter,
   espabox: espaboxAdapter,
+  mundodeportivo: mundoDeportivoAdapter,
 };
 
 export function getExternalNewsAdapter(
@@ -23,4 +25,10 @@ export function getExternalNewsAdapter(
   return externalNewsAdapters[source];
 }
 
-export { asAdapter, espaboxAdapter, eurosportAdapter, marcaAdapter };
+export {
+  asAdapter,
+  espaboxAdapter,
+  eurosportAdapter,
+  marcaAdapter,
+  mundoDeportivoAdapter,
+};

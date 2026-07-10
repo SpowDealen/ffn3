@@ -106,6 +106,15 @@ export const EXTERNAL_NEWS_SOURCES: ExternalNewsSourceDefinition[] = [
     kind: "medio_externo",
     refreshIntervalSeconds: 300,
   },
+  {
+    id: "mundodeportivo",
+    name: "Mundo Deportivo",
+    baseUrl: "https://www.mundodeportivo.com",
+    enabled: true,
+    language: "es",
+    kind: "medio_externo",
+    refreshIntervalSeconds: 300,
+  },
 ];
 
 export function getOfficialSource(
