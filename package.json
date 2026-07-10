@@ -22,7 +22,8 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "sanity": "^5.17.1",
-    "styled-components": "^6.3.11"
+    "styled-components": "^6.3.11",
+    "unpdf": "^1.6.2"
   },
   "devDependencies": {
     "@sanity/cli": "^6.1.7",
