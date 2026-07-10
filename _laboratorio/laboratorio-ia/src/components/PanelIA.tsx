@@ -787,6 +787,51 @@ type OneEventResolutionSuccess = Extract<
   { ok: true }
 >;
 
+
+
+type FekmOfficialEventItem = {
+  id: string;
+  name: string;
+  startDate?: string;
+  endDate?: string;
+  timeText?: string;
+  venue?: string;
+  city?: string;
+  region?: string;
+  country?: string;
+  locationText?: string;
+  description?: string;
+  sourceUrl: string;
+  canonicalUrl: string;
+  imageUrl?: string;
+  status: "proximo" | "celebrado" | "cancelado";
+  discipline?: "kickboxing" | "muay_thai" | "mixed";
+  disciplineLabel?: string;
+  category?: string;
+  scope?: "nacional" | "internacional" | "autonomico" | "otro";
+};
+
+type FekmOfficialEventsApiResponse =
+  | { ok: true; source: "fekm"; fetchedAt: string; count: number; items: FekmOfficialEventItem[] }
+  | { ok: false; source?: "fekm"; fetchedAt?: string; count?: number; items?: FekmOfficialEventItem[]; error?: string };
+
+type FekmEventResolution =
+  | {
+      ok: true;
+      source: "fekm";
+      event: FekmOfficialEventItem;
+      resolution: {
+        readyToCreate: boolean;
+        existing: boolean;
+        existingEvent: { _id: string; nombre?: string; fecha?: string; confidence: number } | null;
+        discipline: { _id: string; nombre?: string; slug?: { current?: string } } | null;
+        organization: { _id: string; nombre?: string; slug?: { current?: string } } | null;
+        blockingReasons: string[];
+        warnings: string[];
+      };
+    }
+  | { ok: false; error?: string };
+
 type TransformEventApiResponse =
   | {
       ok: true;
@@ -2162,6 +2207,18 @@ export default function PanelIA(): ReactElement {
   const [isPreparingFullOneCard, setIsPreparingFullOneCard] =
     useState(false);
 
+
+
+  const [fekmEventItems, setFekmEventItems] = useState<FekmOfficialEventItem[]>([]);
+  const [selectedFekmEventId, setSelectedFekmEventId] = useState("");
+  const [isLoadingFekmEvents, setIsLoadingFekmEvents] = useState(false);
+  const [fekmEventsFetchedAt, setFekmEventsFetchedAt] = useState("");
+  const [fekmEventStatus, setFekmEventStatus] = useState<OfficialSourceStatus>({ type: "idle", message: "" });
+  const [fekmEventResolution, setFekmEventResolution] = useState<FekmEventResolution | null>(null);
+  const [isResolvingFekmEvent, setIsResolvingFekmEvent] = useState(false);
+  const [isCreatingFekmOrganization, setIsCreatingFekmOrganization] = useState(false);
+  const [isCreatingFekmEvent, setIsCreatingFekmEvent] = useState(false);
+
   const [isLoadingReferences, setIsLoadingReferences] = useState(false);
   const [referenceLoadError, setReferenceLoadError] = useState("");
 
@@ -2284,6 +2341,19 @@ export default function PanelIA(): ReactElement {
     isCreatingBkfcFighters ||
     isCreatingBkfcFights ||
     isPreparingFullBkfcCard;
+
+
+
+  const selectedFekmEvent = useMemo(
+    () => fekmEventItems.find((item) => item.id === selectedFekmEventId) ?? null,
+    [fekmEventItems, selectedFekmEventId]
+  );
+
+  const isFekmEventBusy =
+    isLoadingFekmEvents ||
+    isResolvingFekmEvent ||
+    isCreatingFekmOrganization ||
+    isCreatingFekmEvent;
 
   const selectedOneEvent = useMemo(
     () =>
@@ -7097,6 +7167,98 @@ export default function PanelIA(): ReactElement {
     resetDerivedUiState,
     selectedBkfcEvent,
   ]);
+
+
+  const reloadOfficialFekmEvents = useCallback(async (): Promise<void> => {
+    try {
+      setIsLoadingFekmEvents(true);
+      setFekmEventStatus({ type: "idle", message: "" });
+      const response = await fetch(`${API_BASE_URL}/api/sources/fekm/events?refresh=${Date.now()}`, { method: "GET", cache: "no-store" });
+      const payload = (await response.json()) as FekmOfficialEventsApiResponse;
+      if (!response.ok || !payload.ok) {
+        throw new Error(!payload.ok && payload.error ? payload.error : "No se pudieron cargar los eventos FEKM.");
+      }
+      setFekmEventItems(payload.items);
+      setFekmEventsFetchedAt(payload.fetchedAt);
+      setFekmEventResolution(null);
+      setSelectedFekmEventId((current) => payload.items.some((item) => item.id === current) ? current : "");
+      setFekmEventStatus({ type: "success", message: `${payload.count} eventos FEKM cargados.` });
+    } catch (error) {
+      setFekmEventItems([]);
+      setSelectedFekmEventId("");
+      setFekmEventsFetchedAt("");
+      setFekmEventResolution(null);
+      setFekmEventStatus({ type: "error", message: error instanceof Error ? error.message : "Error cargando eventos FEKM." });
+    } finally {
+      setIsLoadingFekmEvents(false);
+    }
+  }, []);
+
+  const resolveSelectedFekmEvent = useCallback(async (): Promise<FekmEventResolution | null> => {
+    if (!selectedFekmEvent) {
+      setFekmEventStatus({ type: "error", message: "Selecciona primero un evento FEKM." });
+      return null;
+    }
+    try {
+      setIsResolvingFekmEvent(true);
+      const response = await fetch(`${API_BASE_URL}/api/sources/fekm/events/resolve`, {
+        method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ event: selectedFekmEvent })
+      });
+      const payload = (await response.json()) as FekmEventResolution;
+      if (!response.ok || !payload.ok) throw new Error(!payload.ok && payload.error ? payload.error : "No se pudo resolver el evento FEKM.");
+      setFekmEventResolution(payload);
+      setFekmEventStatus({ type: "success", message: payload.resolution.existing ? "El evento ya existe en Sanity." : payload.resolution.readyToCreate ? "Evento listo para crear." : "Evento analizado; revisa los bloqueos." });
+      return payload;
+    } catch (error) {
+      setFekmEventResolution(null);
+      setFekmEventStatus({ type: "error", message: error instanceof Error ? error.message : "Error resolviendo evento FEKM." });
+      return null;
+    } finally { setIsResolvingFekmEvent(false); }
+  }, [selectedFekmEvent]);
+
+  const createFekmOrganization = useCallback(async (): Promise<void> => {
+    try {
+      setIsCreatingFekmOrganization(true);
+      const response = await fetch(`${API_BASE_URL}/api/sources/fekm/events/create-organization`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: true }) });
+      const payload = (await response.json()) as { ok?: boolean; error?: string; message?: string };
+      if (!response.ok || payload.ok !== true) throw new Error(payload.error || "No se pudo crear FEKM.");
+      await reloadReferenceEntities();
+      setFekmEventStatus({ type: "success", message: payload.message || "FEKM creada como borrador." });
+      if (selectedFekmEvent) await resolveSelectedFekmEvent();
+    } catch (error) {
+      setFekmEventStatus({ type: "error", message: error instanceof Error ? error.message : "Error creando FEKM." });
+    } finally { setIsCreatingFekmOrganization(false); }
+  }, [reloadReferenceEntities, resolveSelectedFekmEvent, selectedFekmEvent]);
+
+  const createSelectedFekmEvent = useCallback(async (): Promise<void> => {
+    if (!selectedFekmEvent) { setFekmEventStatus({ type: "error", message: "Selecciona primero un evento FEKM." }); return; }
+    try {
+      setIsCreatingFekmEvent(true);
+      const response = await fetch(`${API_BASE_URL}/api/sources/fekm/events/create-event`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: true, event: selectedFekmEvent }) });
+      const payload = (await response.json()) as { ok?: boolean; error?: string; message?: string };
+      if (!response.ok || payload.ok !== true) throw new Error(payload.error || "No se pudo crear el evento FEKM.");
+      await reloadReferenceEntities();
+      await resolveSelectedFekmEvent();
+      setFekmEventStatus({ type: "success", message: payload.message || "Evento FEKM guardado como borrador." });
+    } catch (error) {
+      setFekmEventStatus({ type: "error", message: error instanceof Error ? error.message : "Error creando evento FEKM." });
+    } finally { setIsCreatingFekmEvent(false); }
+  }, [reloadReferenceEntities, resolveSelectedFekmEvent, selectedFekmEvent]);
+
+  const applySelectedFekmEventToForm = useCallback((): void => {
+    if (!selectedFekmEvent) { setFekmEventStatus({ type: "error", message: "Selecciona primero un evento FEKM." }); return; }
+    if (contentType !== "evento") { setFekmEventStatus({ type: "error", message: "Selecciona el tipo de contenido Evento." }); return; }
+    const disciplineOption = findReferenceByLabel(referenceData.disciplina, selectedFekmEvent.disciplineLabel || "") || findReferenceByLabel(referenceData.disciplina, selectedFekmEvent.discipline === "muay_thai" ? "Muay Thai" : "Kick boxing");
+    const organizationOption = findReferenceByLabel(referenceData.organizacion, "FEKM") || findReferenceByLabel(referenceData.organizacion, "Federación Española de Kickboxing y Muaythai");
+    resetDerivedUiState();
+    setForm((current) => {
+      const next: ContentFormState = { ...current, nombre: selectedFekmEvent.name, fecha: toDateTimeLocalValue(selectedFekmEvent.startDate), horaLocal: selectedFekmEvent.timeText?.split("-")[0]?.trim() || "", ciudad: selectedFekmEvent.city || "", pais: selectedFekmEvent.country || (selectedFekmEvent.scope === "nacional" ? "España" : ""), recinto: selectedFekmEvent.venue || "", descripcionCorta: selectedFekmEvent.description || `Evento oficial FEKM de ${selectedFekmEvent.disciplineLabel || "deportes de combate"}.`, descripcion: selectedFekmEvent.description || `Evento oficial organizado por la Federación Española de Kickboxing y Muaythai. Fuente: ${selectedFekmEvent.canonicalUrl}`, notas: `Fuente oficial FEKM: ${selectedFekmEvent.canonicalUrl}`, estado: selectedFekmEvent.status };
+      if (disciplineOption) next.disciplina = toReferenceValue(disciplineOption.value);
+      if (organizationOption) next.organizacion = toReferenceValue(organizationOption.value);
+      return clearInvalidDependentReferences(next, auxiliary, referenceData);
+    });
+    setFekmEventStatus({ type: "success", message: organizationOption ? "Evento FEKM cargado en el formulario." : "Evento cargado. Crea o selecciona FEKM como organización." });
+  }, [auxiliary, contentType, referenceData, resetDerivedUiState, selectedFekmEvent]);
 
   const reloadOfficialOneEvents = useCallback(async (): Promise<void> => {
     try {
@@ -12705,6 +12867,48 @@ export default function PanelIA(): ReactElement {
         ) : null}
 
         {contentType === "evento" ? (
+          <>
+          <section style={styles.sourceCard}>
+            <div style={styles.sourceHeader}>
+              <div>
+                <p style={styles.sourceEyebrow}>Fuente oficial FEKM</p>
+                <h2 style={styles.sectionTitle}>Eventos y calendario FEKM</h2>
+                <p style={styles.metaText}>Carga el calendario oficial, resuelve disciplinas y crea la organización FEKM y sus eventos como borradores controlados.</p>
+              </div>
+              <button type="button" onClick={() => { void reloadOfficialFekmEvents(); }} style={isLoadingFekmEvents ? styles.buttonDisabled : styles.secondaryButton} disabled={isFekmEventBusy}>
+                {isLoadingFekmEvents ? "Actualizando..." : fekmEventItems.length ? "Actualizar eventos FEKM" : "Cargar eventos FEKM"}
+              </button>
+            </div>
+            {fekmEventsFetchedAt ? <p style={styles.metaText}>Última lectura: {new Date(fekmEventsFetchedAt).toLocaleString("es-ES")}</p> : null}
+            {fekmEventStatus.type !== "idle" ? <div style={fekmEventStatus.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{fekmEventStatus.message}</div> : null}
+            {fekmEventItems.length > 0 ? <div style={styles.sourceLayout}>
+              <div style={styles.sourceList}>
+                {fekmEventItems.map((item) => <button key={item.id} type="button" onClick={() => { setSelectedFekmEventId(item.id); setFekmEventResolution(null); setFekmEventStatus({ type: "idle", message: "" }); }} style={item.id === selectedFekmEventId ? styles.sourceItemSelected : styles.sourceItem}>
+                  <span style={styles.sourceItemTitle}>{item.name}</span>
+                  <span style={styles.sourceItemMeta}>{item.startDate ? new Date(item.startDate).toLocaleString("es-ES") : "Sin fecha"} · {item.disciplineLabel || item.discipline || "Disciplina por revisar"} · {item.status}</span>
+                </button>)}
+              </div>
+              <div style={styles.sourcePreview}>
+                {selectedFekmEvent ? <div style={styles.sourcePreviewContent}>
+                  <p style={styles.sourceEyebrow}>Evento FEKM seleccionado</p>
+                  <h3 style={styles.sourcePreviewTitle}>{selectedFekmEvent.name}</h3>
+                  <p style={styles.sourcePreviewSummary}>{[selectedFekmEvent.locationText, selectedFekmEvent.category, selectedFekmEvent.scope].filter(Boolean).join(" · ")}</p>
+                  <div style={styles.sourcePreviewActions}>
+                    <button type="button" onClick={applySelectedFekmEventToForm} style={styles.secondaryButton} disabled={isFekmEventBusy}>Pasar al formulario</button>
+                    <button type="button" onClick={() => { void resolveSelectedFekmEvent(); }} style={isResolvingFekmEvent ? styles.buttonDisabled : styles.secondaryButton} disabled={isFekmEventBusy}>{isResolvingFekmEvent ? "Analizando..." : "Analizar evento"}</button>
+                    {!fekmEventResolution?.ok || !fekmEventResolution.resolution.organization ? <button type="button" onClick={() => { void createFekmOrganization(); }} style={isCreatingFekmOrganization ? styles.buttonDisabled : styles.secondaryButton} disabled={isFekmEventBusy}>{isCreatingFekmOrganization ? "Creando FEKM..." : "Crear organización FEKM"}</button> : null}
+                    <button type="button" onClick={() => { void createSelectedFekmEvent(); }} style={isCreatingFekmEvent ? styles.buttonDisabled : styles.button} disabled={isFekmEventBusy || Boolean(fekmEventResolution?.ok && fekmEventResolution.resolution.existing)}>{isCreatingFekmEvent ? "Creando evento..." : fekmEventResolution?.ok && fekmEventResolution.resolution.existing ? "Evento ya creado" : "Crear evento en Sanity"}</button>
+                    <a href={selectedFekmEvent.canonicalUrl} target="_blank" rel="noreferrer" style={styles.sourceLink}>Abrir fuente oficial</a>
+                  </div>
+                  {fekmEventResolution?.ok ? <div style={styles.automationCard}>
+                    <p style={styles.metaText}>Disciplina: {fekmEventResolution.resolution.discipline?.nombre || "No resuelta"} · Organización: {fekmEventResolution.resolution.organization?.nombre || "No creada"} · {fekmEventResolution.resolution.existing ? "Duplicado detectado" : fekmEventResolution.resolution.readyToCreate ? "Listo para crear" : "Revisión necesaria"}</p>
+                    {fekmEventResolution.resolution.warnings.length ? <p style={styles.metaText}>Avisos: {fekmEventResolution.resolution.warnings.join(" · ")}</p> : null}
+                  </div> : null}
+                </div> : <p style={styles.metaText}>Selecciona un evento FEKM para revisar sus datos.</p>}
+              </div>
+            </div> : null}
+          </section>
+
           <section style={styles.sourceCard}>
             <div style={styles.sourceHeader}>
               <div>
@@ -13108,6 +13312,7 @@ export default function PanelIA(): ReactElement {
               </p>
             )}
           </section>
+          </>
         ) : null}
 
         <div style={styles.grid}>
