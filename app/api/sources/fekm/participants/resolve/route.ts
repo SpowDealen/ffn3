@@ -27,10 +27,13 @@ type Confidence = "alta" | "media" | "baja"
 
 type SourceParticipant = {
   id?: string
+  athleteId?: string
   name?: string
   federationCode?: string
   rank?: number
   discipline?: DisciplineKey
+  eventCode?: string
+  modality?: string
   disciplineLabel?: string
   categoryLabel?: string
   weightLabel?: string
@@ -54,6 +57,10 @@ type ReferenceDoc = {
 type CategoryDoc = ReferenceDoc & {
   limitePeso?: number
   unidad?: "kg" | "lb"
+  tipoLimite?: "hasta" | "mas_de" | "exacto"
+  modalidad?: string
+  grupoEdad?: AgeGroup
+  sexo?: GenderKey
   disciplina?: {_ref?: string} | null
 }
 
@@ -214,66 +221,240 @@ function resolveProbableFighter(
     .sort((left, right) => right.similarity - left.similarity)[0]?.fighter
 }
 
+function normalizeModality(value: string): string {
+  const normalized = normalize(value)
+
+  if (
+    normalized.includes("k 1l") ||
+    normalized.includes("k1 light") ||
+    normalized.includes("k 1 light")
+  ) {
+    return "k 1 light"
+  }
+
+  if (
+    normalized.includes("kick light") ||
+    /\bkl\b/.test(normalized)
+  ) {
+    return "kick light"
+  }
+
+  if (
+    normalized.includes("light contact") ||
+    /\blc\b/.test(normalized)
+  ) {
+    return "light contact"
+  }
+
+  if (
+    normalized.includes("point fighting") ||
+    /\bpf\b/.test(normalized)
+  ) {
+    return "point fighting"
+  }
+
+  if (
+    normalized.includes("creative forms") ||
+    /\bcf\b/.test(normalized)
+  ) {
+    return "creative forms"
+  }
+
+  return normalized
+}
+
+function modalityLabel(value: string): string {
+  const modality = normalizeModality(value)
+
+  if (modality === "k 1 light") return "K-1 Light"
+  if (modality === "kick light") return "Kick Light"
+  if (modality === "light contact") return "Light Contact"
+  if (modality === "point fighting") return "Point Fighting"
+  if (modality === "creative forms") return "Creative Forms"
+
+  return value.trim()
+}
+
+function participantBoundary(
+  participant: SourceParticipant,
+): "hasta" | "mas_de" | "exacto" {
+  const raw =
+    `${participant.weightLabel ?? ""} ${participant.categoryLabel ?? ""}`
+
+  if (/\+\s*\d/.test(raw) || /más de|mas de|over|>/i.test(raw)) {
+    return "mas_de"
+  }
+
+  if (/-\s*\d/.test(raw) || /hasta|under|</i.test(raw)) {
+    return "hasta"
+  }
+
+  return "exacto"
+}
+
+function boundaryLabel(
+  boundary: "hasta" | "mas_de" | "exacto",
+): string {
+  if (boundary === "mas_de") return "Más de"
+  if (boundary === "hasta") return "Hasta"
+  return "Peso exacto"
+}
+
+function formatKg(value: number): string {
+  return Number.isInteger(value)
+    ? String(value)
+    : String(value).replace(".", ",")
+}
+
+function slugify(value: string): string {
+  return stripDiacritics(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
+
+function categoryModality(doc: CategoryDoc): string {
+  return normalizeModality(
+    doc.modalidad ??
+      doc.nombre ??
+      doc.slug?.current ??
+      "",
+  )
+}
+
+function categoryBoundary(
+  doc: CategoryDoc,
+): "hasta" | "mas_de" | "exacto" {
+  if (doc.tipoLimite) return doc.tipoLimite
+
+  const value = normalize(
+    `${doc.nombre ?? ""} ${doc.slug?.current ?? ""}`,
+  )
+
+  if (
+    value.includes("mas de") ||
+    value.includes("more than")
+  ) {
+    return "mas_de"
+  }
+
+  if (
+    value.includes("peso exacto") ||
+    value.includes("exact")
+  ) {
+    return "exacto"
+  }
+
+  return "hasta"
+}
+
+function categoryGender(doc: CategoryDoc): GenderKey | undefined {
+  if (doc.sexo) return doc.sexo
+
+  const value = normalize(
+    `${doc.nombre ?? ""} ${doc.slug?.current ?? ""}`,
+  )
+
+  if (value.includes("femenino")) return "femenino"
+  if (value.includes("masculino")) return "masculino"
+  if (value.includes("mixto")) return "mixto"
+
+  return undefined
+}
+
+function categoryAgeGroup(doc: CategoryDoc): AgeGroup | undefined {
+  if (doc.grupoEdad) return doc.grupoEdad
+
+  const value = normalize(
+    `${doc.nombre ?? ""} ${doc.slug?.current ?? ""}`,
+  )
+
+  const ageGroups: AgeGroup[] = [
+    "veterano",
+    "senior",
+    "junior",
+    "juvenil",
+    "cadete",
+    "infantil",
+  ]
+
+  return ageGroups.find((ageGroup) =>
+    value.includes(normalize(ageGroup)),
+  )
+}
+
 function resolveCategory(
   categories: CategoryDoc[],
   participant: SourceParticipant,
   disciplineId?: string,
 ): CategoryDoc | undefined {
-  const relevant = categories.filter((doc) => {
-    return (
-      !disciplineId ||
-      baseId(doc.disciplina?._ref ?? "") === baseId(disciplineId)
-    )
-  })
-
-  const label = normalize(
-    participant.categoryLabel ?? participant.weightLabel ?? "",
-  )
   const limit = participant.limitKg
+
+  if (typeof limit !== "number" || !Number.isFinite(limit)) {
+    return undefined
+  }
+
   const gender =
     participant.gender && participant.gender !== "otro"
-      ? normalize(participant.gender)
+      ? participant.gender
       : undefined
   const ageGroup =
     participant.ageGroup && participant.ageGroup !== "otro"
-      ? normalize(participant.ageGroup)
+      ? participant.ageGroup
       : undefined
+  const boundary = participantBoundary(participant)
+  const rawModality =
+    participant.modality ??
+    participant.eventCode ??
+    participant.categoryLabel ??
+    ""
+  const modality = normalizeModality(rawModality)
+  const readableModality = modalityLabel(rawModality)
 
-  const structural = relevant.find((doc) => {
+  if (!gender || !ageGroup || !modality) {
+    return undefined
+  }
+
+  const canonicalName =
+    `${readableModality} · ${ageGroup} · ${gender} · ` +
+    `${boundaryLabel(boundary)} ${formatKg(limit)} kg`
+  const canonicalSlug = slugify(
+    `${canonicalName}-kickboxing`,
+  )
+
+  const relevant = categories.filter((doc) => {
+    if (!disciplineId) return true
+
+    return (
+      baseId(doc.disciplina?._ref ?? "") ===
+      baseId(disciplineId)
+    )
+  })
+
+  const exact = relevant.find((doc) => {
+    const sameName =
+      normalize(doc.nombre ?? "") === normalize(canonicalName)
+    const sameSlug =
+      slugify(doc.slug?.current ?? "") === canonicalSlug
+
+    return sameName || sameSlug
+  })
+
+  if (exact) return exact
+
+  return relevant.find((doc) => {
     const sameUnit = !doc.unidad || doc.unidad === "kg"
     const sameLimit =
-      typeof limit === "number" &&
       typeof doc.limitePeso === "number" &&
       Math.abs(doc.limitePeso - limit) < 0.001
 
     if (!sameUnit || !sameLimit) return false
-
-    const name = normalize(doc.nombre ?? "")
-    if (gender && !name.includes(gender)) return false
-    if (ageGroup && !name.includes(ageGroup)) return false
+    if (categoryBoundary(doc) !== boundary) return false
+    if (categoryModality(doc) !== modality) return false
+    if (categoryGender(doc) !== gender) return false
+    if (categoryAgeGroup(doc) !== ageGroup) return false
 
     return true
-  })
-
-  if (structural) return structural
-
-  return relevant.find((doc) => {
-    const name = normalize(doc.nombre ?? "")
-    if (label && (name === label || name.includes(label) || label.includes(name))) {
-      return true
-    }
-
-    if (typeof limit === "number") {
-      const normalizedLimit = String(limit).replace(".", "[.,]")
-      if (!new RegExp(`\\b${normalizedLimit}(?:[.,]0)?\\b`).test(name)) {
-        return false
-      }
-    }
-
-    if (gender && !name.includes(gender)) return false
-    if (ageGroup && !name.includes(ageGroup)) return false
-
-    return typeof limit === "number"
   })
 }
 
@@ -318,7 +499,7 @@ export async function POST(request: Request) {
           `*[_type == "organizacion"]{_id,nombre,slug}`,
         ),
         sanityClient.fetch<CategoryDoc[]>(
-          `*[_type == "categoriaPeso"]{_id,nombre,slug,limitePeso,unidad,disciplina}`,
+          `*[_type == "categoriaPeso"]{_id,nombre,slug,limitePeso,unidad,tipoLimite,modalidad,grupoEdad,sexo,disciplina}`,
         ),
         sanityClient.fetch<FighterDoc[]>(
           `*[_type == "luchador"]{_id,nombre,slug,disciplina,organizacion,categoriaPeso}`,

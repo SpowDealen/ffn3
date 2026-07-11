@@ -23,6 +23,8 @@ type ExtractRequest = {
 
 type Participant = {
   id: string;
+  athleteId?: string;
+  eventCode?: string;
   name: string;
   federationCode?: string;
   rank?: number;
@@ -297,6 +299,166 @@ function extractParticipantsFromCategory(
   }
 
   return Array.from(found.values());
+}
+
+
+const EVENT_ROW_PATTERN =
+  /^(?:([A-Z]{3})\s+)?(\d{5,8})\s*([MF])\s*(.+?)\s*(0[1-4]B?\s+(?:PF|LC|KL|K-1L|CF))\s+(\d{3})\s+(CH|YC|OC|J)\s+([MF])\s+([+-]\s*\d{1,3}(?:[.,]\d+)?\s*[Kk][Gg]|HS)$/u;
+
+const AGE_CODE_MAP: Record<string, AgeGroup> = {
+  CH: "infantil",
+  YC: "cadete",
+  OC: "cadete",
+  J: "junior",
+};
+
+const EVENT_LABEL_MAP: Record<string, string> = {
+  "01 PF": "Point Fighting",
+  "02 LC": "Light Contact",
+  "03 KL": "Kick Light",
+  "03B K-1L": "K-1 Light",
+  "04 CF": "Creative Forms",
+};
+
+function normalizeEntryLine(value: string): string {
+  return value
+    .replace(/\u0340/g, " ")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
+
+function genderFromCode(value: string): Gender {
+  return value === "F" ? "femenino" : value === "M" ? "masculino" : "otro";
+}
+
+function normalizeEventCode(value: string): string {
+  return normalizeWhitespace(value).toUpperCase();
+}
+
+function categoryLabelFromEntry(
+  eventCode: string,
+  ageCode: string,
+  gender: Gender,
+  weightLabel?: string,
+): string {
+  const modality = EVENT_LABEL_MAP[eventCode] ?? eventCode;
+  const ageGroup = AGE_CODE_MAP[ageCode] ?? "otro";
+  const parts = [modality];
+  if (ageGroup !== "otro") parts.push(ageGroup);
+  if (gender !== "otro") parts.push(gender);
+  if (weightLabel) parts.push(weightLabel);
+  return parts.join(" · ");
+}
+
+function extractEntryParticipantsFromPage(
+  pageText: string,
+  documentTitle: string,
+  pdfUrl: string,
+  discipline: ReturnType<typeof inferDiscipline>,
+): Participant[] {
+  const lines = String(pageText ?? "")
+    .split(/\r?\n/)
+    .map(normalizeEntryLine)
+    .filter(Boolean);
+
+  if (!lines.some((line) => line.includes("ENTRIES BY NATIONAL FEDERATION"))) {
+    return [];
+  }
+
+  const participants: Participant[] = [];
+  let currentFederation: string | undefined;
+
+  for (const line of lines) {
+    const match = line.match(EVENT_ROW_PATTERN);
+    if (!match) continue;
+
+    const [
+      ,
+      federationMatch,
+      athleteId,
+      sex,
+      nameMatch,
+      eventCodeMatch,
+      _eventId,
+      ageCode,
+      categorySex,
+      weightMatch,
+    ] = match;
+
+    const federationRaw = federationMatch?.trim();
+    if (federationRaw) currentFederation = federationRaw;
+
+    const name = cleanName(nameMatch);
+    const eventCode = normalizeEventCode(eventCodeMatch);
+    const gender = genderFromCode(categorySex || sex);
+    const weightRaw = normalizeWhitespace(weightMatch).replace(/\s+/g, " ");
+    const weight = weightRaw.toUpperCase() === "HS" ? {} : parseWeight(weightRaw);
+
+    if (!isPlausibleName(name)) continue;
+
+    const categoryLabel = categoryLabelFromEntry(
+      eventCode,
+      ageCode,
+      gender,
+      weight.weightLabel ?? (weightRaw.toUpperCase() === "HS" ? "HS" : undefined),
+    );
+
+    participants.push({
+      id: `fekm-athlete-${athleteId}`,
+      athleteId,
+      eventCode,
+      name,
+      federationCode: normalizeFederation(currentFederation ?? ""),
+      discipline: discipline.key,
+      disciplineLabel: discipline.label,
+      categoryLabel,
+      weightLabel: weight.weightLabel,
+      limitKg: weight.limitKg,
+      gender,
+      ageGroup: AGE_CODE_MAP[ageCode] ?? "otro",
+      confidence: "alta",
+      sourceDocumentTitle: documentTitle,
+      sourcePdfUrl: pdfUrl,
+    });
+  }
+
+  return participants;
+}
+
+function deduplicateEntryParticipants(participants: Participant[]): Participant[] {
+  const unique = new Map<string, Participant>();
+
+  for (const participant of participants) {
+    const key = participant.athleteId
+      ? `id:${participant.athleteId}`
+      : `name:${normalizeForComparison(participant.name)}`;
+    const current = unique.get(key);
+
+    if (!current) {
+      unique.set(key, participant);
+      continue;
+    }
+
+    const sameCategory =
+      normalizeForComparison(current.categoryLabel) ===
+      normalizeForComparison(participant.categoryLabel);
+
+    if (!sameCategory) {
+      current.confidence = "media";
+      current.reviewRequired = true;
+      current.warnings = Array.from(
+        new Set([
+          ...(current.warnings ?? []),
+          "deportista_inscrito_en_varias_modalidades_o_categorias",
+        ]),
+      );
+    }
+  }
+
+  return Array.from(unique.values()).sort((a, b) =>
+    a.name.localeCompare(b.name, "es"),
+  );
 }
 
 function levenshteinDistance(a: string, b: string): number {
@@ -602,6 +764,17 @@ export async function POST(request: Request) {
 
     const discipline = inferDiscipline(title);
 
+    const entryParticipants = deduplicateEntryParticipants(
+      pages.flatMap((pageText) =>
+        extractEntryParticipantsFromPage(
+          String(pageText ?? ""),
+          title,
+          pdfUrl,
+          discipline,
+        ),
+      ),
+    );
+
     const pageResults = pages.flatMap((pageText, pageIndex) => {
       const normalizedPage = normalizeWhitespace(pageText);
       const pageCategories = findCategories(normalizedPage);
@@ -624,9 +797,12 @@ export async function POST(request: Request) {
       page: result.page,
     }));
 
-    const participants = deduplicateParticipants(
+    const legacyParticipants = deduplicateParticipants(
       pageResults.flatMap((result) => result.participants),
     );
+
+    const participants =
+      entryParticipants.length > 0 ? entryParticipants : legacyParticipants;
 
     return NextResponse.json({
       ok: true,
@@ -646,7 +822,10 @@ export async function POST(request: Request) {
         reviewRequired: participants.filter(
           (participant) => participant.reviewRequired === true,
         ).length,
-        extractionMode: "page_scoped_participants_review_safe_v2",
+        extractionMode:
+          entryParticipants.length > 0
+            ? "sportdata_entrylist_by_athlete_id_v3"
+            : "page_scoped_participants_review_safe_v2",
       },
       categories: categories.map((category) => ({
         page: category.page,

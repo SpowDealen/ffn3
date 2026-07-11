@@ -18,8 +18,11 @@ type Confidence = "alta" | "media" | "baja"
 
 type SourceParticipant = {
   id?: string
+  athleteId?: string
   name?: string
   federationCode?: string
+  eventCode?: string
+  modality?: string
   discipline?: DisciplineKey
   disciplineLabel?: string
   categoryLabel?: string
@@ -50,6 +53,10 @@ type CategoryDoc = ReferenceDoc & {
   limitePeso?: number
   unidad?: "kg" | "lb"
   disciplina?: {_ref?: string} | null
+  modalidad?: string
+  tipoLimite?: "hasta" | "mas_de" | "exacto"
+  sexo?: GenderKey
+  grupoEdad?: AgeGroup
 }
 
 type FighterDoc = ReferenceDoc & {
@@ -246,45 +253,224 @@ function resolveProbableFighter(
     .sort((left, right) => right.similarity - left.similarity)[0]?.fighter
 }
 
+function normalizeModality(value: string): string {
+  const normalized = normalize(value)
+
+  if (
+    normalized.includes("k 1l") ||
+    normalized.includes("k1 light") ||
+    normalized.includes("k 1 light")
+  ) {
+    return "k 1 light"
+  }
+
+  if (
+    normalized.includes("kick light") ||
+    /\bkl\b/.test(normalized)
+  ) {
+    return "kick light"
+  }
+
+  if (
+    normalized.includes("light contact") ||
+    /\blc\b/.test(normalized)
+  ) {
+    return "light contact"
+  }
+
+  if (
+    normalized.includes("point fighting") ||
+    /\bpf\b/.test(normalized)
+  ) {
+    return "point fighting"
+  }
+
+  if (
+    normalized.includes("creative forms") ||
+    /\bcf\b/.test(normalized)
+  ) {
+    return "creative forms"
+  }
+
+  return normalized
+}
+
+function modalityLabel(value: string): string {
+  const modality = normalizeModality(value)
+
+  if (modality === "k 1 light") return "K-1 Light"
+  if (modality === "kick light") return "Kick Light"
+  if (modality === "light contact") return "Light Contact"
+  if (modality === "point fighting") return "Point Fighting"
+  if (modality === "creative forms") return "Creative Forms"
+
+  return value.trim()
+}
+
+function participantBoundary(
+  participant: SourceParticipant,
+): "hasta" | "mas_de" | "exacto" {
+  const raw =
+    `${participant.weightLabel ?? ""} ${participant.categoryLabel ?? ""}`
+
+  if (/\+\s*\d/.test(raw) || /más de|mas de|over|>/i.test(raw)) {
+    return "mas_de"
+  }
+
+  if (/-\s*\d/.test(raw) || /hasta|under|</i.test(raw)) {
+    return "hasta"
+  }
+
+  return "exacto"
+}
+
+function boundaryLabel(
+  boundary: "hasta" | "mas_de" | "exacto",
+): string {
+  if (boundary === "mas_de") return "Más de"
+  if (boundary === "hasta") return "Hasta"
+  return "Peso exacto"
+}
+
+function formatKg(value: number): string {
+  return Number.isInteger(value)
+    ? String(value)
+    : String(value).replace(".", ",")
+}
+
+function categoryModality(doc: CategoryDoc): string {
+  return normalizeModality(
+    doc.modalidad ??
+      doc.nombre ??
+      doc.slug?.current ??
+      "",
+  )
+}
+
+function categoryBoundary(
+  doc: CategoryDoc,
+): "hasta" | "mas_de" | "exacto" {
+  if (doc.tipoLimite) return doc.tipoLimite
+
+  const value = normalize(
+    `${doc.nombre ?? ""} ${doc.slug?.current ?? ""}`,
+  )
+
+  if (value.includes("mas de")) return "mas_de"
+  if (value.includes("peso exacto")) return "exacto"
+
+  return "hasta"
+}
+
+function categoryGender(doc: CategoryDoc): GenderKey | undefined {
+  if (doc.sexo) return doc.sexo
+
+  const value = normalize(
+    `${doc.nombre ?? ""} ${doc.slug?.current ?? ""}`,
+  )
+
+  if (value.includes("femenino")) return "femenino"
+  if (value.includes("masculino")) return "masculino"
+  if (value.includes("mixto")) return "mixto"
+
+  return undefined
+}
+
+function categoryAgeGroup(doc: CategoryDoc): AgeGroup | undefined {
+  if (doc.grupoEdad) return doc.grupoEdad
+
+  const value = normalize(
+    `${doc.nombre ?? ""} ${doc.slug?.current ?? ""}`,
+  )
+
+  const ageGroups: AgeGroup[] = [
+    "veterano",
+    "senior",
+    "junior",
+    "juvenil",
+    "cadete",
+    "infantil",
+  ]
+
+  return ageGroups.find((ageGroup) =>
+    value.includes(normalize(ageGroup)),
+  )
+}
+
 function resolveCategory(
   categories: CategoryDoc[],
   participant: SourceParticipant,
   disciplineId?: string,
 ): CategoryDoc | undefined {
-  const relevant = categories.filter((doc) => {
-    return (
-      !disciplineId ||
-      baseId(doc.disciplina?._ref ?? "") === baseId(disciplineId)
-    )
-  })
-
   const limit = participant.limitKg
+
+  if (typeof limit !== "number" || !Number.isFinite(limit)) {
+    return undefined
+  }
+
   const gender =
     participant.gender && participant.gender !== "otro"
-      ? normalize(participant.gender)
+      ? participant.gender
       : undefined
   const ageGroup =
     participant.ageGroup && participant.ageGroup !== "otro"
-      ? normalize(participant.ageGroup)
+      ? participant.ageGroup
       : undefined
+  const boundary = participantBoundary(participant)
+  const rawModality =
+    participant.modality ??
+    participant.eventCode ??
+    participant.categoryLabel ??
+    ""
+  const modality = normalizeModality(rawModality)
+  const readableModality = modalityLabel(rawModality)
+
+  if (!gender || !ageGroup || !modality) {
+    return undefined
+  }
+
+  const canonicalName =
+    `${readableModality} · ${ageGroup} · ${gender} · ` +
+    `${boundaryLabel(boundary)} ${formatKg(limit)} kg`
+  const canonicalSlug = slugify(
+    `${canonicalName}-kickboxing`,
+  )
+
+  const relevant = categories.filter((doc) => {
+    if (!disciplineId) return true
+
+    return (
+      baseId(doc.disciplina?._ref ?? "") ===
+      baseId(disciplineId)
+    )
+  })
+
+  const exact = relevant.find((doc) => {
+    const sameName =
+      normalize(doc.nombre ?? "") === normalize(canonicalName)
+    const sameSlug =
+      slugify(doc.slug?.current ?? "") === canonicalSlug
+
+    return sameName || sameSlug
+  })
+
+  if (exact) return exact
 
   return relevant.find((doc) => {
     const sameUnit = !doc.unidad || doc.unidad === "kg"
     const sameLimit =
-      typeof limit === "number" &&
       typeof doc.limitePeso === "number" &&
       Math.abs(doc.limitePeso - limit) < 0.001
 
     if (!sameUnit || !sameLimit) return false
-
-    const name = normalize(doc.nombre ?? "")
-    if (gender && !name.includes(gender)) return false
-    if (ageGroup && !name.includes(ageGroup)) return false
+    if (categoryBoundary(doc) !== boundary) return false
+    if (categoryModality(doc) !== modality) return false
+    if (categoryGender(doc) !== gender) return false
+    if (categoryAgeGroup(doc) !== ageGroup) return false
 
     return true
   })
 }
-
 function validateEnv(): string | null {
   if (!projectId) {
     return "Falta NEXT_PUBLIC_SANITY_PROJECT_ID o SANITY_STUDIO_PROJECT_ID."
@@ -364,7 +550,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           {perspective: "raw"},
         ),
         client.fetch<CategoryDoc[]>(
-          `*[_type == "categoriaPeso"]{_id,nombre,slug,limitePeso,unidad,disciplina}`,
+          `*[_type == "categoriaPeso"]{_id,nombre,slug,limitePeso,unidad,disciplina,modalidad,tipoLimite,sexo,grupoEdad}`,
           {},
           {perspective: "raw"},
         ),
@@ -391,6 +577,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       discipline: string
       organization: string
       category: string
+    }> = []
+    const updated: Array<{
+      name: string
+      draftId: string
+      discipline: string
+      organization: string
+      category: string
+      reason: string
     }> = []
     const skipped: Array<{
       name: string
@@ -442,9 +636,16 @@ export async function POST(request: Request): Promise<NextResponse> {
         blockingReasons.push("categoria_peso_no_resuelta_en_sanity")
       }
 
+      const slug = slugify(name)
+      const documentId = `fekm-participant-${slug}`
+      const draftId = `drafts.${documentId}`
+
       const exactFighter = name
         ? resolveExactName(fighters, name)
         : undefined
+      const exactIsManagedFekmDoc =
+        Boolean(exactFighter) &&
+        baseId(exactFighter!._id) === documentId
       const probableFighter =
         !exactFighter && name
           ? resolveProbableFighter(
@@ -455,7 +656,9 @@ export async function POST(request: Request): Promise<NextResponse> {
             )
           : undefined
 
-      if (exactFighter) blockingReasons.push("luchador_ya_existente")
+      if (exactFighter && !exactIsManagedFekmDoc) {
+        blockingReasons.push("luchador_ya_existente")
+      }
       if (probableFighter) {
         blockingReasons.push("posible_luchador_duplicado")
       }
@@ -476,11 +679,52 @@ export async function POST(request: Request): Promise<NextResponse> {
 
       seenNames.add(normalizedName)
 
-      const slug = slugify(name)
-      const documentId = `fekm-participant-${slug}`
-      const draftId = `drafts.${documentId}`
-
       try {
+        if (exactFighter && exactIsManagedFekmDoc) {
+          const sameDiscipline =
+            baseId(exactFighter.disciplina?._ref ?? "") ===
+            baseId(discipline!._id)
+          const sameOrganization =
+            baseId(exactFighter.organizacion?._ref ?? "") ===
+            baseId(fekm!._id)
+          const sameCategory =
+            baseId(exactFighter.categoriaPeso?._ref ?? "") ===
+            baseId(category!._id)
+
+          if (sameDiscipline && sameOrganization && sameCategory) {
+            skipped.push({
+              name,
+              reason: "luchador_ya_existente",
+              blockingReasons: ["luchador_ya_existente"],
+              existingFighter: exactFighter,
+            })
+            continue
+          }
+
+          await client
+            .patch(exactFighter._id)
+            .set({
+              disciplina: reference(discipline!._id),
+              organizacion: reference(fekm!._id),
+              categoriaPeso: reference(category!._id),
+            })
+            .commit()
+
+          exactFighter.disciplina = reference(discipline!._id)
+          exactFighter.organizacion = reference(fekm!._id)
+          exactFighter.categoriaPeso = reference(category!._id)
+
+          updated.push({
+            name,
+            draftId: exactFighter._id,
+            discipline: discipline!.nombre ?? disciplineKey,
+            organization: fekm!.nombre ?? "FEKM",
+            category: category!.nombre ?? participant.categoryLabel ?? "",
+            reason: "referencias_fekm_corregidas",
+          })
+          continue
+        }
+
         await client.createIfNotExists({
           _id: draftId,
           _type: "luchador",
@@ -525,10 +769,12 @@ export async function POST(request: Request): Promise<NextResponse> {
         summary: {
           received: participants.length,
           created: created.length,
+          updated: updated.length,
           skipped: skipped.length,
           failed: failed.length,
         },
         created,
+        updated,
         skipped,
         failed,
       }),
