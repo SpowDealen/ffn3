@@ -832,6 +832,47 @@ type FekmEventResolution =
     }
   | { ok: false; error?: string };
 
+
+
+type FekmEventOrchestration =
+  | {
+      ok: true;
+      source: "fekm";
+      mode: "analyze" | "execute";
+      readyToExecute: boolean;
+      match: {
+        automatic: boolean;
+        score: number;
+        scoreGap: number;
+        confidence: "alta" | "media" | "baja";
+        document: { title?: string; pdfUrl?: string };
+        reasons: string[];
+        warnings: string[];
+      } | null;
+      document?: { title?: string; pdfUrl?: string };
+      summary?: {
+        extractedParticipants: number;
+        highConfidence: number;
+        reviewRequired: number;
+        categoriesReadyBefore: number;
+        categoriesExistingBefore: number;
+        participantsExistingBefore: number;
+        participantsReadyBefore: number;
+        unresolvedCategoriesBefore: number;
+        categoriesCreated: number;
+        categoriesSkipped: number;
+        participantsExistingAfter: number;
+        participantsReadyAfter: number;
+        unresolvedCategoriesAfter: number;
+        participantsCreated: number;
+        participantsUpdated: number;
+        participantsSkipped: number;
+        participantsFailed: number;
+      };
+      warnings: string[];
+    }
+  | { ok: false; source?: "fekm"; error?: string };
+
 type TransformEventApiResponse =
   | {
       ok: true;
@@ -2218,6 +2259,10 @@ export default function PanelIA(): ReactElement {
   const [isResolvingFekmEvent, setIsResolvingFekmEvent] = useState(false);
   const [isCreatingFekmOrganization, setIsCreatingFekmOrganization] = useState(false);
   const [isCreatingFekmEvent, setIsCreatingFekmEvent] = useState(false);
+  const [fekmEventOrchestration, setFekmEventOrchestration] =
+    useState<FekmEventOrchestration | null>(null);
+  const [isAnalyzingFullFekmEvent, setIsAnalyzingFullFekmEvent] = useState(false);
+  const [isPreparingFullFekmEvent, setIsPreparingFullFekmEvent] = useState(false);
 
   const [isLoadingReferences, setIsLoadingReferences] = useState(false);
   const [referenceLoadError, setReferenceLoadError] = useState("");
@@ -2353,7 +2398,9 @@ export default function PanelIA(): ReactElement {
     isLoadingFekmEvents ||
     isResolvingFekmEvent ||
     isCreatingFekmOrganization ||
-    isCreatingFekmEvent;
+    isCreatingFekmEvent ||
+    isAnalyzingFullFekmEvent ||
+    isPreparingFullFekmEvent;
 
   const selectedOneEvent = useMemo(
     () =>
@@ -7181,6 +7228,7 @@ export default function PanelIA(): ReactElement {
       setFekmEventItems(payload.items);
       setFekmEventsFetchedAt(payload.fetchedAt);
       setFekmEventResolution(null);
+      setFekmEventOrchestration(null);
       setSelectedFekmEventId((current) => payload.items.some((item) => item.id === current) ? current : "");
       setFekmEventStatus({ type: "success", message: `${payload.count} eventos FEKM cargados.` });
     } catch (error) {
@@ -7188,6 +7236,7 @@ export default function PanelIA(): ReactElement {
       setSelectedFekmEventId("");
       setFekmEventsFetchedAt("");
       setFekmEventResolution(null);
+      setFekmEventOrchestration(null);
       setFekmEventStatus({ type: "error", message: error instanceof Error ? error.message : "Error cargando eventos FEKM." });
     } finally {
       setIsLoadingFekmEvents(false);
@@ -7244,6 +7293,65 @@ export default function PanelIA(): ReactElement {
       setFekmEventStatus({ type: "error", message: error instanceof Error ? error.message : "Error creando evento FEKM." });
     } finally { setIsCreatingFekmEvent(false); }
   }, [reloadReferenceEntities, resolveSelectedFekmEvent, selectedFekmEvent]);
+
+
+  const orchestrateSelectedFekmEvent = useCallback(
+    async (confirm: boolean): Promise<void> => {
+      if (!selectedFekmEvent) {
+        setFekmEventStatus({ type: "error", message: "Selecciona primero un evento FEKM." });
+        return;
+      }
+
+      const confirmed =
+        !confirm ||
+        window.confirm(
+          "Se crearán o completarán el evento FEKM, sus categorías y todos los participantes aptos. Los casos inseguros quedarán bloqueados para revisión. ¿Continuar?"
+        );
+      if (!confirmed) return;
+
+      try {
+        if (confirm) setIsPreparingFullFekmEvent(true);
+        else setIsAnalyzingFullFekmEvent(true);
+        setFekmEventStatus({ type: "idle", message: "" });
+
+        const response = await fetch(
+          `${API_BASE_URL}/api/sources/fekm/events/orchestrate`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ event: selectedFekmEvent, confirm }),
+          }
+        );
+        const payload = (await response.json()) as FekmEventOrchestration;
+        if (!response.ok || !payload.ok) {
+          throw new Error(!payload.ok && payload.error ? payload.error : "No se pudo preparar el evento FEKM completo.");
+        }
+
+        setFekmEventOrchestration(payload);
+        if (confirm) {
+          await reloadReferenceEntities();
+          await resolveSelectedFekmEvent();
+        }
+
+        const summary = payload.summary;
+        setFekmEventStatus({
+          type: "success",
+          message: confirm
+            ? `Preparación FEKM completada: ${summary?.categoriesCreated ?? 0} categorías creadas y ${summary?.participantsCreated ?? 0} participantes creados.`
+            : `Documento asociado y lote analizados: ${summary?.extractedParticipants ?? 0} participantes detectados, ${summary?.participantsReadyBefore ?? 0} aptos inicialmente.`,
+        });
+      } catch (error) {
+        setFekmEventStatus({
+          type: "error",
+          message: error instanceof Error ? error.message : "Error preparando el evento FEKM completo.",
+        });
+      } finally {
+        setIsAnalyzingFullFekmEvent(false);
+        setIsPreparingFullFekmEvent(false);
+      }
+    },
+    [reloadReferenceEntities, resolveSelectedFekmEvent, selectedFekmEvent]
+  );
 
   const applySelectedFekmEventToForm = useCallback((): void => {
     if (!selectedFekmEvent) { setFekmEventStatus({ type: "error", message: "Selecciona primero un evento FEKM." }); return; }
@@ -12883,7 +12991,7 @@ export default function PanelIA(): ReactElement {
             {fekmEventStatus.type !== "idle" ? <div style={fekmEventStatus.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{fekmEventStatus.message}</div> : null}
             {fekmEventItems.length > 0 ? <div style={styles.sourceLayout}>
               <div style={styles.sourceList}>
-                {fekmEventItems.map((item) => <button key={item.id} type="button" onClick={() => { setSelectedFekmEventId(item.id); setFekmEventResolution(null); setFekmEventStatus({ type: "idle", message: "" }); }} style={item.id === selectedFekmEventId ? styles.sourceItemSelected : styles.sourceItem}>
+                {fekmEventItems.map((item) => <button key={item.id} type="button" onClick={() => { setSelectedFekmEventId(item.id); setFekmEventResolution(null); setFekmEventOrchestration(null); setFekmEventStatus({ type: "idle", message: "" }); }} style={item.id === selectedFekmEventId ? styles.sourceItemSelected : styles.sourceItem}>
                   <span style={styles.sourceItemTitle}>{item.name}</span>
                   <span style={styles.sourceItemMeta}>{item.startDate ? new Date(item.startDate).toLocaleString("es-ES") : "Sin fecha"} · {item.disciplineLabel || item.discipline || "Disciplina por revisar"} · {item.status}</span>
                 </button>)}
@@ -12896,6 +13004,8 @@ export default function PanelIA(): ReactElement {
                   <div style={styles.sourcePreviewActions}>
                     <button type="button" onClick={applySelectedFekmEventToForm} style={styles.secondaryButton} disabled={isFekmEventBusy}>Pasar al formulario</button>
                     <button type="button" onClick={() => { void resolveSelectedFekmEvent(); }} style={isResolvingFekmEvent ? styles.buttonDisabled : styles.secondaryButton} disabled={isFekmEventBusy}>{isResolvingFekmEvent ? "Analizando..." : "Analizar evento"}</button>
+                    <button type="button" onClick={() => { void orchestrateSelectedFekmEvent(false); }} style={isAnalyzingFullFekmEvent ? styles.buttonDisabled : styles.secondaryButton} disabled={isFekmEventBusy}>{isAnalyzingFullFekmEvent ? "Analizando documento..." : "Analizar evento completo"}</button>
+                    <button type="button" onClick={() => { void orchestrateSelectedFekmEvent(true); }} style={isPreparingFullFekmEvent ? styles.buttonDisabled : styles.button} disabled={isFekmEventBusy || !fekmEventOrchestration?.ok || !fekmEventOrchestration.readyToExecute}>{isPreparingFullFekmEvent ? "Preparando evento completo..." : "Preparar evento completo"}</button>
                     {!fekmEventResolution?.ok || !fekmEventResolution.resolution.organization ? <button type="button" onClick={() => { void createFekmOrganization(); }} style={isCreatingFekmOrganization ? styles.buttonDisabled : styles.secondaryButton} disabled={isFekmEventBusy}>{isCreatingFekmOrganization ? "Creando FEKM..." : "Crear organización FEKM"}</button> : null}
                     <button type="button" onClick={() => { void createSelectedFekmEvent(); }} style={isCreatingFekmEvent ? styles.buttonDisabled : styles.button} disabled={isFekmEventBusy || Boolean(fekmEventResolution?.ok && fekmEventResolution.resolution.existing)}>{isCreatingFekmEvent ? "Creando evento..." : fekmEventResolution?.ok && fekmEventResolution.resolution.existing ? "Evento ya creado" : "Crear evento en Sanity"}</button>
                     <a href={selectedFekmEvent.canonicalUrl} target="_blank" rel="noreferrer" style={styles.sourceLink}>Abrir fuente oficial</a>
@@ -12903,6 +13013,14 @@ export default function PanelIA(): ReactElement {
                   {fekmEventResolution?.ok ? <div style={styles.automationCard}>
                     <p style={styles.metaText}>Disciplina: {fekmEventResolution.resolution.discipline?.nombre || "No resuelta"} · Organización: {fekmEventResolution.resolution.organization?.nombre || "No creada"} · {fekmEventResolution.resolution.existing ? "Duplicado detectado" : fekmEventResolution.resolution.readyToCreate ? "Listo para crear" : "Revisión necesaria"}</p>
                     {fekmEventResolution.resolution.warnings.length ? <p style={styles.metaText}>Avisos: {fekmEventResolution.resolution.warnings.join(" · ")}</p> : null}
+                  </div> : null}
+                  {fekmEventOrchestration?.ok ? <div style={styles.automationCard}>
+                    <p style={styles.sourceEyebrow}>Preparación integral FEKM</p>
+                    <p style={styles.metaText}>Documento: {fekmEventOrchestration.document?.title || fekmEventOrchestration.match?.document.title || "No resuelto"} · Confianza: {fekmEventOrchestration.match?.confidence || "baja"} · {fekmEventOrchestration.readyToExecute ? "Emparejamiento automático seguro" : "Revisión manual necesaria"}</p>
+                    {fekmEventOrchestration.summary ? <p style={styles.metaText}>Participantes: {fekmEventOrchestration.summary.extractedParticipants} detectados · {fekmEventOrchestration.summary.highConfidence} de confianza alta · {fekmEventOrchestration.summary.reviewRequired} para revisión · {fekmEventOrchestration.summary.participantsExistingAfter || fekmEventOrchestration.summary.participantsExistingBefore} existentes · {fekmEventOrchestration.summary.participantsReadyAfter || fekmEventOrchestration.summary.participantsReadyBefore} aptos · {fekmEventOrchestration.summary.unresolvedCategoriesAfter || fekmEventOrchestration.summary.unresolvedCategoriesBefore} categorías sin resolver.</p> : null}
+                    {fekmEventOrchestration.mode === "execute" && fekmEventOrchestration.summary ? <p style={styles.metaText}>Resultado: {fekmEventOrchestration.summary.categoriesCreated} categorías creadas · {fekmEventOrchestration.summary.participantsCreated} participantes creados · {fekmEventOrchestration.summary.participantsUpdated} actualizados · {fekmEventOrchestration.summary.participantsSkipped} omitidos · {fekmEventOrchestration.summary.participantsFailed} fallidos.</p> : null}
+                    {fekmEventOrchestration.warnings.length ? <p style={styles.metaText}>Avisos: {fekmEventOrchestration.warnings.join(" · ")}</p> : null}
+                    {fekmEventOrchestration.document?.pdfUrl ? <a href={fekmEventOrchestration.document.pdfUrl} target="_blank" rel="noreferrer" style={styles.sourceLink}>Abrir documento asociado</a> : null}
                   </div> : null}
                 </div> : <p style={styles.metaText}>Selecciona un evento FEKM para revisar sus datos.</p>}
               </div>
