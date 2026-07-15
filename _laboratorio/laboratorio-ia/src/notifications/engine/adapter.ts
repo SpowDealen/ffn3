@@ -14,5 +14,6 @@ export function deliverThroughCurrentNotificationSystem(
     groupKey: policy.group
       ? policy.groupKey ?? notification.groupKey
       : undefined,
+    channels: policy.channels,
   });
 }

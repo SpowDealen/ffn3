@@ -1,6 +1,7 @@
 import type {
   CreateNotificationInput,
   LabNotification,
+  NotificationChannels,
 } from "./types";
 import {
   sendLabNotificationToTelegram,
@@ -16,6 +17,20 @@ const groupedDeliveryTimers = new Map<
   string,
   ReturnType<typeof setTimeout>
 >();
+
+type ResolvedNotificationChannels = {
+  activityCenter: boolean;
+  telegram: boolean;
+};
+
+function resolveNotificationChannels(
+  channels: NotificationChannels | undefined,
+): ResolvedNotificationChannels {
+  return {
+    activityCenter: channels?.activityCenter ?? true,
+    telegram: channels?.telegram ?? true,
+  };
+}
 
 function canUseBrowser(): boolean {
   return typeof window !== "undefined";
@@ -125,13 +140,27 @@ function findNotificationIndexByGroupKey(
 
 function resetNotificationDelivery(
   notification: LabNotification,
+  telegramEnabled: boolean,
+  timestamp: string,
 ): LabNotification {
+  if (!telegramEnabled) {
+    return {
+      ...notification,
+      deliveryStatus: "skipped",
+      deliveryAttempts: 0,
+      deliveryError: undefined,
+      deliveredAt: timestamp,
+      deliverySkipReason: "policy",
+    };
+  }
+
   return {
     ...notification,
     deliveryStatus: "pending",
     deliveryAttempts: 0,
     deliveryError: undefined,
     deliveredAt: undefined,
+    deliverySkipReason: undefined,
   };
 }
 
@@ -140,20 +169,26 @@ function updateGroupedNotification(
   input: CreateNotificationInput,
   groupKey: string,
   updatedAt: string,
+  channels: ResolvedNotificationChannels,
 ): LabNotification {
-  return resetNotificationDelivery({
-    ...notification,
-    level: input.level,
-    kind: input.kind,
-    title: input.title.trim(),
-    message: input.message.trim(),
-    source: input.source?.trim(),
-    count: input.count,
-    location: input.location,
-    groupKey,
+  return resetNotificationDelivery(
+    {
+      ...notification,
+      level: input.level,
+      kind: input.kind,
+      title: input.title.trim(),
+      message: input.message.trim(),
+      source: input.source?.trim(),
+      count: input.count,
+      location: input.location,
+      groupKey,
+      updatedAt,
+      updateCount: (notification.updateCount ?? 0) + 1,
+      channels: input.channels,
+    },
+    channels.telegram,
     updatedAt,
-    updateCount: (notification.updateCount ?? 0) + 1,
-  });
+  );
 }
 
 function getNotificationVersion(
@@ -172,6 +207,10 @@ function applyDeliveryResult(
       return notification;
     }
 
+    if (!resolveNotificationChannels(notification.channels).telegram) {
+      return notification;
+    }
+
     const deliveryAttempts =
       (notification.deliveryAttempts ?? 0) + 1;
 
@@ -182,6 +221,7 @@ function applyDeliveryResult(
         deliveryAttempts,
         deliveryError: result.error,
         deliveredAt: undefined,
+        deliverySkipReason: undefined,
       };
     }
 
@@ -193,6 +233,9 @@ function applyDeliveryResult(
       deliveryAttempts,
       deliveryError: undefined,
       deliveredAt: new Date().toISOString(),
+      deliverySkipReason: result.skipped
+        ? "disabled"
+        : undefined,
     };
   });
 }
@@ -200,6 +243,10 @@ function applyDeliveryResult(
 async function executeNotificationDelivery(
   notification: LabNotification,
 ): Promise<void> {
+  if (!resolveNotificationChannels(notification.channels).telegram) {
+    return;
+  }
+
   const result =
     await sendLabNotificationToTelegram(notification);
   applyDeliveryResult(
@@ -244,6 +291,13 @@ function scheduleGroupedNotificationDelivery(
     );
 
     if (!currentNotification) return;
+    if (
+      !resolveNotificationChannels(
+        currentNotification.channels,
+      ).telegram
+    ) {
+      return;
+    }
 
     void executeNotificationDelivery(currentNotification);
   }, GROUP_DELIVERY_DEBOUNCE_MS);
@@ -251,14 +305,32 @@ function scheduleGroupedNotificationDelivery(
   groupedDeliveryTimers.set(groupKey, timer);
 }
 
+function startNotificationDelivery(
+  notification: LabNotification,
+  channels: ResolvedNotificationChannels,
+): void {
+  if (!channels.telegram) {
+    cancelGroupedNotificationDelivery(notification.groupKey);
+    return;
+  }
+
+  if (!channels.activityCenter && notification.groupKey) {
+    void executeNotificationDelivery(notification);
+    return;
+  }
+
+  scheduleGroupedNotificationDelivery(notification);
+}
+
 export function createNotification(
   rawInput: CreateNotificationInput,
 ): LabNotification {
   const input = validateNotification(rawInput);
   const groupKey = input.groupKey?.trim() || undefined;
+  const channels = resolveNotificationChannels(input.channels);
   const notifications = getNotifications();
 
-  if (groupKey) {
+  if (groupKey && channels.activityCenter) {
     const groupedIndex = findNotificationIndexByGroupKey(
       notifications,
       groupKey,
@@ -270,45 +342,52 @@ export function createNotification(
         input,
         groupKey,
         new Date().toISOString(),
+        channels,
       );
       const updatedNotifications = [...notifications];
       updatedNotifications[groupedIndex] = notification;
       saveNotifications(updatedNotifications);
-      scheduleGroupedNotificationDelivery(notification);
+      startNotificationDelivery(notification, channels);
 
       return notification;
     }
   }
 
-  const notification: LabNotification = {
-    id:
-      typeof crypto !== "undefined" &&
-      "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random()
-            .toString(16)
-            .slice(2)}`,
-    level: input.level,
-    kind: input.kind,
-    title: input.title.trim(),
-    message: input.message.trim(),
-    source: input.source?.trim(),
-    count: input.count,
-    location: input.location,
-    createdAt: new Date().toISOString(),
-    read: false,
-    deliveryStatus: "pending",
-    deliveryAttempts: 0,
-    groupKey,
-    updateCount: groupKey ? 0 : undefined,
-  };
+  const createdAt = new Date().toISOString();
+  const notification = resetNotificationDelivery(
+    {
+      id:
+        typeof crypto !== "undefined" &&
+        "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random()
+              .toString(16)
+              .slice(2)}`,
+      level: input.level,
+      kind: input.kind,
+      title: input.title.trim(),
+      message: input.message.trim(),
+      source: input.source?.trim(),
+      count: input.count,
+      location: input.location,
+      createdAt,
+      read: false,
+      groupKey,
+      updateCount: groupKey ? 0 : undefined,
+      channels: input.channels,
+    },
+    channels.telegram,
+    createdAt,
+  );
 
-  saveNotifications([
-    notification,
-    ...notifications,
-  ]);
+  if (channels.activityCenter) {
+    saveNotifications([
+      notification,
+      ...notifications,
+    ]);
+  }
 
-  scheduleGroupedNotificationDelivery(notification);
+  startNotificationDelivery(notification, channels);
 
   return notification;
 }
@@ -322,9 +401,27 @@ export async function retryNotificationDelivery(
 
   if (!existingNotification) return;
 
+  const channels = resolveNotificationChannels(
+    existingNotification.channels,
+  );
+
   cancelGroupedNotificationDelivery(
     existingNotification.groupKey,
   );
+
+  if (!channels.telegram) {
+    updateNotificationById(id, (currentNotification) => ({
+      ...currentNotification,
+      deliveryStatus: "skipped",
+      deliveryAttempts: 0,
+      deliveryError: undefined,
+      deliveredAt:
+        currentNotification.deliveredAt ??
+        new Date().toISOString(),
+      deliverySkipReason: "policy",
+    }));
+    return;
+  }
 
   const notification = updateNotificationById(
     id,
@@ -332,6 +429,7 @@ export async function retryNotificationDelivery(
       ...currentNotification,
       deliveryStatus: "pending",
       deliveryError: undefined,
+      deliverySkipReason: undefined,
     }),
   );
 

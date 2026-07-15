@@ -25,6 +25,15 @@ export type NotificationDeliveryStatus =
   | "failed"
   | "skipped";
 
+export type NotificationChannels = {
+  activityCenter?: boolean;
+  telegram?: boolean;
+};
+
+export type NotificationDeliverySkipReason =
+  | "policy"
+  | "disabled";
+
 export type LabNotification = {
   id: string;
   level: NotificationLevel;
@@ -43,6 +52,8 @@ export type LabNotification = {
   groupKey?: string;
   updatedAt?: string;
   updateCount?: number;
+  channels?: NotificationChannels;
+  deliverySkipReason?: NotificationDeliverySkipReason;
 };
 
 export type CreateNotificationInput = {
@@ -56,4 +67,5 @@ export type CreateNotificationInput = {
   groupKey?: string;
   updatedAt?: string;
   updateCount?: number;
+  channels?: NotificationChannels;
 };

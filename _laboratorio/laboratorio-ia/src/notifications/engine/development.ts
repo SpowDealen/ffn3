@@ -1,7 +1,7 @@
 import type {LabNotification} from "../types";
 import {notificationEngine} from "./engine";
 
-export function testNotificationEngine(): LabNotification {
+export function testNotificationEngineTelegram(): LabNotification {
   return notificationEngine.notify({
     type: "source.loaded",
     title: "Motor NIE",
@@ -11,5 +11,15 @@ export function testNotificationEngine(): LabNotification {
     metadata: {
       groupKey: "dev-nie-source-loaded",
     },
+  });
+}
+
+export function testNotificationEngineActivityOnly(): LabNotification {
+  return notificationEngine.notify({
+    type: "draft.created",
+    title: "Motor NIE · Solo actividad",
+    message: "Notificación local sin envío a Telegram",
+    source: "Laboratorio",
+    count: 1,
   });
 }
