@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 
 import type {
+  testCriticalNotification,
+  testLowNotification,
   testNotificationEngineActivityOnly,
   testNotificationEngineTelegram,
 } from "./notifications/engine/development";
@@ -16,6 +18,8 @@ declare global {
       createNotification: typeof createNotification;
       getNotifications: typeof getNotifications;
       retryNotificationDelivery: typeof retryNotificationDelivery;
+      testCriticalNotification: typeof testCriticalNotification;
+      testLowNotification: typeof testLowNotification;
       testNotificationEngineActivityOnly: typeof testNotificationEngineActivityOnly;
       testNotificationEngineTelegram: typeof testNotificationEngineTelegram;
     };

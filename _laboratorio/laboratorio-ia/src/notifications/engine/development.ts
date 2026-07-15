@@ -23,3 +23,29 @@ export function testNotificationEngineActivityOnly(): LabNotification {
     count: 1,
   });
 }
+
+export function testCriticalNotification(): LabNotification {
+  return notificationEngine.notify({
+    type: "telegram.failed",
+    title: "Motor NIE · Prioridad crítica",
+    message: "Prueba manual de resolución de prioridad crítica",
+    source: "Telegram",
+    location: {
+      label: "Diagnóstico de Telegram",
+      url: "http://localhost:5173/",
+    },
+  });
+}
+
+export function testLowNotification(): LabNotification {
+  return notificationEngine.notify({
+    type: "source.loaded",
+    title: "Motor NIE · Prioridad baja",
+    message: "Prueba manual de resolución de prioridad baja",
+    source: "UFC",
+    count: 12,
+    metadata: {
+      groupKey: "dev-nie-priority-low",
+    },
+  });
+}

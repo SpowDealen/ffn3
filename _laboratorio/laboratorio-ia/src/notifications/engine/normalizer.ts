@@ -1,6 +1,7 @@
 import type {
   NormalizedNotificationEvent,
   NotificationEvent,
+  NotificationPriority,
 } from "./types";
 import {getNotificationGroupKey} from "./policies";
 
@@ -18,6 +19,7 @@ const EVENT_PRESENTATION = {
 
 export function normalizeNotificationEvent(
   event: NotificationEvent,
+  priority: NotificationPriority,
 ): NormalizedNotificationEvent {
   const presentation = EVENT_PRESENTATION[event.type];
 
@@ -30,5 +32,6 @@ export function normalizeNotificationEvent(
     source: event.source?.trim(),
     count: event.count,
     location: event.location,
+    priority,
   };
 }

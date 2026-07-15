@@ -2,6 +2,7 @@ import type {
   NotificationKind,
   NotificationLevel,
   NotificationLocation,
+  NotificationPriority,
 } from "../types";
 import type {NotificationChannelName} from "./channels";
 
@@ -35,7 +36,10 @@ export type NormalizedNotificationEvent = {
   source?: string;
   count?: number;
   location?: NotificationLocation;
+  priority: NotificationPriority;
 };
+
+export type {NotificationPriority} from "../types";
 
 export type NotificationPolicy = {
   group: boolean;

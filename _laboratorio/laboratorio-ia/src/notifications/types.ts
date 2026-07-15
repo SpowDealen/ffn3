@@ -34,6 +34,12 @@ export type NotificationDeliverySkipReason =
   | "policy"
   | "disabled";
 
+export type NotificationPriority =
+  | "critical"
+  | "high"
+  | "normal"
+  | "low";
+
 export type LabNotification = {
   id: string;
   level: NotificationLevel;
@@ -54,6 +60,7 @@ export type LabNotification = {
   updateCount?: number;
   channels?: NotificationChannels;
   deliverySkipReason?: NotificationDeliverySkipReason;
+  priority?: NotificationPriority;
 };
 
 export type CreateNotificationInput = {
@@ -68,4 +75,5 @@ export type CreateNotificationInput = {
   updatedAt?: string;
   updateCount?: number;
   channels?: NotificationChannels;
+  priority?: NotificationPriority;
 };
