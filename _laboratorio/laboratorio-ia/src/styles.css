@@ -85,3 +85,12 @@ textarea {
     overflow-x: hidden;
   }
 }
+@keyframes ffn3-process-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(330%);
+  }
+}

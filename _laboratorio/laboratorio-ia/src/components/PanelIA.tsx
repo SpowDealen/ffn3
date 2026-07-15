@@ -7,6 +7,28 @@ import {
 import { buildContentOutput } from "../lib/buildContentOutput";
 import { getInitialFormState } from "../lib/getInitialFormState";
 import { saveDraft } from "../lib/saveDraft";
+import {
+  notifyAnalysisCompleted,
+  notifyDraftBatchProcessed,
+  notifyDraftCreated,
+  notifyEntityBatchProcessed,
+  notifyError,
+  notifyEventAnalysisCompleted,
+  notifyEventCreated,
+  notifyEventResolved,
+  notifyEventsLoaded,
+  notifyReviewRecommended,
+  notifySourceLoaded,
+} from "../notifications/notify";
+import NotificationBell from "../notifications/NotificationBell";
+import ActivityCenter from "../notifications/ActivityCenter";
+import ProcessBar from "../processes/ProcessBar";
+import {
+  completeProcess,
+  failProcess,
+  startProcess,
+  updateProcess,
+} from "../processes/store";
 import type {
   AuxiliaryFormState,
   ContentFormState,
@@ -2584,8 +2606,19 @@ export default function PanelIA(): ReactElement {
       return;
     }
 
+    const processId = "external-news-batch-analysis";
+    const processSourceName =
+      selectedExternalNewsSource?.name ?? "Fuente externa";
+
     try {
       setIsPreparingExternalNewsBatch(true);
+
+      startProcess({
+        id: processId,
+        label: `Analizando noticias de ${processSourceName}`,
+        detail: `${externalNewsItems.length} noticias en preparación`,
+      });
+
       setExternalNewsBatchStatus({
         type: "success",
         message: `Preparando ${externalNewsItems.length} noticias de ${selectedExternalNewsSource?.name ?? "la fuente seleccionada"}...`,
@@ -2622,15 +2655,54 @@ export default function PanelIA(): ReactElement {
         type: "success",
         message: `Preparación completada: ${payload.data.summary.aptas} aptas, ${payload.data.summary.revision} para revisión, ${payload.data.summary.insuficientes} insuficientes, ${payload.data.summary.duplicadas} duplicadas.`,
       });
+
+      const sourceName =
+        selectedExternalNewsSource?.name ?? "Fuente externa";
+      const needsReview =
+        payload.data.summary.revision > 0 ||
+        payload.data.summary.insuficientes > 0;
+
+      notifyAnalysisCompleted({
+        source: sourceName,
+        count: externalNewsItems.length,
+        apt: payload.data.summary.aptas,
+        review: payload.data.summary.revision,
+        insufficient: payload.data.summary.insuficientes,
+        duplicates: payload.data.summary.duplicadas,
+        location: needsReview
+          ? {
+              label: `Laboratorio → Fuentes externas → ${sourceName}`,
+              url: window.location.href,
+            }
+          : undefined,
+      });
+
+      completeProcess(processId);
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido preparando noticias externas.";
+      const sourceName =
+        selectedExternalNewsSource?.name ?? "Fuente externa";
+
       setExternalNewsBatchAnalysis(null);
       setExternalNewsBatchStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido preparando noticias externas.",
+        message,
       });
+
+      notifyError({
+        source: sourceName,
+        action: "completar el análisis",
+        message,
+        location: {
+          label: `Laboratorio → Fuentes externas → ${sourceName}`,
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsPreparingExternalNewsBatch(false);
     }
@@ -2700,6 +2772,22 @@ export default function PanelIA(): ReactElement {
         message:
           `${message} No se ha cargado el formulario para evitar relaciones incorrectas.`,
       });
+
+      const sourceName =
+        selectedExternalNews.sourceName ||
+        selectedExternalNewsSource?.name ||
+        "Fuente externa";
+
+      notifyError({
+        source: sourceName,
+        action: "completar el análisis",
+        message,
+        location: {
+          label: `Laboratorio → Fuentes externas → ${sourceName}`,
+          url: window.location.href,
+        },
+      });
+
       setIsAnalyzingExternalNews(false);
       return;
     }
@@ -2894,6 +2982,33 @@ export default function PanelIA(): ReactElement {
       type: "success",
       message: `Análisis editorial aplicado: relevancia ${analysis.relevancia}, fuente ${externalSourceValue.toUpperCase()}, ${relationSummary}.${reviewMessage}${warningMessage}`,
     });
+
+    const sourceName =
+      selectedExternalNews.sourceName ||
+      selectedExternalNewsSource?.name ||
+      "Fuente externa";
+    const needsReview =
+      analysis.necesitaRevisionManual ||
+      analysis.confianzaRelaciones < 60 ||
+      warnings.length > 0 ||
+      !resolved.disciplina;
+
+    if (needsReview) {
+      notifyReviewRecommended({
+        source: sourceName,
+        message: `${selectedExternalNews.title} necesita revisión antes de crear el borrador.`,
+        location: {
+          label: `Laboratorio → Fuentes externas → ${sourceName}`,
+          url: window.location.href,
+        },
+      });
+    } else {
+      notifyAnalysisCompleted({
+        source: sourceName,
+        count: 1,
+        apt: 1,
+      });
+    }
   }, [
     API_BASE_URL,
     auxiliary,
@@ -3229,16 +3344,52 @@ export default function PanelIA(): ReactElement {
         type: "success",
         message: `Borrador creado desde ${selectedExternalNews.sourceName || selectedExternalNewsSource?.name || "fuente externa"}: ${selectedExternalNews.title}`,
       });
+
+      const sourceName =
+        selectedExternalNews.sourceName ||
+        selectedExternalNewsSource?.name ||
+        "Fuente externa";
+
+      notifyDraftCreated({
+        source: sourceName,
+        count: 1,
+        createdAfterReview:
+          analysis.necesitaRevisionManual ||
+          analysis.confianzaRelaciones < 60 ||
+          warnings.length > 0 ||
+          !resolved.disciplina,
+        location: {
+          label: "Sanity Studio → Noticias",
+          url: `${API_BASE_URL}/studio`,
+        },
+      });
+
       markExternalBatchItemsAsCreated([selectedExternalNews.id]);
 
       await reloadReferenceEntities();
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido creando el borrador externo.";
+      const sourceName =
+        selectedExternalNews?.sourceName ||
+        selectedExternalNewsSource?.name ||
+        "Fuente externa";
+
       setExternalNewsStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido creando el borrador externo.",
+        message,
+      });
+
+      notifyError({
+        source: sourceName,
+        action: "crear el borrador",
+        message,
+        location: {
+          label: `Laboratorio → Fuentes externas → ${sourceName}`,
+          url: window.location.href,
+        },
       });
     } finally {
       setIsCreatingExternalNewsDraft(false);
@@ -3567,6 +3718,27 @@ export default function PanelIA(): ReactElement {
         });
       }
 
+      const sourceName =
+        selectedExternalNewsSource?.name ?? "Fuente externa";
+
+      notifyDraftBatchProcessed({
+        source: sourceName,
+        created: summary.created,
+        skipped: summary.skipped,
+        errors: summary.errors,
+        attempted: summary.attempted,
+        location:
+          summary.errors > 0 || summary.skipped > 0
+            ? {
+                label: `Laboratorio → Fuentes externas → ${sourceName}`,
+                url: window.location.href,
+              }
+            : {
+                label: "Sanity Studio → Noticias",
+                url: `${API_BASE_URL}/studio`,
+              },
+      });
+
       await reloadReferenceEntities();
     } finally {
       setIsCreatingExternalNewsBatchDrafts(false);
@@ -3627,16 +3799,33 @@ export default function PanelIA(): ReactElement {
         type: "success",
         message: `${payload.count} noticias oficiales de UFC cargadas.`,
       });
+
+      notifySourceLoaded({
+        source: "UFC",
+        count: payload.count,
+      });
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido cargando las noticias oficiales de UFC.";
+
       setOfficialNewsItems([]);
       setSelectedOfficialNewsId("");
       setOfficialNewsFetchedAt("");
       setOfficialSourceStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido cargando las noticias oficiales de UFC.",
+        message,
+      });
+
+      notifyError({
+        source: "UFC",
+        action: "cargar las noticias",
+        message,
+        location: {
+          label: "Laboratorio → UFC → Noticias",
+          url: window.location.href,
+        },
       });
     } finally {
       setIsLoadingOfficialNews(false);
@@ -3652,8 +3841,17 @@ export default function PanelIA(): ReactElement {
       return;
     }
 
+    const processId = "ufc-news-batch-analysis";
+
     try {
       setIsAnalyzingUfcNewsBatch(true);
+
+      startProcess({
+        id: processId,
+        label: "Analizando noticias UFC",
+        detail: `${officialNewsItems.length} noticias en preparación`,
+      });
+
       setUfcNewsBatchStatus({
         type: "idle",
         message: "",
@@ -3689,15 +3887,48 @@ export default function PanelIA(): ReactElement {
         type: "success",
         message: `${payload.count} noticias analizadas: ${payload.summary.existing} existentes, ${payload.summary.ready} nuevas aptas, ${payload.summary.withoutContent} sin contenido suficiente y ${payload.summary.requiresReview} para revisión.`,
       });
+
+      notifyAnalysisCompleted({
+        source: "UFC",
+        count: payload.count,
+        apt: payload.summary.ready,
+        review: payload.summary.requiresReview,
+        insufficient: payload.summary.withoutContent,
+        duplicates: payload.summary.existing,
+        location:
+          payload.summary.requiresReview > 0 ||
+          payload.summary.withoutContent > 0
+            ? {
+                label: "Laboratorio → UFC → Noticias",
+                url: window.location.href,
+              }
+            : undefined,
+      });
+
+      completeProcess(processId);
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido analizando noticias UFC.";
+
       setUfcNewsBatchAnalysis(null);
       setUfcNewsBatchStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido analizando noticias UFC.",
+        message,
       });
+
+      notifyError({
+        source: "UFC",
+        action: "analizar las noticias",
+        message,
+        location: {
+          label: "Laboratorio → UFC → Noticias",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsAnalyzingUfcNewsBatch(false);
     }
@@ -3785,6 +4016,16 @@ export default function PanelIA(): ReactElement {
       );
       setIsPreparingUfcNewsBatch(true);
 
+      const processId = "ufc-news-batch-preparation";
+
+      startProcess({
+        id: processId,
+        label: "Preparando noticias UFC",
+        detail: `${eligibleNews.length} noticias pendientes`,
+        current: 0,
+        total: eligibleNews.length,
+      });
+
       let completed = 0;
       let failed = 0;
 
@@ -3795,6 +4036,12 @@ export default function PanelIA(): ReactElement {
           updateUfcNewsBatchPreparationItem(sourceItem.id, {
             status: "procesando",
             message: `Noticia ${index + 1} de ${eligibleNews.length}: transformando al español...`,
+          });
+
+          updateProcess(processId, {
+            current: index,
+            total: eligibleNews.length,
+            detail: `Procesando ${index + 1} de ${eligibleNews.length}: ${sourceItem.title}`,
           });
 
           try {
@@ -3934,6 +4181,12 @@ export default function PanelIA(): ReactElement {
                   : "Error desconocido preparando esta noticia.",
             });
           }
+
+          updateProcess(processId, {
+            current: index + 1,
+            total: eligibleNews.length,
+            detail: `${completed} completadas · ${failed} fallidas`,
+          });
         }
 
         await reloadReferenceEntities();
@@ -3946,14 +4199,55 @@ export default function PanelIA(): ReactElement {
               ? `Preparación masiva completada: ${completed} noticias guardadas como borrador.`
               : `Preparación masiva terminada: ${completed} noticias completadas y ${failed} fallidas.`,
         });
+
+        notifyDraftBatchProcessed({
+          source: "UFC",
+          created: completed,
+          skipped: 0,
+          errors: failed,
+          attempted: eligibleNews.length,
+          location:
+            failed > 0
+              ? {
+                  label: "Laboratorio → UFC → Noticias",
+                  url: window.location.href,
+                }
+              : {
+                  label: "Sanity Studio → Noticias",
+                  url: `${API_BASE_URL}/studio`,
+                },
+        });
+
+        if (failed === 0) {
+          completeProcess(processId);
+        } else {
+          failProcess(
+            processId,
+            `${completed} completadas · ${failed} fallidas`,
+          );
+        }
       } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Error desconocido durante la preparación masiva de noticias.";
+
         setUfcNewsBatchStatus({
           type: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Error desconocido durante la preparación masiva de noticias.",
+          message,
         });
+
+        notifyError({
+          source: "UFC",
+          action: "crear los borradores",
+          message,
+          location: {
+            label: "Laboratorio → UFC → Noticias",
+            url: window.location.href,
+          },
+        });
+
+        failProcess(processId, message);
       } finally {
         setIsPreparingUfcNewsBatch(false);
       }
@@ -4012,16 +4306,33 @@ export default function PanelIA(): ReactElement {
         type: "success",
         message: `${payload.count} noticias oficiales de BKFC cargadas.`,
       });
+
+      notifySourceLoaded({
+        source: "BKFC",
+        count: payload.count,
+      });
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido cargando las noticias oficiales de BKFC.";
+
       setBkfcNewsItems([]);
       setSelectedBkfcNewsId("");
       setBkfcNewsFetchedAt("");
       setBkfcNewsStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido cargando las noticias oficiales de BKFC.",
+        message,
+      });
+
+      notifyError({
+        source: "BKFC",
+        action: "cargar las noticias",
+        message,
+        location: {
+          label: "Laboratorio → BKFC → Noticias",
+          url: window.location.href,
+        },
       });
     } finally {
       setIsLoadingBkfcNews(false);
@@ -4037,8 +4348,17 @@ export default function PanelIA(): ReactElement {
       return;
     }
 
+    const processId = "bkfc-news-batch-analysis";
+
     try {
       setIsAnalyzingBkfcNewsBatch(true);
+
+      startProcess({
+        id: processId,
+        label: "Analizando noticias BKFC",
+        detail: `${bkfcNewsItems.length} noticias en preparación`,
+      });
+
       setBkfcNewsBatchStatus({
         type: "idle",
         message: "",
@@ -4074,15 +4394,48 @@ export default function PanelIA(): ReactElement {
         type: "success",
         message: `${payload.count} noticias analizadas: ${payload.summary.existing} existentes, ${payload.summary.ready} nuevas aptas, ${payload.summary.withoutContent} sin contenido suficiente y ${payload.summary.requiresReview} para revisión.`,
       });
+
+      notifyAnalysisCompleted({
+        source: "BKFC",
+        count: payload.count,
+        apt: payload.summary.ready,
+        review: payload.summary.requiresReview,
+        insufficient: payload.summary.withoutContent,
+        duplicates: payload.summary.existing,
+        location:
+          payload.summary.requiresReview > 0 ||
+          payload.summary.withoutContent > 0
+            ? {
+                label: "Laboratorio → BKFC → Noticias",
+                url: window.location.href,
+              }
+            : undefined,
+      });
+
+      completeProcess(processId);
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido analizando noticias BKFC.";
+
       setBkfcNewsBatchAnalysis(null);
       setBkfcNewsBatchStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido analizando noticias BKFC.",
+        message,
       });
+
+      notifyError({
+        source: "BKFC",
+        action: "analizar las noticias",
+        message,
+        location: {
+          label: "Laboratorio → BKFC → Noticias",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsAnalyzingBkfcNewsBatch(false);
     }
@@ -4170,6 +4523,16 @@ export default function PanelIA(): ReactElement {
       );
       setIsPreparingBkfcNewsBatch(true);
 
+      const processId = "bkfc-news-batch-preparation";
+
+      startProcess({
+        id: processId,
+        label: "Preparando noticias BKFC",
+        detail: `${eligibleNews.length} noticias pendientes`,
+        current: 0,
+        total: eligibleNews.length,
+      });
+
       let completed = 0;
       let failed = 0;
 
@@ -4180,6 +4543,12 @@ export default function PanelIA(): ReactElement {
           updateBkfcNewsBatchPreparationItem(sourceItem.id, {
             status: "procesando",
             message: `Noticia ${index + 1} de ${eligibleNews.length}: transformando al español...`,
+          });
+
+          updateProcess(processId, {
+            current: index,
+            total: eligibleNews.length,
+            detail: `Procesando ${index + 1} de ${eligibleNews.length}: ${sourceItem.title}`,
           });
 
           try {
@@ -4319,6 +4688,12 @@ export default function PanelIA(): ReactElement {
                   : "Error desconocido preparando esta noticia BKFC.",
             });
           }
+
+          updateProcess(processId, {
+            current: index + 1,
+            total: eligibleNews.length,
+            detail: `${completed} completadas · ${failed} fallidas`,
+          });
         }
 
         await reloadReferenceEntities();
@@ -4331,14 +4706,55 @@ export default function PanelIA(): ReactElement {
               ? `Preparación masiva BKFC completada: ${completed} noticias guardadas como borrador.`
               : `Preparación masiva BKFC terminada: ${completed} noticias completadas y ${failed} fallidas.`,
         });
+
+        notifyDraftBatchProcessed({
+          source: "BKFC",
+          created: completed,
+          skipped: 0,
+          errors: failed,
+          attempted: eligibleNews.length,
+          location:
+            failed > 0
+              ? {
+                  label: "Laboratorio → BKFC → Noticias",
+                  url: window.location.href,
+                }
+              : {
+                  label: "Sanity Studio → Noticias",
+                  url: `${API_BASE_URL}/studio`,
+                },
+        });
+
+        if (failed === 0) {
+          completeProcess(processId);
+        } else {
+          failProcess(
+            processId,
+            `${completed} completadas · ${failed} fallidas`,
+          );
+        }
       } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Error desconocido durante la preparación masiva de noticias BKFC.";
+
         setBkfcNewsBatchStatus({
           type: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Error desconocido durante la preparación masiva de noticias BKFC.",
+          message,
         });
+
+        notifyError({
+          source: "BKFC",
+          action: "crear los borradores",
+          message,
+          location: {
+            label: "Laboratorio → BKFC → Noticias",
+            url: window.location.href,
+          },
+        });
+
+        failProcess(processId, message);
       } finally {
         setIsPreparingBkfcNewsBatch(false);
       }
@@ -4670,16 +5086,33 @@ export default function PanelIA(): ReactElement {
         type: "success",
         message: `${payload.count} noticias oficiales de ONE Championship cargadas.`,
       });
+
+      notifySourceLoaded({
+        source: "ONE Championship",
+        count: payload.count,
+      });
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido cargando las noticias oficiales de ONE Championship.";
+
       setOneNewsItems([]);
       setSelectedOneNewsId("");
       setOneNewsFetchedAt("");
       setOneNewsStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido cargando las noticias oficiales de ONE Championship.",
+        message,
+      });
+
+      notifyError({
+        source: "ONE Championship",
+        action: "cargar las noticias",
+        message,
+        location: {
+          label: "Laboratorio → ONE Championship → Noticias",
+          url: window.location.href,
+        },
       });
     } finally {
       setIsLoadingOneNews(false);
@@ -4695,8 +5128,17 @@ export default function PanelIA(): ReactElement {
       return;
     }
 
+    const processId = "one-news-batch-analysis";
+
     try {
       setIsAnalyzingOneNewsBatch(true);
+
+      startProcess({
+        id: processId,
+        label: "Analizando noticias ONE Championship",
+        detail: `${oneNewsItems.length} noticias en preparación`,
+      });
+
       setOneNewsBatchStatus({
         type: "idle",
         message: "",
@@ -4732,15 +5174,48 @@ export default function PanelIA(): ReactElement {
         type: "success",
         message: `${payload.count} noticias analizadas: ${payload.summary.existing} existentes, ${payload.summary.ready} nuevas aptas, ${payload.summary.withoutContent} sin contenido suficiente y ${payload.summary.requiresReview} para revisión.`,
       });
+
+      notifyAnalysisCompleted({
+        source: "ONE Championship",
+        count: payload.count,
+        apt: payload.summary.ready,
+        review: payload.summary.requiresReview,
+        insufficient: payload.summary.withoutContent,
+        duplicates: payload.summary.existing,
+        location:
+          payload.summary.requiresReview > 0 ||
+          payload.summary.withoutContent > 0
+            ? {
+                label: "Laboratorio → ONE Championship → Noticias",
+                url: window.location.href,
+              }
+            : undefined,
+      });
+
+      completeProcess(processId);
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido analizando noticias ONE Championship.";
+
       setOneNewsBatchAnalysis(null);
       setOneNewsBatchStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido analizando noticias ONE Championship.",
+        message,
       });
+
+      notifyError({
+        source: "ONE Championship",
+        action: "analizar las noticias",
+        message,
+        location: {
+          label: "Laboratorio → ONE Championship → Noticias",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsAnalyzingOneNewsBatch(false);
     }
@@ -4828,6 +5303,16 @@ export default function PanelIA(): ReactElement {
       );
       setIsPreparingOneNewsBatch(true);
 
+      const processId = "one-news-batch-preparation";
+
+      startProcess({
+        id: processId,
+        label: "Preparando noticias ONE Championship",
+        detail: `${eligibleNews.length} noticias pendientes`,
+        current: 0,
+        total: eligibleNews.length,
+      });
+
       let completed = 0;
       let failed = 0;
 
@@ -4838,6 +5323,12 @@ export default function PanelIA(): ReactElement {
           updateOneNewsBatchPreparationItem(sourceItem.id, {
             status: "procesando",
             message: `Noticia ${index + 1} de ${eligibleNews.length}: transformando al español...`,
+          });
+
+          updateProcess(processId, {
+            current: index,
+            total: eligibleNews.length,
+            detail: `Procesando ${index + 1} de ${eligibleNews.length}: ${sourceItem.title}`,
           });
 
           try {
@@ -4977,6 +5468,12 @@ export default function PanelIA(): ReactElement {
                   : "Error desconocido preparando esta noticia ONE Championship.",
             });
           }
+
+          updateProcess(processId, {
+            current: index + 1,
+            total: eligibleNews.length,
+            detail: `${completed} completadas · ${failed} fallidas`,
+          });
         }
 
         await reloadReferenceEntities();
@@ -4989,14 +5486,55 @@ export default function PanelIA(): ReactElement {
               ? `Preparación masiva ONE Championship completada: ${completed} noticias guardadas como borrador.`
               : `Preparación masiva ONE Championship terminada: ${completed} noticias completadas y ${failed} fallidas.`,
         });
+
+        notifyDraftBatchProcessed({
+          source: "ONE Championship",
+          created: completed,
+          skipped: 0,
+          errors: failed,
+          attempted: eligibleNews.length,
+          location:
+            failed > 0
+              ? {
+                  label: "Laboratorio → ONE Championship → Noticias",
+                  url: window.location.href,
+                }
+              : {
+                  label: "Sanity Studio → Noticias",
+                  url: `${API_BASE_URL}/studio`,
+                },
+        });
+
+        if (failed === 0) {
+          completeProcess(processId);
+        } else {
+          failProcess(
+            processId,
+            `${completed} completadas · ${failed} fallidas`,
+          );
+        }
       } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Error desconocido durante la preparación masiva de noticias ONE Championship.";
+
         setOneNewsBatchStatus({
           type: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Error desconocido durante la preparación masiva de noticias ONE Championship.",
+          message,
         });
+
+        notifyError({
+          source: "ONE Championship",
+          action: "crear los borradores",
+          message,
+          location: {
+            label: "Laboratorio → ONE Championship → Noticias",
+            url: window.location.href,
+          },
+        });
+
+        failProcess(processId, message);
       } finally {
         setIsPreparingOneNewsBatch(false);
       }
@@ -5981,16 +6519,33 @@ export default function PanelIA(): ReactElement {
         type: "success",
         message: `${payload.count} eventos oficiales de UFC cargados.`,
       });
+
+      notifyEventsLoaded({
+        source: "UFC",
+        count: payload.count,
+      });
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido cargando los eventos oficiales de UFC.";
+
       setOfficialEventItems([]);
       setSelectedOfficialEventId("");
       setOfficialEventsFetchedAt("");
       setOfficialEventSourceStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido cargando los eventos oficiales de UFC.",
+        message,
+      });
+
+      notifyError({
+        source: "UFC",
+        action: "cargar los eventos",
+        message,
+        location: {
+          label: "Laboratorio → UFC → Eventos",
+          url: window.location.href,
+        },
       });
     } finally {
       setIsLoadingOfficialEvents(false);
@@ -6011,8 +6566,17 @@ export default function PanelIA(): ReactElement {
       return;
     }
 
+    const processId = "ufc-events-batch-analysis";
+
     try {
       setIsAnalyzingUfcBatch(true);
+
+      startProcess({
+        id: processId,
+        label: "Analizando eventos UFC",
+        detail: `${upcomingEvents.length} carteleras en preparación`,
+      });
+
       setUfcBatchStatus({
         type: "idle",
         message: "",
@@ -6047,15 +6611,44 @@ export default function PanelIA(): ReactElement {
         type: "success",
         message: `${payload.count} eventos analizados: ${payload.summary.completed} completos, ${payload.summary.readyToPrepare} listos para preparar, ${payload.summary.eventPending} con evento pendiente y ${payload.summary.requiresReview} para revisión.`,
       });
+
+      notifyEventAnalysisCompleted({
+        source: "UFC",
+        count: payload.count,
+        completed: payload.summary.completed,
+        ready: payload.summary.readyToPrepare,
+        pending: payload.summary.eventPending,
+        review: payload.summary.requiresReview,
+        location: {
+          label: "Laboratorio → UFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      completeProcess(processId);
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido analizando los próximos eventos UFC.";
+
       setUfcBatchAnalysis(null);
       setUfcBatchStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido analizando los próximos eventos UFC.",
+        message,
       });
+
+      notifyError({
+        source: "UFC",
+        action: "analizar los eventos",
+        message,
+        location: {
+          label: "Laboratorio → UFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsAnalyzingUfcBatch(false);
     }
@@ -6073,8 +6666,17 @@ export default function PanelIA(): ReactElement {
         return;
       }
 
+      const processId = "ufc-event-resolution";
+
       try {
         setIsResolvingUfcEvent(true);
+
+        startProcess({
+          id: processId,
+          label: "Resolviendo cartelera UFC",
+          detail: targetEvent.name,
+        });
+
         setUfcAutomationStatus({
           type: "idle",
           message: "",
@@ -6112,15 +6714,45 @@ export default function PanelIA(): ReactElement {
             ? `${payload.counts.readyFights} combates resueltos: ${payload.counts.existingFights} ya existen y ${payload.counts.pendingFights} quedan pendientes de crear.`
             : `Cartelera analizada. Falta crear o localizar el evento en Sanity.`,
         });
+
+        notifyEventResolved({
+          source: "UFC",
+          eventName: targetEvent.name,
+          existingFights: payload.counts.existingFights,
+          pendingFights: payload.counts.pendingFights,
+          missingFighters: payload.counts.missingFighters,
+          unresolvedCategories: payload.counts.unresolvedCategories,
+          eventFound: payload.event.found,
+          location: {
+            label: "Laboratorio → UFC → Eventos",
+            url: window.location.href,
+          },
+        });
+
+        completeProcess(processId);
       } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Error desconocido resolviendo la cartelera.";
+
         setUfcEventResolution(null);
         setUfcAutomationStatus({
           type: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Error desconocido resolviendo la cartelera.",
+          message,
         });
+
+        notifyError({
+          source: "UFC",
+          action: "resolver la cartelera",
+          message,
+          location: {
+            label: "Laboratorio → UFC → Eventos",
+            url: window.location.href,
+          },
+        });
+
+        failProcess(processId, message);
       } finally {
         setIsResolvingUfcEvent(false);
       }
@@ -6137,8 +6769,17 @@ export default function PanelIA(): ReactElement {
       return;
     }
 
+    const processId = "ufc-create-fighters";
+
     try {
       setIsCreatingUfcFighters(true);
+
+      startProcess({
+        id: processId,
+        label: "Creando luchadores UFC",
+        detail: selectedOfficialEvent.name,
+      });
+
       setUfcAutomationStatus({
         type: "idle",
         message: "",
@@ -6169,26 +6810,56 @@ export default function PanelIA(): ReactElement {
         );
       }
 
-      setUfcAutomationStatus({
-        type: "success",
-        message: `${payload.summary.created} luchadores creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`,
-      });
-
       await reloadReferenceEntities();
       await resolveSelectedUfcEvent(selectedOfficialEvent);
 
       setUfcAutomationStatus({
-        type: "success",
+        type: payload.summary.failed > 0 ? "error" : "success",
         message: `${payload.summary.created} luchadores creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`,
       });
+
+      notifyEntityBatchProcessed({
+        source: "UFC",
+        entity: "fighter",
+        created: payload.summary.created,
+        skipped: payload.summary.skipped,
+        failed: payload.summary.failed,
+        location: {
+          label: "Laboratorio → UFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      if (payload.summary.failed > 0) {
+        failProcess(
+          processId,
+          `${payload.summary.failed} luchadores fallidos`,
+        );
+      } else {
+        completeProcess(processId);
+      }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido creando luchadores.";
+
       setUfcAutomationStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido creando luchadores.",
+        message,
       });
+
+      notifyError({
+        source: "UFC",
+        action: "crear los luchadores",
+        message,
+        location: {
+          label: "Laboratorio → UFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsCreatingUfcFighters(false);
     }
@@ -6207,8 +6878,17 @@ export default function PanelIA(): ReactElement {
       return;
     }
 
+    const processId = "ufc-create-fights";
+
     try {
       setIsCreatingUfcFights(true);
+
+      startProcess({
+        id: processId,
+        label: "Creando combates UFC",
+        detail: selectedOfficialEvent.name,
+      });
+
       setUfcAutomationStatus({
         type: "idle",
         message: "",
@@ -6239,26 +6919,56 @@ export default function PanelIA(): ReactElement {
         );
       }
 
-      setUfcAutomationStatus({
-        type: "success",
-        message: `${payload.summary.created} combates creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`,
-      });
-
       await reloadReferenceEntities();
       await resolveSelectedUfcEvent(selectedOfficialEvent);
 
       setUfcAutomationStatus({
-        type: "success",
+        type: payload.summary.failed > 0 ? "error" : "success",
         message: `${payload.summary.created} combates creados, ${payload.summary.skipped} ya existentes y ${payload.summary.failed} fallidos.`,
       });
+
+      notifyEntityBatchProcessed({
+        source: "UFC",
+        entity: "fight",
+        created: payload.summary.created,
+        skipped: payload.summary.skipped,
+        failed: payload.summary.failed,
+        location: {
+          label: "Laboratorio → UFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      if (payload.summary.failed > 0) {
+        failProcess(
+          processId,
+          `${payload.summary.failed} combates fallidos`,
+        );
+      } else {
+        completeProcess(processId);
+      }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido creando combates.";
+
       setUfcAutomationStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido creando combates.",
+        message,
       });
+
+      notifyError({
+        source: "UFC",
+        action: "crear los combates",
+        message,
+        location: {
+          label: "Laboratorio → UFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsCreatingUfcFights(false);
     }
@@ -6372,11 +7082,23 @@ export default function PanelIA(): ReactElement {
       }
 
       if (eligibleEvents.length === 0) {
+        const message =
+          "No hay eventos aptos para preparar. Los completos, pendientes de crear o con categorías sin resolver se excluyen automáticamente.";
+
         setUfcBatchStatus({
           type: "error",
-          message:
-            "No hay eventos aptos para preparar. Los completos, pendientes de crear o con categorías sin resolver se excluyen automáticamente.",
+          message,
         });
+
+        notifyReviewRecommended({
+          source: "UFC",
+          message,
+          location: {
+            label: "Laboratorio → UFC → Eventos",
+            url: window.location.href,
+          },
+        });
+
         return;
       }
 
@@ -6391,6 +7113,16 @@ export default function PanelIA(): ReactElement {
       setUfcBatchPreparation(initialProgress);
       setIsPreparingUfcBatch(true);
 
+      const processId = "ufc-events-batch-preparation";
+
+      startProcess({
+        id: processId,
+        label: "Preparando eventos UFC",
+        detail: `${eligibleEvents.length} eventos pendientes`,
+        current: 0,
+        total: eligibleEvents.length,
+      });
+
       let completed = 0;
       let failed = 0;
       let createdFighters = 0;
@@ -6403,6 +7135,12 @@ export default function PanelIA(): ReactElement {
           updateUfcBatchPreparationItem(event.id, {
             status: "procesando",
             message: `Evento ${index + 1} de ${eligibleEvents.length}: analizando estado actual...`,
+          });
+
+          updateProcess(processId, {
+            current: index,
+            total: eligibleEvents.length,
+            detail: `Procesando ${index + 1} de ${eligibleEvents.length}: ${event.name}`,
           });
 
           try {
@@ -6524,6 +7262,7 @@ export default function PanelIA(): ReactElement {
             });
           } catch (error) {
             failed += 1;
+
             updateUfcBatchPreparationItem(event.id, {
               status: "fallido",
               message:
@@ -6532,6 +7271,12 @@ export default function PanelIA(): ReactElement {
                   : "Error desconocido preparando este evento.",
             });
           }
+
+          updateProcess(processId, {
+            current: index + 1,
+            total: eligibleEvents.length,
+            detail: `${completed} completados · ${failed} fallidos · ${createdFighters} luchadores · ${createdFights} combates`,
+          });
         }
 
         await reloadReferenceEntities();
@@ -6544,14 +7289,55 @@ export default function PanelIA(): ReactElement {
               ? `Preparación masiva completada: ${completed} eventos, ${createdFighters} luchadores y ${createdFights} combates creados.`
               : `Preparación masiva terminada: ${completed} eventos completados y ${failed} fallidos. Se crearon ${createdFighters} luchadores y ${createdFights} combates.`,
         });
+
+        notifyEntityBatchProcessed({
+          source: "UFC",
+          entity: "event",
+          created: completed,
+          skipped: 0,
+          failed,
+          location: {
+            label:
+              failed > 0
+                ? "Laboratorio → UFC → Eventos"
+                : "Sanity Studio → Eventos",
+            url:
+              failed > 0
+                ? window.location.href
+                : `${API_BASE_URL}/studio`,
+          },
+        });
+
+        if (failed === 0) {
+          completeProcess(processId);
+        } else {
+          failProcess(
+            processId,
+            `${completed} eventos completados · ${failed} fallidos`,
+          );
+        }
       } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Error desconocido durante la preparación masiva.";
+
         setUfcBatchStatus({
           type: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Error desconocido durante la preparación masiva.",
+          message,
         });
+
+        notifyError({
+          source: "UFC",
+          action: "preparar los eventos",
+          message,
+          location: {
+            label: "Laboratorio → UFC → Eventos",
+            url: window.location.href,
+          },
+        });
+
+        failProcess(processId, message);
       } finally {
         setIsPreparingUfcBatch(false);
       }
@@ -6573,8 +7359,19 @@ export default function PanelIA(): ReactElement {
       return;
     }
 
+    const processId = "ufc-full-card-preparation";
+
     try {
       setIsPreparingFullUfcCard(true);
+
+      startProcess({
+        id: processId,
+        label: "Preparando cartelera completa UFC",
+        detail: selectedOfficialEvent.name,
+        current: 1,
+        total: 4,
+      });
+
       setUfcAutomationStatus({
         type: "success",
         message: "Paso 1 de 4: analizando la cartelera oficial...",
@@ -6587,23 +7384,55 @@ export default function PanelIA(): ReactElement {
       setUfcEventResolution(resolution);
 
       if (!resolution.event.found) {
+        const message =
+          "El evento todavía no existe en Sanity. Transfórmalo, genera el output y guárdalo como borrador. Después vuelve a pulsar “Preparar cartelera completa”.";
+
         setUfcAutomationStatus({
           type: "error",
-          message:
-            "El evento todavía no existe en Sanity. Transfórmalo, genera el output y guárdalo como borrador. Después vuelve a pulsar “Preparar cartelera completa”.",
+          message,
         });
+
+        notifyReviewRecommended({
+          source: "UFC",
+          message: `${selectedOfficialEvent.name}: ${message}`,
+          location: {
+            label: "Laboratorio → UFC → Eventos → Formulario",
+            url: window.location.href,
+          },
+        });
+
+        failProcess(processId, "Evento pendiente de crear en Sanity");
         return;
       }
 
       if (resolution.counts.unresolvedCategories > 0) {
+        const message = `El flujo se ha detenido: hay ${resolution.counts.unresolvedCategories} categorías de peso sin resolver. Revísalas antes de crear luchadores o combates.`;
+
         setUfcAutomationStatus({
           type: "error",
-          message: `El flujo se ha detenido: hay ${resolution.counts.unresolvedCategories} categorías de peso sin resolver. Revísalas antes de crear luchadores o combates.`,
+          message,
         });
+
+        notifyReviewRecommended({
+          source: "UFC",
+          message: `${selectedOfficialEvent.name}: ${message}`,
+          location: {
+            label: "Laboratorio → UFC → Eventos",
+            url: window.location.href,
+          },
+        });
+
+        failProcess(processId, message);
         return;
       }
 
       if (resolution.counts.missingFighters > 0) {
+        updateProcess(processId, {
+          current: 2,
+          total: 4,
+          detail: "Creando luchadores faltantes",
+        });
+
         setUfcAutomationStatus({
           type: "success",
           message: `Paso 2 de 4: creando ${resolution.counts.missingFighters} luchadores faltantes...`,
@@ -6643,6 +7472,12 @@ export default function PanelIA(): ReactElement {
 
         await reloadReferenceEntities();
 
+        updateProcess(processId, {
+          current: 3,
+          total: 4,
+          detail: "Actualizando relaciones de luchadores",
+        });
+
         setUfcAutomationStatus({
           type: "success",
           message:
@@ -6665,6 +7500,12 @@ export default function PanelIA(): ReactElement {
       }
 
       if (resolution.counts.pendingFights > 0) {
+        updateProcess(processId, {
+          current: 4,
+          total: 4,
+          detail: "Creando combates pendientes",
+        });
+
         setUfcAutomationStatus({
           type: "success",
           message: `Paso 4 de 4: creando ${resolution.counts.pendingFights} combates pendientes...`,
@@ -6719,14 +7560,55 @@ export default function PanelIA(): ReactElement {
             ? `Cartelera completa preparada: ${resolution.counts.existingFighters} luchadores relacionados, ${resolution.counts.existingFights} combates existentes y 0 pendientes.`
             : `Proceso completado con ${resolution.counts.pendingFights} combates y ${resolution.counts.missingFighters} luchadores todavía pendientes.`,
       });
+
+      notifyEventResolved({
+        source: "UFC",
+        eventName: selectedOfficialEvent.name,
+        existingFights: resolution.counts.existingFights,
+        pendingFights: resolution.counts.pendingFights,
+        missingFighters: resolution.counts.missingFighters,
+        unresolvedCategories: resolution.counts.unresolvedCategories,
+        eventFound: resolution.event.found,
+        location: {
+          label: "Laboratorio → UFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      if (
+        resolution.counts.pendingFights === 0 &&
+        resolution.counts.missingFighters === 0 &&
+        resolution.counts.unresolvedCategories === 0
+      ) {
+        completeProcess(processId);
+      } else {
+        failProcess(
+          processId,
+          `${resolution.counts.pendingFights} combates y ${resolution.counts.missingFighters} luchadores pendientes`,
+        );
+      }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido preparando la cartelera completa.";
+
       setUfcAutomationStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido preparando la cartelera completa.",
+        message,
       });
+
+      notifyError({
+        source: "UFC",
+        action: "preparar la cartelera completa",
+        message,
+        location: {
+          label: "Laboratorio → UFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsPreparingFullUfcCard(false);
     }
@@ -6737,9 +7619,21 @@ export default function PanelIA(): ReactElement {
   ]);
 
   const reloadOfficialBkfcEvents = useCallback(async (): Promise<void> => {
+    const processId = "bkfc-events-load";
+
     try {
       setIsLoadingBkfcEvents(true);
-      setBkfcSourceStatus({ type: "idle", message: "" });
+
+      startProcess({
+        id: processId,
+        label: "Cargando eventos BKFC",
+        detail: "Consultando la fuente oficial",
+      });
+
+      setBkfcSourceStatus({
+        type: "idle",
+        message: "",
+      });
 
       const response = await fetch(
         `${API_BASE_URL}/api/sources/bkfc/events?refresh=${Date.now()}`,
@@ -6763,24 +7657,48 @@ export default function PanelIA(): ReactElement {
       setBkfcEventsFetchedAt(payload.fetchedAt);
       setBkfcEventResolution(null);
       setSelectedBkfcEventId((currentId) =>
-        payload.items.some((item) => item.id === currentId) ? currentId : ""
+        payload.items.some((item) => item.id === currentId)
+          ? currentId
+          : ""
       );
+
       setBkfcSourceStatus({
         type: "success",
         message: `${payload.count} eventos oficiales de BKFC cargados.`,
       });
+
+      notifyEventsLoaded({
+        source: "BKFC",
+        count: payload.count,
+      });
+
+      completeProcess(processId);
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido cargando los eventos oficiales de BKFC.";
+
       setBkfcEventItems([]);
       setSelectedBkfcEventId("");
       setBkfcEventsFetchedAt("");
       setBkfcEventResolution(null);
       setBkfcSourceStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido cargando los eventos oficiales de BKFC.",
+        message,
       });
+
+      notifyError({
+        source: "BKFC",
+        action: "cargar los eventos",
+        message,
+        location: {
+          label: "Laboratorio → BKFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsLoadingBkfcEvents(false);
     }
@@ -6831,11 +7749,24 @@ export default function PanelIA(): ReactElement {
         return null;
       }
 
+      const processId = "bkfc-event-resolution";
+
       try {
         setIsResolvingBkfcEvent(true);
-        setBkfcSourceStatus({ type: "idle", message: "" });
+
+        startProcess({
+          id: processId,
+          label: "Resolviendo cartelera BKFC",
+          detail: targetEvent.name,
+        });
+
+        setBkfcSourceStatus({
+          type: "idle",
+          message: "",
+        });
 
         const resolution = await requestBkfcEventResolution(targetEvent);
+
         setBkfcEventResolution(resolution);
         setBkfcSourceStatus({
           type: "success",
@@ -6844,16 +7775,47 @@ export default function PanelIA(): ReactElement {
             : "Cartelera analizada. El evento todavía no existe en Sanity.",
         });
 
+        notifyEventResolved({
+          source: "BKFC",
+          eventName: targetEvent.name,
+          existingFights: resolution.counts.existingFights,
+          pendingFights: resolution.counts.pendingFights,
+          missingFighters: resolution.counts.missingFighters,
+          unresolvedCategories: resolution.counts.unresolvedCategories,
+          eventFound: resolution.event.found,
+          location: {
+            label: "Laboratorio → BKFC → Eventos",
+            url: window.location.href,
+          },
+        });
+
+        completeProcess(processId);
+
         return resolution;
       } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Error desconocido resolviendo la cartelera BKFC.";
+
         setBkfcEventResolution(null);
         setBkfcSourceStatus({
           type: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Error desconocido resolviendo la cartelera BKFC.",
+          message,
         });
+
+        notifyError({
+          source: "BKFC",
+          action: "resolver la cartelera",
+          message,
+          location: {
+            label: "Laboratorio → BKFC → Eventos",
+            url: window.location.href,
+          },
+        });
+
+        failProcess(processId, message);
+
         return null;
       } finally {
         setIsResolvingBkfcEvent(false);
@@ -6914,31 +7876,91 @@ export default function PanelIA(): ReactElement {
       return;
     }
 
+    const processId = "bkfc-create-event";
+
     try {
       setIsCreatingBkfcEvent(true);
+
+      startProcess({
+        id: processId,
+        label: "Creando evento BKFC",
+        detail: selectedBkfcEvent.name,
+      });
+
       setBkfcSourceStatus({
         type: "success",
         message: "Transformando y guardando el evento BKFC como borrador...",
       });
 
-      await runBkfcBulkAction("create-event", selectedBkfcEvent);
+      await runBkfcBulkAction(
+        "create-event",
+        selectedBkfcEvent
+      );
+
       await reloadReferenceEntities();
-      const resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+
+      const resolution =
+        await requestBkfcEventResolution(selectedBkfcEvent);
+
       setBkfcEventResolution(resolution);
+
+      const createdCorrectly = resolution.event.found;
+
       setBkfcSourceStatus({
-        type: "success",
-        message: resolution.event.found
+        type: createdCorrectly ? "success" : "error",
+        message: createdCorrectly
           ? "Evento BKFC creado y reconocido correctamente en Sanity."
-          : "El evento se creó, pero aún no aparece en la resolución.",
+          : "El evento se creó, pero todavía no aparece en la resolución.",
       });
+
+      if (createdCorrectly) {
+        notifyEventCreated({
+          source: "BKFC",
+          eventName: selectedBkfcEvent.name,
+          location: {
+            label: "Sanity Studio → Eventos",
+            url: `${API_BASE_URL}/studio`,
+          },
+        });
+
+        completeProcess(processId);
+      } else {
+        notifyReviewRecommended({
+          source: "BKFC",
+          message: `${selectedBkfcEvent.name} se guardó, pero todavía no aparece al resolver la cartelera.`,
+          location: {
+            label: "Laboratorio → BKFC → Eventos",
+            url: window.location.href,
+          },
+        });
+
+        failProcess(
+          processId,
+          "Evento creado, pero pendiente de resolver",
+        );
+      }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido creando el evento BKFC.";
+
       setBkfcSourceStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido creando el evento BKFC.",
+        message,
       });
+
+      notifyError({
+        source: "BKFC",
+        action: "crear el evento",
+        message,
+        location: {
+          label: "Laboratorio → BKFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsCreatingBkfcEvent(false);
     }
@@ -6958,31 +7980,86 @@ export default function PanelIA(): ReactElement {
       return;
     }
 
+    const processId = "bkfc-create-fighters";
+
     try {
       setIsCreatingBkfcFighters(true);
+
+      startProcess({
+        id: processId,
+        label: "Creando luchadores BKFC",
+        detail: selectedBkfcEvent.name,
+      });
+
       const payload = (await runBkfcBulkAction(
         "create-fighters",
         selectedBkfcEvent
       )) as UfcBulkActionResponse;
 
+      if (!payload.summary) {
+        throw new Error(
+          "La respuesta de creación de luchadores BKFC no incluye resumen.",
+        );
+      }
+
+      const summary = payload.summary;
+
       await reloadReferenceEntities();
-      const resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+
+      const resolution =
+        await requestBkfcEventResolution(selectedBkfcEvent);
+
       setBkfcEventResolution(resolution);
       setBkfcSourceStatus({
-        type: "success",
-        message:
-          payload.ok && "summary" in payload
-            ? `${payload.summary.created} luchadores creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`
-            : "Luchadores BKFC procesados.",
+        type:
+          summary.failed > 0
+            ? "error"
+            : "success",
+        message: `${summary.created} luchadores creados, ${summary.skipped} omitidos y ${summary.failed} fallidos.`,
       });
+
+      notifyEntityBatchProcessed({
+        source: "BKFC",
+        entity: "fighter",
+        created: summary.created,
+        skipped: summary.skipped,
+        failed: summary.failed,
+        location: {
+          label: "Laboratorio → BKFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      if (summary.failed > 0) {
+        failProcess(
+          processId,
+          `${summary.failed} luchadores fallidos`,
+        );
+      } else {
+        completeProcess(processId);
+      }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido creando luchadores BKFC.";
+
       setBkfcSourceStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido creando luchadores BKFC.",
+        message,
       });
+
+      notifyError({
+        source: "BKFC",
+        action: "crear los luchadores",
+        message,
+        location: {
+          label: "Laboratorio → BKFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsCreatingBkfcFighters(false);
     }
@@ -7002,31 +8079,86 @@ export default function PanelIA(): ReactElement {
       return;
     }
 
+    const processId = "bkfc-create-fights";
+
     try {
       setIsCreatingBkfcFights(true);
+
+      startProcess({
+        id: processId,
+        label: "Creando combates BKFC",
+        detail: selectedBkfcEvent.name,
+      });
+
       const payload = (await runBkfcBulkAction(
         "create-fights",
         selectedBkfcEvent
       )) as UfcBulkActionResponse;
 
+      if (!payload.summary) {
+        throw new Error(
+          "La respuesta de creación de combates BKFC no incluye resumen.",
+        );
+      }
+
+      const summary = payload.summary;
+
       await reloadReferenceEntities();
-      const resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+
+      const resolution =
+        await requestBkfcEventResolution(selectedBkfcEvent);
+
       setBkfcEventResolution(resolution);
       setBkfcSourceStatus({
-        type: "success",
-        message:
-          payload.ok && "summary" in payload
-            ? `${payload.summary.created} combates creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`
-            : "Combates BKFC procesados.",
+        type:
+          summary.failed > 0
+            ? "error"
+            : "success",
+        message: `${summary.created} combates creados, ${summary.skipped} omitidos y ${summary.failed} fallidos.`,
       });
+
+      notifyEntityBatchProcessed({
+        source: "BKFC",
+        entity: "fight",
+        created: summary.created,
+        skipped: summary.skipped,
+        failed: summary.failed,
+        location: {
+          label: "Laboratorio → BKFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      if (summary.failed > 0) {
+        failProcess(
+          processId,
+          `${summary.failed} combates fallidos`,
+        );
+      } else {
+        completeProcess(processId);
+      }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido creando combates BKFC.";
+
       setBkfcSourceStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido creando combates BKFC.",
+        message,
       });
+
+      notifyError({
+        source: "BKFC",
+        action: "crear los combates",
+        message,
+        location: {
+          label: "Laboratorio → BKFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsCreatingBkfcFights(false);
     }
@@ -7050,65 +8182,160 @@ export default function PanelIA(): ReactElement {
       `Se preparará la cartelera de “${selectedBkfcEvent.name}”: evento, luchadores y combates con categorías ya resueltas. Las categorías pendientes se omitirán. ¿Continuar?`
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
+
+    const processId = "bkfc-full-card-preparation";
 
     try {
       setIsPreparingFullBkfcCard(true);
+
+      startProcess({
+        id: processId,
+        label: "Preparando cartelera completa BKFC",
+        detail: selectedBkfcEvent.name,
+        current: 1,
+        total: 4,
+      });
+
       setBkfcSourceStatus({
         type: "success",
         message: "Paso 1 de 4: analizando la cartelera BKFC...",
       });
 
-      let resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+      let resolution =
+        await requestBkfcEventResolution(selectedBkfcEvent);
+
       setBkfcEventResolution(resolution);
 
       if (!resolution.event.found) {
+        updateProcess(processId, {
+          current: 2,
+          total: 4,
+          detail: "Creando el evento",
+        });
+
         setBkfcSourceStatus({
           type: "success",
           message: "Paso 2 de 4: creando el evento BKFC...",
         });
-        await runBkfcBulkAction("create-event", selectedBkfcEvent);
+
+        await runBkfcBulkAction(
+          "create-event",
+          selectedBkfcEvent
+        );
+
         await reloadReferenceEntities();
-        resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+
+        resolution =
+          await requestBkfcEventResolution(selectedBkfcEvent);
+
         setBkfcEventResolution(resolution);
       }
 
       if (resolution.counts.missingFighters > 0) {
+        updateProcess(processId, {
+          current: 3,
+          total: 4,
+          detail: `Creando ${resolution.counts.missingFighters} luchadores`,
+        });
+
         setBkfcSourceStatus({
           type: "success",
           message: `Paso 3 de 4: creando ${resolution.counts.missingFighters} luchadores faltantes...`,
         });
-        await runBkfcBulkAction("create-fighters", selectedBkfcEvent);
+
+        await runBkfcBulkAction(
+          "create-fighters",
+          selectedBkfcEvent
+        );
+
         await reloadReferenceEntities();
-        resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+
+        resolution =
+          await requestBkfcEventResolution(selectedBkfcEvent);
+
         setBkfcEventResolution(resolution);
       }
 
       if (resolution.counts.pendingFights > 0) {
+        updateProcess(processId, {
+          current: 4,
+          total: 4,
+          detail: `Creando ${resolution.counts.pendingFights} combates`,
+        });
+
         setBkfcSourceStatus({
           type: "success",
           message: `Paso 4 de 4: creando ${resolution.counts.pendingFights} combates con categorías resueltas...`,
         });
-        await runBkfcBulkAction("create-fights", selectedBkfcEvent);
+
+        await runBkfcBulkAction(
+          "create-fights",
+          selectedBkfcEvent
+        );
+
         await reloadReferenceEntities();
-        resolution = await requestBkfcEventResolution(selectedBkfcEvent);
+
+        resolution =
+          await requestBkfcEventResolution(selectedBkfcEvent);
+
         setBkfcEventResolution(resolution);
       }
 
+      const isComplete =
+        resolution.event.found &&
+        resolution.counts.missingFighters === 0 &&
+        resolution.counts.pendingFights === 0;
+
       setBkfcSourceStatus({
-        type: "success",
+        type: isComplete ? "success" : "error",
         message: `Cartelera BKFC preparada: ${resolution.counts.existingFighters} luchadores, ${resolution.counts.existingFights} combates existentes y ${resolution.counts.pendingFights} combates pendientes. Se han omitido ${resolution.counts.unresolvedCategories} categorías sin resolver.`,
       });
+
+      notifyEventResolved({
+        source: "BKFC",
+        eventName: selectedBkfcEvent.name,
+        existingFights: resolution.counts.existingFights,
+        pendingFights: resolution.counts.pendingFights,
+        missingFighters: resolution.counts.missingFighters,
+        unresolvedCategories: resolution.counts.unresolvedCategories,
+        eventFound: resolution.event.found,
+        location: {
+          label: "Laboratorio → BKFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      if (isComplete) {
+        completeProcess(processId);
+      } else {
+        failProcess(
+          processId,
+          `${resolution.counts.pendingFights} combates, ${resolution.counts.missingFighters} luchadores y ${resolution.counts.unresolvedCategories} categorías pendientes`,
+        );
+      }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido preparando la cartelera BKFC.";
+
       setBkfcSourceStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido preparando la cartelera BKFC.",
+        message,
       });
+
+      notifyError({
+        source: "BKFC",
+        action: "preparar la cartelera completa",
+        message,
+        location: {
+          label: "Laboratorio → BKFC → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsPreparingFullBkfcCard(false);
     }
@@ -7369,9 +8596,21 @@ export default function PanelIA(): ReactElement {
   }, [auxiliary, contentType, referenceData, resetDerivedUiState, selectedFekmEvent]);
 
   const reloadOfficialOneEvents = useCallback(async (): Promise<void> => {
+    const processId = "one-events-load";
+
     try {
       setIsLoadingOneEvents(true);
-      setOneEventSourceStatus({ type: "idle", message: "" });
+
+      startProcess({
+        id: processId,
+        label: "Cargando eventos ONE Championship",
+        detail: "Consultando la fuente oficial",
+      });
+
+      setOneEventSourceStatus({
+        type: "idle",
+        message: "",
+      });
 
       const response = await fetch(
         `${API_BASE_URL}/api/sources/one/events?refresh=${Date.now()}`,
@@ -7387,32 +8626,57 @@ export default function PanelIA(): ReactElement {
         throw new Error(
           !payload.ok && payload.error
             ? payload.error
-            : "No se pudieron cargar los eventos oficiales de ONE."
+            : "No se pudieron cargar los eventos oficiales de ONE Championship."
         );
       }
 
       setOneEventItems(payload.items);
       setOneEventsFetchedAt(payload.fetchedAt);
       setOneEventResolution(null);
+
       setSelectedOneEventId((currentId) =>
-        payload.items.some((item) => item.id === currentId) ? currentId : ""
+        payload.items.some((item) => item.id === currentId)
+          ? currentId
+          : ""
       );
+
       setOneEventSourceStatus({
         type: "success",
-        message: `${payload.count} eventos oficiales de ONE cargados.`,
+        message: `${payload.count} eventos oficiales de ONE Championship cargados.`,
       });
+
+      notifyEventsLoaded({
+        source: "ONE Championship",
+        count: payload.count,
+      });
+
+      completeProcess(processId);
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido cargando los eventos oficiales de ONE Championship.";
+
       setOneEventItems([]);
       setSelectedOneEventId("");
       setOneEventsFetchedAt("");
       setOneEventResolution(null);
       setOneEventSourceStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido cargando los eventos oficiales de ONE.",
+        message,
       });
+
+      notifyError({
+        source: "ONE Championship",
+        action: "cargar los eventos",
+        message,
+        location: {
+          label: "Laboratorio → ONE Championship → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsLoadingOneEvents(false);
     }
@@ -7458,17 +8722,32 @@ export default function PanelIA(): ReactElement {
       if (!targetEvent) {
         setOneEventSourceStatus({
           type: "error",
-          message: "Selecciona primero un evento oficial de ONE.",
+          message: "Selecciona primero un evento oficial de ONE Championship.",
         });
         return null;
       }
 
+      const processId = "one-event-resolution";
+
       try {
         setIsResolvingOneEvent(true);
-        setOneEventSourceStatus({ type: "idle", message: "" });
 
-        const resolution = await requestOneEventResolution(targetEvent);
+        startProcess({
+          id: processId,
+          label: "Resolviendo cartelera ONE Championship",
+          detail: targetEvent.name,
+        });
+
+        setOneEventSourceStatus({
+          type: "idle",
+          message: "",
+        });
+
+        const resolution =
+          await requestOneEventResolution(targetEvent);
+
         setOneEventResolution(resolution);
+
         setOneEventSourceStatus({
           type: "success",
           message: resolution.event.found
@@ -7476,16 +8755,47 @@ export default function PanelIA(): ReactElement {
             : "Cartelera analizada. El evento todavía no existe en Sanity.",
         });
 
+        notifyEventResolved({
+          source: "ONE Championship",
+          eventName: targetEvent.name,
+          existingFights: resolution.counts.existingFights,
+          pendingFights: resolution.counts.pendingFights,
+          missingFighters: resolution.counts.missingFighters,
+          unresolvedCategories: resolution.counts.unresolvedCategories,
+          eventFound: resolution.event.found,
+          location: {
+            label: "Laboratorio → ONE Championship → Eventos",
+            url: window.location.href,
+          },
+        });
+
+        completeProcess(processId);
+
         return resolution;
       } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Error desconocido resolviendo la cartelera ONE Championship.";
+
         setOneEventResolution(null);
         setOneEventSourceStatus({
           type: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Error desconocido resolviendo la cartelera ONE.",
+          message,
         });
+
+        notifyError({
+          source: "ONE Championship",
+          action: "resolver la cartelera",
+          message,
+          location: {
+            label: "Laboratorio → ONE Championship → Eventos",
+            url: window.location.href,
+          },
+        });
+
+        failProcess(processId, message);
+
         return null;
       } finally {
         setIsResolvingOneEvent(false);
@@ -7541,36 +8851,102 @@ export default function PanelIA(): ReactElement {
     if (!selectedOneEvent) {
       setOneEventSourceStatus({
         type: "error",
-        message: "Selecciona primero un evento oficial de ONE.",
+        message: "Selecciona primero un evento oficial de ONE Championship.",
       });
       return;
     }
 
+    const processId = "one-create-event";
+
     try {
       setIsCreatingOneEvent(true);
-      setOneEventSourceStatus({
-        type: "success",
-        message: "Transformando y guardando el evento ONE como borrador...",
+
+      startProcess({
+        id: processId,
+        label: "Creando evento ONE Championship",
+        detail: selectedOneEvent.name,
       });
 
-      await runOneEventBulkAction("create-event", selectedOneEvent);
-      await reloadReferenceEntities();
-      const resolution = await requestOneEventResolution(selectedOneEvent);
-      setOneEventResolution(resolution);
       setOneEventSourceStatus({
         type: "success",
-        message: resolution.event.found
-          ? "Evento ONE creado y reconocido correctamente en Sanity."
-          : "El evento se creó, pero aún no aparece en la resolución.",
+        message:
+          "Transformando y guardando el evento ONE Championship como borrador...",
       });
+
+      await runOneEventBulkAction(
+        "create-event",
+        selectedOneEvent
+      );
+
+      await reloadReferenceEntities();
+
+      const resolution =
+        await requestOneEventResolution(selectedOneEvent);
+
+      setOneEventResolution(resolution);
+
+      if (resolution.event.found) {
+        setOneEventSourceStatus({
+          type: "success",
+          message:
+            "Evento ONE Championship creado y reconocido correctamente en Sanity.",
+        });
+
+        notifyEventCreated({
+          source: "ONE Championship",
+          eventName: selectedOneEvent.name,
+          location: {
+            label: "Sanity Studio → Eventos",
+            url: `${API_BASE_URL}/studio`,
+          },
+        });
+
+        completeProcess(processId);
+      } else {
+        const message =
+          "El evento se creó, pero todavía no aparece en la resolución.";
+
+        setOneEventSourceStatus({
+          type: "error",
+          message,
+        });
+
+        notifyReviewRecommended({
+          source: "ONE Championship",
+          message: `${selectedOneEvent.name}: ${message}`,
+          location: {
+            label: "Laboratorio → ONE Championship → Eventos",
+            url: window.location.href,
+          },
+        });
+
+        failProcess(
+          processId,
+          "Evento creado, pero pendiente de resolver",
+        );
+      }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido creando el evento ONE Championship.";
+
       setOneEventSourceStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido creando el evento ONE.",
+        message,
       });
+
+      notifyError({
+        source: "ONE Championship",
+        action: "crear el evento",
+        message,
+        location: {
+          label: "Laboratorio → ONE Championship → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsCreatingOneEvent(false);
     }
@@ -7585,36 +8961,89 @@ export default function PanelIA(): ReactElement {
     if (!selectedOneEvent) {
       setOneEventSourceStatus({
         type: "error",
-        message: "Selecciona primero un evento oficial de ONE.",
+        message: "Selecciona primero un evento oficial de ONE Championship.",
       });
       return;
     }
 
+    const processId = "one-create-categories";
+
     try {
       setIsCreatingOneCategories(true);
+
+      startProcess({
+        id: processId,
+        label: "Creando categorías ONE Championship",
+        detail: selectedOneEvent.name,
+      });
+
       const payload = (await runOneEventBulkAction(
         "create-categories",
         selectedOneEvent
       )) as UfcBulkActionResponse;
 
+      if (!payload.summary) {
+        throw new Error(
+          "La respuesta de creación de categorías ONE no incluye resumen."
+        );
+      }
+
+      const summary = payload.summary;
+
       await reloadReferenceEntities();
-      const resolution = await requestOneEventResolution(selectedOneEvent);
+
+      const resolution =
+        await requestOneEventResolution(selectedOneEvent);
+
       setOneEventResolution(resolution);
+
       setOneEventSourceStatus({
-        type: "success",
-        message:
-          payload.ok && "summary" in payload
-            ? `${payload.summary.created} categorías creadas, ${payload.summary.skipped} omitidas y ${payload.summary.failed} fallidas.`
-            : "Categorías ONE procesadas.",
+        type: summary.failed > 0 ? "error" : "success",
+        message: `${summary.created} categorías creadas, ${summary.skipped} omitidas y ${summary.failed} fallidas.`,
       });
+
+      notifyEntityBatchProcessed({
+        source: "ONE Championship",
+        entity: "category",
+        created: summary.created,
+        skipped: summary.skipped,
+        failed: summary.failed,
+        location: {
+          label: "Laboratorio → ONE Championship → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      if (summary.failed > 0) {
+        failProcess(
+          processId,
+          `${summary.failed} categorías fallidas`,
+        );
+      } else {
+        completeProcess(processId);
+      }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido creando categorías ONE Championship.";
+
       setOneEventSourceStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido creando categorías ONE.",
+        message,
       });
+
+      notifyError({
+        source: "ONE Championship",
+        action: "crear las categorías",
+        message,
+        location: {
+          label: "Laboratorio → ONE Championship → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsCreatingOneCategories(false);
     }
@@ -7629,36 +9058,89 @@ export default function PanelIA(): ReactElement {
     if (!selectedOneEvent) {
       setOneEventSourceStatus({
         type: "error",
-        message: "Selecciona primero un evento oficial de ONE.",
+        message: "Selecciona primero un evento oficial de ONE Championship.",
       });
       return;
     }
 
+    const processId = "one-create-fighters";
+
     try {
       setIsCreatingOneFighters(true);
+
+      startProcess({
+        id: processId,
+        label: "Creando luchadores ONE Championship",
+        detail: selectedOneEvent.name,
+      });
+
       const payload = (await runOneEventBulkAction(
         "create-fighters",
         selectedOneEvent
       )) as UfcBulkActionResponse;
 
+      if (!payload.summary) {
+        throw new Error(
+          "La respuesta de creación de luchadores ONE no incluye resumen."
+        );
+      }
+
+      const summary = payload.summary;
+
       await reloadReferenceEntities();
-      const resolution = await requestOneEventResolution(selectedOneEvent);
+
+      const resolution =
+        await requestOneEventResolution(selectedOneEvent);
+
       setOneEventResolution(resolution);
+
       setOneEventSourceStatus({
-        type: "success",
-        message:
-          payload.ok && "summary" in payload
-            ? `${payload.summary.created} luchadores creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`
-            : "Luchadores ONE procesados.",
+        type: summary.failed > 0 ? "error" : "success",
+        message: `${summary.created} luchadores creados, ${summary.skipped} omitidos y ${summary.failed} fallidos.`,
       });
+
+      notifyEntityBatchProcessed({
+        source: "ONE Championship",
+        entity: "fighter",
+        created: summary.created,
+        skipped: summary.skipped,
+        failed: summary.failed,
+        location: {
+          label: "Laboratorio → ONE Championship → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      if (summary.failed > 0) {
+        failProcess(
+          processId,
+          `${summary.failed} luchadores fallidos`,
+        );
+      } else {
+        completeProcess(processId);
+      }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido creando luchadores ONE Championship.";
+
       setOneEventSourceStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido creando luchadores ONE.",
+        message,
       });
+
+      notifyError({
+        source: "ONE Championship",
+        action: "crear los luchadores",
+        message,
+        location: {
+          label: "Laboratorio → ONE Championship → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsCreatingOneFighters(false);
     }
@@ -7673,36 +9155,89 @@ export default function PanelIA(): ReactElement {
     if (!selectedOneEvent) {
       setOneEventSourceStatus({
         type: "error",
-        message: "Selecciona primero un evento oficial de ONE.",
+        message: "Selecciona primero un evento oficial de ONE Championship.",
       });
       return;
     }
 
+    const processId = "one-create-fights";
+
     try {
       setIsCreatingOneFights(true);
+
+      startProcess({
+        id: processId,
+        label: "Creando combates ONE Championship",
+        detail: selectedOneEvent.name,
+      });
+
       const payload = (await runOneEventBulkAction(
         "create-fights",
         selectedOneEvent
       )) as UfcBulkActionResponse;
 
+      if (!payload.summary) {
+        throw new Error(
+          "La respuesta de creación de combates ONE no incluye resumen."
+        );
+      }
+
+      const summary = payload.summary;
+
       await reloadReferenceEntities();
-      const resolution = await requestOneEventResolution(selectedOneEvent);
+
+      const resolution =
+        await requestOneEventResolution(selectedOneEvent);
+
       setOneEventResolution(resolution);
+
       setOneEventSourceStatus({
-        type: "success",
-        message:
-          payload.ok && "summary" in payload
-            ? `${payload.summary.created} combates creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`
-            : "Combates ONE procesados.",
+        type: summary.failed > 0 ? "error" : "success",
+        message: `${summary.created} combates creados, ${summary.skipped} omitidos y ${summary.failed} fallidos.`,
       });
+
+      notifyEntityBatchProcessed({
+        source: "ONE Championship",
+        entity: "fight",
+        created: summary.created,
+        skipped: summary.skipped,
+        failed: summary.failed,
+        location: {
+          label: "Laboratorio → ONE Championship → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      if (summary.failed > 0) {
+        failProcess(
+          processId,
+          `${summary.failed} combates fallidos`,
+        );
+      } else {
+        completeProcess(processId);
+      }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido creando combates ONE Championship.";
+
       setOneEventSourceStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido creando combates ONE.",
+        message,
       });
+
+      notifyError({
+        source: "ONE Championship",
+        action: "crear los combates",
+        message,
+        location: {
+          label: "Laboratorio → ONE Championship → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsCreatingOneFights(false);
     }
@@ -7717,85 +9252,195 @@ export default function PanelIA(): ReactElement {
     if (!selectedOneEvent) {
       setOneEventSourceStatus({
         type: "error",
-        message: "Selecciona primero un evento oficial de ONE.",
+        message: "Selecciona primero un evento oficial de ONE Championship.",
       });
       return;
     }
 
     const confirmed = window.confirm(
-      `Se preparará la cartelera de “${selectedOneEvent.name}”: evento, categorías de peso faltantes, luchadores y combates seguros. Las categorías sin mapeo se omitirán. ¿Continuar?`
+      `Se preparará la cartelera de “${selectedOneEvent.name}”: evento, categorías, luchadores y combates seguros. Las categorías que sigan sin mapeo quedarán pendientes. ¿Continuar?`
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
+
+    const processId = "one-full-card-preparation";
 
     try {
       setIsPreparingFullOneCard(true);
-      setOneEventSourceStatus({
-        type: "success",
-        message: "Paso 1 de 5: analizando la cartelera ONE...",
+
+      startProcess({
+        id: processId,
+        label: "Preparando cartelera completa ONE Championship",
+        detail: selectedOneEvent.name,
+        current: 1,
+        total: 5,
       });
 
-      let resolution = await requestOneEventResolution(selectedOneEvent);
+      setOneEventSourceStatus({
+        type: "success",
+        message: "Paso 1 de 5: analizando la cartelera ONE Championship...",
+      });
+
+      let resolution =
+        await requestOneEventResolution(selectedOneEvent);
+
       setOneEventResolution(resolution);
 
       if (!resolution.event.found) {
+        updateProcess(processId, {
+          current: 2,
+          total: 5,
+          detail: "Creando el evento",
+        });
+
         setOneEventSourceStatus({
           type: "success",
-          message: "Paso 2 de 5: creando el evento ONE...",
+          message: "Paso 2 de 5: creando el evento ONE Championship...",
         });
-        await runOneEventBulkAction("create-event", selectedOneEvent);
+
+        await runOneEventBulkAction(
+          "create-event",
+          selectedOneEvent
+        );
+
         await reloadReferenceEntities();
-        resolution = await requestOneEventResolution(selectedOneEvent);
+
+        resolution =
+          await requestOneEventResolution(selectedOneEvent);
+
         setOneEventResolution(resolution);
       }
 
       if (resolution.counts.unresolvedCategories > 0) {
+        updateProcess(processId, {
+          current: 3,
+          total: 5,
+          detail: `Creando ${resolution.counts.unresolvedCategories} categorías`,
+        });
+
         setOneEventSourceStatus({
           type: "success",
           message: `Paso 3 de 5: creando ${resolution.counts.unresolvedCategories} categorías de peso faltantes...`,
         });
-        await runOneEventBulkAction("create-categories", selectedOneEvent);
+
+        await runOneEventBulkAction(
+          "create-categories",
+          selectedOneEvent
+        );
+
         await reloadReferenceEntities();
-        resolution = await requestOneEventResolution(selectedOneEvent);
+
+        resolution =
+          await requestOneEventResolution(selectedOneEvent);
+
         setOneEventResolution(resolution);
       }
 
       if (resolution.counts.missingFighters > 0) {
+        updateProcess(processId, {
+          current: 4,
+          total: 5,
+          detail: `Creando ${resolution.counts.missingFighters} luchadores`,
+        });
+
         setOneEventSourceStatus({
           type: "success",
           message: `Paso 4 de 5: creando ${resolution.counts.missingFighters} luchadores faltantes...`,
         });
-        await runOneEventBulkAction("create-fighters", selectedOneEvent);
+
+        await runOneEventBulkAction(
+          "create-fighters",
+          selectedOneEvent
+        );
+
         await reloadReferenceEntities();
-        resolution = await requestOneEventResolution(selectedOneEvent);
+
+        resolution =
+          await requestOneEventResolution(selectedOneEvent);
+
         setOneEventResolution(resolution);
       }
 
       if (resolution.counts.pendingFights > 0) {
+        updateProcess(processId, {
+          current: 5,
+          total: 5,
+          detail: `Creando ${resolution.counts.pendingFights} combates`,
+        });
+
         setOneEventSourceStatus({
           type: "success",
           message: `Paso 5 de 5: creando ${resolution.counts.pendingFights} combates con categorías resueltas...`,
         });
-        await runOneEventBulkAction("create-fights", selectedOneEvent);
+
+        await runOneEventBulkAction(
+          "create-fights",
+          selectedOneEvent
+        );
+
         await reloadReferenceEntities();
-        resolution = await requestOneEventResolution(selectedOneEvent);
+
+        resolution =
+          await requestOneEventResolution(selectedOneEvent);
+
         setOneEventResolution(resolution);
       }
 
+      const isComplete =
+        resolution.event.found &&
+        resolution.counts.missingFighters === 0 &&
+        resolution.counts.pendingFights === 0 &&
+        resolution.counts.unresolvedCategories === 0;
+
       setOneEventSourceStatus({
-        type: "success",
-        message: `Cartelera ONE preparada: ${resolution.counts.existingFighters} luchadores, ${resolution.counts.existingFights} combates existentes y ${resolution.counts.pendingFights} combates pendientes. Se han omitido ${resolution.counts.unresolvedCategories} categorías sin resolver.`,
+        type: isComplete ? "success" : "error",
+        message: `Cartelera ONE Championship preparada: ${resolution.counts.existingFighters} luchadores, ${resolution.counts.existingFights} combates existentes, ${resolution.counts.pendingFights} combates pendientes y ${resolution.counts.unresolvedCategories} categorías sin resolver.`,
       });
+
+      notifyEventResolved({
+        source: "ONE Championship",
+        eventName: selectedOneEvent.name,
+        existingFights: resolution.counts.existingFights,
+        pendingFights: resolution.counts.pendingFights,
+        missingFighters: resolution.counts.missingFighters,
+        unresolvedCategories: resolution.counts.unresolvedCategories,
+        eventFound: resolution.event.found,
+        location: {
+          label: "Laboratorio → ONE Championship → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      if (isComplete) {
+        completeProcess(processId);
+      } else {
+        failProcess(
+          processId,
+          `${resolution.counts.pendingFights} combates, ${resolution.counts.missingFighters} luchadores y ${resolution.counts.unresolvedCategories} categorías pendientes`,
+        );
+      }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido preparando la cartelera ONE Championship.";
+
       setOneEventSourceStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido preparando la cartelera ONE.",
+        message,
       });
+
+      notifyError({
+        source: "ONE Championship",
+        action: "preparar la cartelera completa",
+        message,
+        location: {
+          label: "Laboratorio → ONE Championship → Eventos",
+          url: window.location.href,
+        },
+      });
+
+      failProcess(processId, message);
     } finally {
       setIsPreparingFullOneCard(false);
     }
@@ -8769,19 +10414,44 @@ export default function PanelIA(): ReactElement {
   }
 
   async function handleSaveDraft(): Promise<void> {
+    const contentLabel = definition.label;
+    const laboratoryLocation = {
+      label: `Laboratorio → ${contentLabel}`,
+      url: window.location.href,
+    };
+
     if (!result) {
+      const message = "Primero genera el output antes de guardar.";
+
       setSaveDraftStatus({
         type: "error",
-        message: "Primero genera el output antes de guardar.",
+        message,
       });
+
+      notifyReviewRecommended({
+        source: "Laboratorio",
+        message: `${contentLabel}: ${message}`,
+        location: laboratoryLocation,
+      });
+
       return;
     }
 
     if (!result.ok || !result.output) {
+      const message =
+        "El output está bloqueado o vacío. Revisa los campos señalados.";
+
       setSaveDraftStatus({
         type: "error",
-        message: "No puedes guardar un output bloqueado o vacío.",
+        message,
       });
+
+      notifyReviewRecommended({
+        source: "Laboratorio",
+        message: `${contentLabel}: ${message}`,
+        location: laboratoryLocation,
+      });
+
       return;
     }
 
@@ -8797,23 +10467,43 @@ export default function PanelIA(): ReactElement {
         document: result.output,
       });
 
+      const successMessage =
+        response.message ||
+        `${contentLabel} guardado correctamente como borrador.`;
+
       setSaveDraftStatus({
         type: "success",
         message:
-          response.message ||
-          `Borrador guardado correctamente${
-            response.documentId ? ` (${response.documentId})` : ""
-          }.`,
+          successMessage +
+          (response.documentId ? ` (${response.documentId})` : ""),
+      });
+
+      notifyDraftCreated({
+        source: "Sanity",
+        count: 1,
+        location: {
+          label: `Sanity Studio → ${contentLabel}`,
+          url: `${API_BASE_URL}/studio`,
+        },
       });
 
       await reloadReferenceEntities();
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error desconocido al guardar el borrador.";
+
       setSaveDraftStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido al guardar el borrador.",
+        message,
+      });
+
+      notifyError({
+        source: "Laboratorio",
+        action: `guardar ${contentLabel.toLowerCase()}`,
+        message,
+        location: laboratoryLocation,
       });
     } finally {
       setIsSavingDraft(false);
@@ -9131,6 +10821,19 @@ export default function PanelIA(): ReactElement {
   return (
     <div style={styles.page}>
       <div style={styles.container}>
+        <nav style={styles.stickyNav}>
+          <div style={styles.stickyBrand}>
+            <span style={styles.stickyBrandMark}>FFN3</span>
+            <span style={styles.stickyBrandText}>Laboratorio IA</span>
+          </div>
+
+          <NotificationBell />
+        </nav>
+
+        <ProcessBar />
+
+        <ActivityCenter />
+
         <header style={styles.header}>
           <div>
             <p style={styles.eyebrow}>FFN3 · Laboratorio IA</p>
@@ -13621,6 +15324,51 @@ const styles: Record<string, CSSProperties> = {
     maxWidth: 720,
     opacity: 0.82,
     lineHeight: 1.5,
+  },
+  stickyNav: {
+    position: "sticky",
+    top: 0,
+    zIndex: 900,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 54,
+    padding: "7px 10px 7px 14px",
+    margin: "-32px 0 0",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderTop: 0,
+    borderRadius: "0 0 16px 16px",
+    background: "rgba(11,15,20,0.95)",
+    backdropFilter: "blur(14px)",
+    WebkitBackdropFilter: "blur(14px)",
+    boxShadow: "0 10px 28px rgba(0,0,0,0.2)",
+  },
+  stickyBrand: {
+    display: "flex",
+    alignItems: "center",
+    gap: 9,
+    minWidth: 0,
+  },
+  stickyBrandMark: {
+    display: "grid",
+    placeItems: "center",
+    minWidth: 38,
+    height: 26,
+    padding: "0 8px",
+    borderRadius: 8,
+    background: "#f5f7fa",
+    color: "#0b0f14",
+    fontSize: 11,
+    fontWeight: 900,
+    letterSpacing: "0.05em",
+  },
+  stickyBrandText: {
+    overflow: "hidden",
+    color: "#d8dee5",
+    fontSize: 13,
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+    textOverflow: "ellipsis",
   },
   headerActions: {
     minWidth: 280,
