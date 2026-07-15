@@ -23,6 +23,8 @@ import {
 import NotificationBell from "../notifications/NotificationBell";
 import ActivityCenter from "../notifications/ActivityCenter";
 import ProcessBar from "../processes/ProcessBar";
+import ReviewCenter from "../review/components/ReviewCenter";
+import LaboratoryMenu from "./LaboratoryMenu";
 import {
   completeProcess,
   failProcess,
@@ -10844,12 +10846,17 @@ export default function PanelIA(): ReactElement {
             <span style={styles.stickyBrandText}>Laboratorio IA</span>
           </div>
 
-          <NotificationBell />
+          <div className="review-nav-actions">
+            <LaboratoryMenu />
+            <NotificationBell />
+          </div>
         </nav>
 
         <ProcessBar />
 
         <ActivityCenter />
+
+        <ReviewCenter />
 
         <header style={styles.header}>
           <div>

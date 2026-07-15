@@ -13,6 +13,15 @@ import {
   getNotifications,
   retryNotificationDelivery,
 } from "./notifications/store";
+import {createTestReviewCase, createTestReviewCases, createUniversalEditorTestCase} from "./review/development";
+import {
+  addReviewResolution,
+  clearAllReviewCases,
+  createReviewCase,
+  getReviewCase,
+  getReviewCases,
+  transitionReviewCase,
+} from "./review/store/reviewStore";
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
   window.LAB_NOTIFICATIONS = {
@@ -24,6 +33,17 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     testLowNotification,
     testNotificationEngineActivityOnly,
     testNotificationEngineTelegram,
+  };
+  window.LAB_REVIEWS = {
+    getReviewCases,
+    getReviewCase,
+    createReviewCase,
+    transitionReviewCase,
+    addReviewResolution,
+    clearAllReviewCases,
+    createTestCase: createTestReviewCase,
+    createTestCases: createTestReviewCases,
+    createUniversalEditorTestCase,
   };
 }
 

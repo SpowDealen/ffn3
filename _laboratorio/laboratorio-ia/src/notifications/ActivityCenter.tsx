@@ -577,7 +577,7 @@ export default function ActivityCenter(): ReactElement {
     : "Sin comprobar";
 
   return (
-    <section style={styles.card}>
+    <section id="laboratory-status" style={styles.card}>
       <div style={styles.headingRow}>
         <div>
           <p style={styles.eyebrow}>
@@ -764,7 +764,7 @@ export default function ActivityCenter(): ReactElement {
         </div>
       </section>
 
-      <section style={styles.telegramHealth}>
+      <section id="telegram-status" style={styles.telegramHealth}>
         <div style={styles.telegramHealthHeader}>
           <div>
             <strong style={styles.telegramHealthTitle}>
