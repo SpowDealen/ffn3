@@ -40,6 +40,9 @@ export type LabNotification = {
   deliveryAttempts?: number;
   deliveryError?: string;
   deliveredAt?: string;
+  groupKey?: string;
+  updatedAt?: string;
+  updateCount?: number;
 };
 
 export type CreateNotificationInput = {
@@ -50,4 +53,7 @@ export type CreateNotificationInput = {
   source?: string;
   count?: number;
   location?: NotificationLocation;
+  groupKey?: string;
+  updatedAt?: string;
+  updateCount?: number;
 };

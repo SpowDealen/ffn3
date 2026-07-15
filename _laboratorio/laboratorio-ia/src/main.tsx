@@ -2,12 +2,14 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import {
+  createNotification,
   getNotifications,
   retryNotificationDelivery,
 } from "./notifications/store";
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
   window.LAB_NOTIFICATIONS = {
+    createNotification,
     getNotifications,
     retryNotificationDelivery,
   };

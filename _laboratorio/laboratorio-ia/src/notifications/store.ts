@@ -9,8 +9,13 @@ import {
 
 const STORAGE_KEY = "ffn3-lab-notifications-v1";
 const MAX_NOTIFICATIONS = 100;
+const GROUP_DELIVERY_DEBOUNCE_MS = 1_500;
 
 const listeners = new Set<() => void>();
+const groupedDeliveryTimers = new Map<
+  string,
+  ReturnType<typeof setTimeout>
+>();
 
 function canUseBrowser(): boolean {
   return typeof window !== "undefined";
@@ -109,11 +114,64 @@ function updateNotificationById(
   return updatedNotification;
 }
 
+function findNotificationIndexByGroupKey(
+  notifications: LabNotification[],
+  groupKey: string,
+): number {
+  return notifications.findIndex(
+    (notification) => notification.groupKey === groupKey,
+  );
+}
+
+function resetNotificationDelivery(
+  notification: LabNotification,
+): LabNotification {
+  return {
+    ...notification,
+    deliveryStatus: "pending",
+    deliveryAttempts: 0,
+    deliveryError: undefined,
+    deliveredAt: undefined,
+  };
+}
+
+function updateGroupedNotification(
+  notification: LabNotification,
+  input: CreateNotificationInput,
+  groupKey: string,
+  updatedAt: string,
+): LabNotification {
+  return resetNotificationDelivery({
+    ...notification,
+    level: input.level,
+    kind: input.kind,
+    title: input.title.trim(),
+    message: input.message.trim(),
+    source: input.source?.trim(),
+    count: input.count,
+    location: input.location,
+    groupKey,
+    updatedAt,
+    updateCount: (notification.updateCount ?? 0) + 1,
+  });
+}
+
+function getNotificationVersion(
+  notification: LabNotification,
+): string {
+  return `${notification.updatedAt ?? notification.createdAt}:${notification.updateCount ?? 0}`;
+}
+
 function applyDeliveryResult(
   id: string,
+  version: string,
   result: RemoteNotificationResult,
 ): void {
   updateNotificationById(id, (notification) => {
+    if (getNotificationVersion(notification) !== version) {
+      return notification;
+    }
+
     const deliveryAttempts =
       (notification.deliveryAttempts ?? 0) + 1;
 
@@ -144,13 +202,83 @@ async function executeNotificationDelivery(
 ): Promise<void> {
   const result =
     await sendLabNotificationToTelegram(notification);
-  applyDeliveryResult(notification.id, result);
+  applyDeliveryResult(
+    notification.id,
+    getNotificationVersion(notification),
+    result,
+  );
+}
+
+function cancelGroupedNotificationDelivery(
+  groupKey: string | undefined,
+): void {
+  if (!groupKey) return;
+
+  const timer = groupedDeliveryTimers.get(groupKey);
+
+  if (timer === undefined) return;
+
+  clearTimeout(timer);
+  groupedDeliveryTimers.delete(groupKey);
+}
+
+function scheduleGroupedNotificationDelivery(
+  notification: LabNotification,
+): void {
+  const groupKey = notification.groupKey;
+
+  if (!groupKey) {
+    void executeNotificationDelivery(notification);
+    return;
+  }
+
+  cancelGroupedNotificationDelivery(groupKey);
+
+  const timer = setTimeout(() => {
+    groupedDeliveryTimers.delete(groupKey);
+
+    const currentNotification = getNotifications().find(
+      (storedNotification) =>
+        storedNotification.id === notification.id &&
+        storedNotification.groupKey === groupKey,
+    );
+
+    if (!currentNotification) return;
+
+    void executeNotificationDelivery(currentNotification);
+  }, GROUP_DELIVERY_DEBOUNCE_MS);
+
+  groupedDeliveryTimers.set(groupKey, timer);
 }
 
 export function createNotification(
   rawInput: CreateNotificationInput,
 ): LabNotification {
   const input = validateNotification(rawInput);
+  const groupKey = input.groupKey?.trim() || undefined;
+  const notifications = getNotifications();
+
+  if (groupKey) {
+    const groupedIndex = findNotificationIndexByGroupKey(
+      notifications,
+      groupKey,
+    );
+
+    if (groupedIndex !== -1) {
+      const notification = updateGroupedNotification(
+        notifications[groupedIndex],
+        input,
+        groupKey,
+        new Date().toISOString(),
+      );
+      const updatedNotifications = [...notifications];
+      updatedNotifications[groupedIndex] = notification;
+      saveNotifications(updatedNotifications);
+      scheduleGroupedNotificationDelivery(notification);
+
+      return notification;
+    }
+  }
 
   const notification: LabNotification = {
     id:
@@ -171,14 +299,16 @@ export function createNotification(
     read: false,
     deliveryStatus: "pending",
     deliveryAttempts: 0,
+    groupKey,
+    updateCount: groupKey ? 0 : undefined,
   };
 
   saveNotifications([
     notification,
-    ...getNotifications(),
+    ...notifications,
   ]);
 
-  void executeNotificationDelivery(notification);
+  scheduleGroupedNotificationDelivery(notification);
 
   return notification;
 }
@@ -186,6 +316,16 @@ export function createNotification(
 export async function retryNotificationDelivery(
   id: string,
 ): Promise<void> {
+  const existingNotification = getNotifications().find(
+    (notification) => notification.id === id,
+  );
+
+  if (!existingNotification) return;
+
+  cancelGroupedNotificationDelivery(
+    existingNotification.groupKey,
+  );
+
   const notification = updateNotificationById(
     id,
     (currentNotification) => ({
@@ -222,6 +362,11 @@ export function markAllNotificationsAsRead(): void {
 }
 
 export function clearNotifications(): void {
+  for (const timer of groupedDeliveryTimers.values()) {
+    clearTimeout(timer);
+  }
+
+  groupedDeliveryTimers.clear();
   saveNotifications([]);
 }
 

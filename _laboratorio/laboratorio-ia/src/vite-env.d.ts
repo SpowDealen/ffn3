@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import type {
+  createNotification,
   getNotifications,
   retryNotificationDelivery,
 } from "./notifications/store";
@@ -8,6 +9,7 @@ import type {
 declare global {
   interface Window {
     LAB_NOTIFICATIONS?: {
+      createNotification: typeof createNotification;
       getNotifications: typeof getNotifications;
       retryNotificationDelivery: typeof retryNotificationDelivery;
     };
