@@ -19,6 +19,12 @@ export type NotificationLocation = {
   url: string;
 };
 
+export type NotificationDeliveryStatus =
+  | "pending"
+  | "sent"
+  | "failed"
+  | "skipped";
+
 export type LabNotification = {
   id: string;
   level: NotificationLevel;
@@ -30,6 +36,10 @@ export type LabNotification = {
   createdAt: string;
   read: boolean;
   location?: NotificationLocation;
+  deliveryStatus?: NotificationDeliveryStatus;
+  deliveryAttempts?: number;
+  deliveryError?: string;
+  deliveredAt?: string;
 };
 
 export type CreateNotificationInput = {

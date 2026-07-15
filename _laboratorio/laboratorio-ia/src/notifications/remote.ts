@@ -16,6 +16,18 @@ type RemoteNotificationInput = {
   occurredAt?: string;
 };
 
+export type RemoteNotificationResult =
+  | {
+      ok: true;
+      skipped?: boolean;
+      messageId?: number;
+    }
+  | {
+      ok: false;
+      error: string;
+      status?: number;
+    };
+
 function getApiBaseUrl(): string {
   const raw =
     import.meta.env.VITE_FFN3_API_BASE_URL;
@@ -32,7 +44,7 @@ function getApiBaseUrl(): string {
 
 export async function sendRemoteNotification(
   notification: RemoteNotificationInput,
-): Promise<void> {
+): Promise<RemoteNotificationResult> {
   try {
     const response = await fetch(
       `${getApiBaseUrl()}/api/notifications/telegram`,
@@ -53,28 +65,44 @@ export async function sendRemoteNotification(
           error?: string;
         } | null;
 
-      console.error(
-        "[Telegram notification]",
-        payload?.error ||
-          `HTTP ${response.status}`,
-      );
+      return {
+        ok: false,
+        error:
+          payload?.error ||
+          `El servidor de notificaciones respondió con HTTP ${response.status}.`,
+        status: response.status,
+      };
     }
+
+    const payload = (await response.json()) as {
+      skipped?: boolean;
+      messageId?: number;
+    };
+
+    return {
+      ok: true,
+      skipped: payload.skipped,
+      messageId: payload.messageId,
+    };
   } catch (error) {
     /*
      * Telegram nunca debe bloquear la acción principal del laboratorio.
-     * Un fallo remoto se registra, pero no invalida un borrador ya creado.
+     * El fallo se devuelve al caller, pero no invalida la acción ya creada.
      */
-    console.error(
-      "[Telegram notification]",
-      error,
-    );
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Error desconocido enviando la notificación remota.",
+    };
   }
 }
 
-export function sendLabNotificationToTelegram(
+function toRemoteNotificationInput(
   notification: LabNotification,
-): void {
-  void sendRemoteNotification({
+): RemoteNotificationInput {
+  return {
     level: notification.level,
     title: notification.title,
     message: notification.message,
@@ -82,5 +110,13 @@ export function sendLabNotificationToTelegram(
     count: notification.count,
     location: notification.location,
     occurredAt: notification.createdAt,
-  });
+  };
+}
+
+export function sendLabNotificationToTelegram(
+  notification: LabNotification,
+): Promise<RemoteNotificationResult> {
+  return sendRemoteNotification(
+    toRemoteNotificationInput(notification),
+  );
 }

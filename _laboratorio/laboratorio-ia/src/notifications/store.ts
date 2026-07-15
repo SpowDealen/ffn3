@@ -2,7 +2,10 @@ import type {
   CreateNotificationInput,
   LabNotification,
 } from "./types";
-import {sendLabNotificationToTelegram} from "./remote";
+import {
+  sendLabNotificationToTelegram,
+  type RemoteNotificationResult,
+} from "./remote";
 
 const STORAGE_KEY = "ffn3-lab-notifications-v1";
 const MAX_NOTIFICATIONS = 100;
@@ -87,6 +90,63 @@ function saveNotifications(
   emitChange();
 }
 
+function updateNotificationById(
+  id: string,
+  update: (notification: LabNotification) => LabNotification,
+): LabNotification | undefined {
+  const notifications = getNotifications();
+  const index = notifications.findIndex(
+    (notification) => notification.id === id,
+  );
+
+  if (index === -1) return undefined;
+
+  const updatedNotification = update(notifications[index]);
+  const updatedNotifications = [...notifications];
+  updatedNotifications[index] = updatedNotification;
+  saveNotifications(updatedNotifications);
+
+  return updatedNotification;
+}
+
+function applyDeliveryResult(
+  id: string,
+  result: RemoteNotificationResult,
+): void {
+  updateNotificationById(id, (notification) => {
+    const deliveryAttempts =
+      (notification.deliveryAttempts ?? 0) + 1;
+
+    if (!result.ok) {
+      return {
+        ...notification,
+        deliveryStatus: "failed",
+        deliveryAttempts,
+        deliveryError: result.error,
+        deliveredAt: undefined,
+      };
+    }
+
+    return {
+      ...notification,
+      deliveryStatus: result.skipped
+        ? "skipped"
+        : "sent",
+      deliveryAttempts,
+      deliveryError: undefined,
+      deliveredAt: new Date().toISOString(),
+    };
+  });
+}
+
+async function executeNotificationDelivery(
+  notification: LabNotification,
+): Promise<void> {
+  const result =
+    await sendLabNotificationToTelegram(notification);
+  applyDeliveryResult(notification.id, result);
+}
+
 export function createNotification(
   rawInput: CreateNotificationInput,
 ): LabNotification {
@@ -109,6 +169,8 @@ export function createNotification(
     location: input.location,
     createdAt: new Date().toISOString(),
     read: false,
+    deliveryStatus: "pending",
+    deliveryAttempts: 0,
   };
 
   saveNotifications([
@@ -116,9 +178,26 @@ export function createNotification(
     ...getNotifications(),
   ]);
 
-  sendLabNotificationToTelegram(notification);
+  void executeNotificationDelivery(notification);
 
   return notification;
+}
+
+export async function retryNotificationDelivery(
+  id: string,
+): Promise<void> {
+  const notification = updateNotificationById(
+    id,
+    (currentNotification) => ({
+      ...currentNotification,
+      deliveryStatus: "pending",
+      deliveryError: undefined,
+    }),
+  );
+
+  if (!notification) return;
+
+  await executeNotificationDelivery(notification);
 }
 
 export function markNotificationAsRead(

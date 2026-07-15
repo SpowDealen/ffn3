@@ -7,6 +7,7 @@ import {
   type ReactElement,
 } from "react";
 import {getNotificationVisual} from "./icons";
+import NotificationDeliveryStatus from "./NotificationDeliveryStatus";
 import {
   getNotifications,
   subscribeToNotifications,
@@ -83,6 +84,10 @@ const LatestActivity = memo(function LatestActivity({
         <p style={styles.latestMessage}>
           {notification.message}
         </p>
+
+        <NotificationDeliveryStatus
+          notification={notification}
+        />
       </div>
     </div>
   );

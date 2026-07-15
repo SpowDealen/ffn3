@@ -38,20 +38,57 @@ function getTelegramConfiguration(): {
   };
 }
 
-function isSafeHttpUrl(
-  value: string | undefined,
-): value is string {
-  if (!value?.trim()) {
+function isPrivateIpv4Address(hostname: string): boolean {
+  const octets = hostname.split(".").map(Number);
+
+  if (
+    octets.length !== 4 ||
+    octets.some(
+      (octet) =>
+        !Number.isInteger(octet) ||
+        octet < 0 ||
+        octet > 255,
+    )
+  ) {
     return false;
   }
 
+  const [first, second] = octets;
+
+  return (
+    first === 0 ||
+    first === 10 ||
+    first === 127 ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
+
+export function isPublicTelegramButtonUrl(
+  value: string,
+): boolean {
   try {
     const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase();
 
-    return (
-      parsed.protocol === "http:" ||
-      parsed.protocol === "https:"
-    );
+    if (
+      parsed.protocol !== "http:" &&
+      parsed.protocol !== "https:"
+    ) {
+      return false;
+    }
+
+    if (
+      hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      hostname === "[::1]" ||
+      isPrivateIpv4Address(hostname)
+    ) {
+      return false;
+    }
+
+    return true;
   } catch {
     return false;
   }
@@ -93,7 +130,7 @@ function buildReplyMarkup(
   | undefined {
   const url = notification.location?.url;
 
-  if (!isSafeHttpUrl(url)) {
+  if (!url || !isPublicTelegramButtonUrl(url)) {
     return undefined;
   }
 

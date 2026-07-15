@@ -15,6 +15,7 @@ import {
   subscribeToNotifications,
 } from "./store";
 import {getNotificationVisual} from "./icons";
+import NotificationDeliveryStatus from "./NotificationDeliveryStatus";
 import type {
   LabNotification,
   NotificationLevel,
@@ -191,6 +192,10 @@ const NotificationItem = memo(function NotificationItem({
         <p style={styles.itemMessage}>
           {notification.message}
         </p>
+
+        <NotificationDeliveryStatus
+          notification={notification}
+        />
 
         {notification.location ? (
           <button
