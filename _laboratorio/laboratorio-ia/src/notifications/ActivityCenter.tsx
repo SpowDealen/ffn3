@@ -8,6 +8,7 @@ import {
 } from "react";
 import {getNotificationVisual} from "./icons";
 import NotificationDeliveryStatus from "./NotificationDeliveryStatus";
+import NotificationGroupingMetadata from "./NotificationGroupingMetadata";
 import {
   getNotifications,
   subscribeToNotifications,
@@ -50,8 +51,10 @@ function getStateLabel(
 
 const LatestActivity = memo(function LatestActivity({
   notification,
+  now,
 }: {
   notification: LabNotification;
+  now: number;
 }): ReactElement {
   const visual = getNotificationVisual(
     notification.kind,
@@ -85,6 +88,11 @@ const LatestActivity = memo(function LatestActivity({
           {notification.message}
         </p>
 
+        <NotificationGroupingMetadata
+          notification={notification}
+          now={now}
+        />
+
         <NotificationDeliveryStatus
           notification={notification}
         />
@@ -109,7 +117,7 @@ export default function ActivityCenter(): ReactElement {
     const unsubscribe = subscribeToNotifications(refresh);
     const timer = window.setInterval(
       () => setNow(Date.now()),
-      15_000,
+      30_000,
     );
 
     return () => {
@@ -148,8 +156,6 @@ export default function ActivityCenter(): ReactElement {
     [notifications],
   );
 
-  void now;
-
   return (
     <section style={styles.card}>
       <div style={styles.headingRow}>
@@ -182,7 +188,10 @@ export default function ActivityCenter(): ReactElement {
         <div style={styles.activityPanel}>
           {latest ? (
             <>
-              <LatestActivity notification={latest} />
+              <LatestActivity
+                notification={latest}
+                now={now}
+              />
 
               <div style={styles.latestMeta}>
                 <span>

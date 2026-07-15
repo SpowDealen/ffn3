@@ -16,6 +16,7 @@ import {
 } from "./store";
 import {getNotificationVisual} from "./icons";
 import NotificationDeliveryStatus from "./NotificationDeliveryStatus";
+import NotificationGroupingMetadata from "./NotificationGroupingMetadata";
 import type {
   LabNotification,
   NotificationLevel,
@@ -135,8 +136,10 @@ function BellIcon(): ReactElement {
 
 const NotificationItem = memo(function NotificationItem({
   notification,
+  now,
 }: {
   notification: LabNotification;
+  now: number;
 }): ReactElement {
   function openLocation(): void {
     markNotificationAsRead(notification.id);
@@ -193,6 +196,11 @@ const NotificationItem = memo(function NotificationItem({
           {notification.message}
         </p>
 
+        <NotificationGroupingMetadata
+          notification={notification}
+          now={now}
+        />
+
         <NotificationDeliveryStatus
           notification={notification}
         />
@@ -228,6 +236,7 @@ export default function NotificationBell(): ReactElement {
   const [notifications, setNotifications] =
     useState<LabNotification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [now, setNow] = useState(Date.now());
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -237,7 +246,16 @@ export default function NotificationBell(): ReactElement {
 
     refresh();
 
-    return subscribeToNotifications(refresh);
+    const unsubscribe = subscribeToNotifications(refresh);
+    const timer = window.setInterval(
+      () => setNow(Date.now()),
+      30_000,
+    );
+
+    return () => {
+      unsubscribe();
+      window.clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -350,6 +368,7 @@ export default function NotificationBell(): ReactElement {
                 <NotificationItem
                   key={notification.id}
                   notification={notification}
+                  now={now}
                 />
               ))}
             </div>
