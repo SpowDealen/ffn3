@@ -140,3 +140,31 @@ export function createUniversalEditorTestCase(): ReviewCase {
     context: {testCase: true, editor: "universal"},
   });
 }
+
+export function createAutonomousResolverTestCase(): ReviewCase {
+  return createReviewCase({
+    dedupeKey: "dev:autonomous-review-resolver:phase-4a",
+    module: "editorial.builder",
+    title: "Prueba del motor autónomo de resolución",
+    priority: "high",
+    source: "Laboratorio local",
+    subject: {type: "autonomous-test", id: "exact-subject", sanityId: "sanity-exact", label: "Caso autónomo deduplicable"},
+    issues: [
+      {id: "exact-match", kind: "low_confidence", valueKind: "text", label: "Coincidencia exacta", message: "Coincidencia", currentValue: "Valor exacto", candidates: [{id: "exact", label: "Exacto", value: " valor exacto ", confidence: 99}]},
+      {id: "unique-candidate", kind: "low_confidence", valueKind: "text", label: "Candidato único", message: "Único", candidates: [{id: "unique", label: "Único", value: "Único", confidence: 94}]},
+      {id: "dominant-candidate", kind: "low_confidence", valueKind: "text", label: "Candidato dominante", message: "Dominante", candidates: [{id: "dominant-a", label: "A", value: "A", confidence: 92}, {id: "dominant-b", label: "B", value: "B", confidence: 60}]},
+      {id: "close-candidates", kind: "ambiguous_reference", valueKind: "event", label: "Candidatos próximos", message: "Próximos", required: true, candidates: [{id: "close-a", label: "A", value: {}, sanityId: "event-a", confidence: 90}, {id: "close-b", label: "B", value: {}, sanityId: "event-b", confidence: 82}]},
+      {id: "sanity-reference", kind: "missing_reference", valueKind: "fighter", label: "Referencia", message: "Referencia", candidates: [{id: "ref", label: "Luchador", value: {}, sanityId: "fighter-1", confidence: 96}]},
+      {id: "duplicate-clear", kind: "duplicate_candidate", valueKind: "sanityReference", label: "Duplicado claro", message: "Duplicado", candidates: [{id: "dup-clear", label: "Documento", value: {}, sanityId: "doc-1", confidence: 99}]},
+      {id: "duplicate-ambiguous", kind: "duplicate_candidate", valueKind: "sanityReference", label: "Duplicado ambiguo", message: "Duplicado", candidates: [{id: "dup-a", label: "A", value: {}, sanityId: "doc-a", confidence: 98}, {id: "dup-b", label: "B", value: {}, sanityId: "doc-b", confidence: 91}]},
+      {id: "primitive-zero", kind: "low_confidence", valueKind: "number", label: "Número", message: "Número", currentValue: 0, expected: {min: 0}},
+      {id: "optional", kind: "low_confidence", valueKind: "text", label: "Opcional", message: "Opcional", required: false, blocking: false},
+      {id: "entity-ready", kind: "missing_entity", valueKind: "fighter", label: "Entidad preparada", message: "Entidad", expected: {entityType: "fighter", draft: {name: "Luchador seguro"}}},
+      {id: "entity-insufficient", kind: "missing_entity", valueKind: "fighter", label: "Entidad insuficiente", message: "Entidad", required: true},
+      {id: "unsafe-url", kind: "invalid_url", valueKind: "url", label: "URL insegura", message: "URL", currentValue: "javascript:alert(1)"},
+      {id: "contradictory-image", kind: "missing_image", valueKind: "image", label: "Imagen contradictoria", message: "Imagen", candidates: [{id: "image", label: "Imagen", value: {url: "https://example.com/image.jpg", assetId: "image-asset"}, confidence: 99}]},
+      {id: "required-empty", kind: "required_field", valueKind: "text", label: "Obligatoria", message: "Sin evidencia", required: true, blocking: true},
+    ],
+    context: {testCase: true, phase: "4A"},
+  });
+}

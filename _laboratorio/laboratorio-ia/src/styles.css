@@ -258,6 +258,15 @@ textarea {
 .review-readonly-message,
 .review-feedback { margin: 0; padding: 10px; border: 1px solid var(--panel-border); border-radius: 10px; color: var(--panel-text-soft); }
 .review-feedback { border-color: rgba(96,165,250,.38); background: rgba(59,130,246,.1); color: #dbeafe; }
+.autonomous-review { min-width: 0; }
+.review-mode-label { align-self: center; padding: 6px 9px; border: 1px solid rgba(96,165,250,.55); border-radius: 999px; color: #bfdbfe; font-size: 12px; letter-spacing: .05em; }
+.autonomous-summary { display: flex; flex-wrap: wrap; gap: 8px; }
+.autonomous-summary span { padding: 6px 9px; border: 1px solid var(--panel-border); border-radius: 999px; }
+.autonomous-decision { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--panel-border); border-radius: 12px; overflow-wrap: anywhere; }
+.autonomous-decision > div:first-child { display: grid; gap: 4px; }
+.autonomous-decision p { margin: 0; }
+.autonomous-details { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--panel-border); }
+.autonomous-details ul { margin: 8px 0 0; padding-left: 22px; }
 .review-resolution-summary small { color: var(--panel-text-muted); }
 .review-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 

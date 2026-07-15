@@ -13,7 +13,8 @@ import {
   getNotifications,
   retryNotificationDelivery,
 } from "./notifications/store";
-import {createTestReviewCase, createTestReviewCases, createUniversalEditorTestCase} from "./review/development";
+import {createAutonomousResolverTestCase, createTestReviewCase, createTestReviewCases, createUniversalEditorTestCase} from "./review/development";
+import {applyAutonomousReview, previewAutonomousReview, runAutonomousReview} from "./review/autonomous";
 import {
   addReviewResolution,
   clearAllReviewCases,
@@ -44,6 +45,10 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     createTestCase: createTestReviewCase,
     createTestCases: createTestReviewCases,
     createUniversalEditorTestCase,
+    runAutonomousReview,
+    previewAutonomousReview,
+    applyAutonomousReview,
+    createAutonomousResolverTestCase,
   };
 }
 

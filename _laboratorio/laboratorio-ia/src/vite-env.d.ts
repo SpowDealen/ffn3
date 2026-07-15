@@ -12,7 +12,8 @@ import type {
   getNotifications,
   retryNotificationDelivery,
 } from "./notifications/store";
-import type {createTestReviewCase, createTestReviewCases, createUniversalEditorTestCase} from "./review/development";
+import type {createAutonomousResolverTestCase, createTestReviewCase, createTestReviewCases, createUniversalEditorTestCase} from "./review/development";
+import type {applyAutonomousReview, previewAutonomousReview, runAutonomousReview} from "./review/autonomous";
 import type {
   addReviewResolution,
   clearAllReviewCases,
@@ -44,6 +45,10 @@ declare global {
       createTestCase: typeof createTestReviewCase;
       createTestCases: typeof createTestReviewCases;
       createUniversalEditorTestCase: typeof createUniversalEditorTestCase;
+      runAutonomousReview: typeof runAutonomousReview;
+      previewAutonomousReview: typeof previewAutonomousReview;
+      applyAutonomousReview: typeof applyAutonomousReview;
+      createAutonomousResolverTestCase: typeof createAutonomousResolverTestCase;
     };
   }
 }
