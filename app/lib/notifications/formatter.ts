@@ -25,40 +25,27 @@ function truncate(value: string, maxLength: number): string {
 
 function getLevelPresentation(
   level: NotificationLevel,
-): {
-  icon: string;
-  label: string;
-} {
+): string {
   switch (level) {
     case "error":
-      return {
-        icon: "🔴",
-        label: "ERROR CRÍTICO",
-      };
+      return "❌ Error del sistema";
 
     case "review":
-      return {
-        icon: "🟠",
-        label: "REVISIÓN NECESARIA",
-      };
+      return "⚠️ Revisión necesaria";
 
     case "success":
-      return {
-        icon: "🟢",
-        label: "ÉXITO",
-      };
+      return "✅ Operación completada";
 
     case "info":
     default:
-      return {
-        icon: "🔵",
-        label: "INFORMACIÓN",
-      };
+      return "ℹ️ Información";
   }
 }
 
 function formatDate(value?: string): string {
-  const date = value ? new Date(value) : new Date();
+  if (!value) return "";
+
+  const date = new Date(value);
 
   if (!Number.isFinite(date.getTime())) {
     return "";
@@ -77,8 +64,7 @@ function formatDate(value?: string): string {
 export function formatTelegramNotification(
   notification: ServerNotificationInput,
 ): string {
-  const presentation =
-    getLevelPresentation(notification.level);
+  const header = getLevelPresentation(notification.level);
 
   const title = escapeHtml(
     truncate(notification.title, MAX_TITLE_LENGTH),
@@ -93,43 +79,37 @@ export function formatTelegramNotification(
     : "";
 
   const lines: string[] = [
-    `<b>${presentation.icon} ${presentation.label}</b>`,
+    `<b>${header}</b>`,
     "",
+    `<b>${title}</b>`,
+    message,
   ];
 
+  const metadata: string[] = [];
+
   if (source) {
-    lines.push(`<b>${source}</b>`);
+    metadata.push(`Fuente: ${source}`);
   }
 
-  lines.push(title);
-
-  if (message && message !== notification.title.trim()) {
-    lines.push("", message);
-  }
-
-  if (
-    notification.level === "review" ||
-    notification.level === "error"
-  ) {
-    lines.push(
-      "",
-      notification.level === "error"
-        ? "<b>Acción necesaria:</b> revisa el fallo antes de continuar."
-        : "<b>Acción recomendada:</b> supervisa este proceso.",
-    );
-  }
-
-  if (notification.location?.label?.trim()) {
-    lines.push(
-      "",
-      `📍 ${escapeHtml(notification.location.label.trim())}`,
-    );
+  if (typeof notification.count === "number") {
+    metadata.push(`Cantidad: ${notification.count}`);
   }
 
   const date = formatDate(notification.occurredAt);
 
   if (date) {
-    lines.push("", `🕒 ${escapeHtml(date)}`);
+    metadata.push(`Fecha: ${date}`);
+  }
+
+  if (metadata.length > 0) {
+    lines.push("", ...metadata);
+  }
+
+  if (notification.location?.label?.trim()) {
+    lines.push(
+      "",
+      `Ubicación: ${escapeHtml(notification.location.label.trim())}`,
+    );
   }
 
   return lines.join("\n");
