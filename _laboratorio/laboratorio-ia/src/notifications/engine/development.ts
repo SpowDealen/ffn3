@@ -1,5 +1,17 @@
 import type {LabNotification} from "../types";
+import {getNotifications} from "../store";
 import {notificationEngine} from "./engine";
+import type {NotificationAudit} from "./types";
+
+export function inspectNotification(
+  id: string,
+): NotificationAudit | null {
+  return (
+    getNotifications().find(
+      (notification) => notification.id === id,
+    )?.audit ?? null
+  );
+}
 
 export function testNotificationEngineTelegram(): LabNotification {
   return notificationEngine.notify({

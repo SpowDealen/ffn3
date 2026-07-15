@@ -1,5 +1,6 @@
 import type {LabNotification} from "../types";
 import {deliverThroughCurrentNotificationSystem} from "./adapter";
+import {buildNotificationAudit} from "./audit";
 import {normalizeNotificationEvent} from "./normalizer";
 import {resolveNotificationPolicy} from "./policies";
 import {resolveNotificationPriority} from "./priority";
@@ -13,10 +14,17 @@ export const notificationEngine = {
       priority,
     );
     const policy = resolveNotificationPolicy(event);
+    const audit = buildNotificationAudit(
+      event,
+      priority,
+      normalizedEvent,
+      policy,
+    );
 
     return deliverThroughCurrentNotificationSystem(
       normalizedEvent,
       policy,
+      audit,
     );
   },
 };

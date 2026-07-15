@@ -46,3 +46,18 @@ export type NotificationPolicy = {
   groupKey?: string;
   channels: Record<NotificationChannelName, boolean>;
 };
+
+export interface NotificationAudit {
+  readonly receivedAt: string;
+  readonly eventType: NotificationEventType;
+  readonly priority: NotificationPriority;
+  readonly channels: Readonly<{
+    activityCenter: boolean;
+    telegram: boolean;
+  }>;
+  readonly grouped: boolean;
+  readonly groupKey?: string;
+  readonly normalizedLevel: string;
+  readonly normalizedKind?: string;
+  readonly decisions: readonly string[];
+}

@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import {
+  inspectNotification,
   testCriticalNotification,
   testLowNotification,
   testNotificationEngineActivityOnly,
@@ -18,6 +19,7 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     createNotification,
     getNotifications,
     retryNotificationDelivery,
+    inspectNotification,
     testCriticalNotification,
     testLowNotification,
     testNotificationEngineActivityOnly,

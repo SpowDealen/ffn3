@@ -1,3 +1,5 @@
+import type {NotificationAudit} from "./engine/types";
+
 export type NotificationLevel = "success" | "review" | "error";
 
 export type NotificationKind =
@@ -61,6 +63,7 @@ export type LabNotification = {
   channels?: NotificationChannels;
   deliverySkipReason?: NotificationDeliverySkipReason;
   priority?: NotificationPriority;
+  audit?: NotificationAudit;
 };
 
 export type CreateNotificationInput = {
@@ -76,4 +79,5 @@ export type CreateNotificationInput = {
   updateCount?: number;
   channels?: NotificationChannels;
   priority?: NotificationPriority;
+  audit?: NotificationAudit;
 };
