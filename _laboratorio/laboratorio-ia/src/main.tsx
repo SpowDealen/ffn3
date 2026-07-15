@@ -15,6 +15,7 @@ import {
 } from "./notifications/store";
 import {createAutonomousResolverTestCase, createTestReviewCase, createTestReviewCases, createUniversalEditorTestCase} from "./review/development";
 import {applyAutonomousReview, previewAutonomousReview, runAutonomousReview} from "./review/autonomous";
+import {createExternalNewsReviewTestCase, createOrUpdateExternalNewsReviewCase, detectExternalNewsIssues, runExternalNewsReviewPilot} from "./review/producers/externalNews";
 import {
   addReviewResolution,
   clearAllReviewCases,
@@ -49,6 +50,10 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     previewAutonomousReview,
     applyAutonomousReview,
     createAutonomousResolverTestCase,
+    createExternalNewsReviewTestCase,
+    detectExternalNewsIssues,
+    createExternalNewsReviewCase: createOrUpdateExternalNewsReviewCase,
+    runExternalNewsReviewPilot,
   };
 }
 

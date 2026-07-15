@@ -49,6 +49,7 @@ import type {
   ExternalSourceId,
 } from "../sources/types";
 import { getEnabledExternalNewsSources } from "../sources/sourceRegistry";
+import {runExternalNewsReviewPilot, type ExternalNewsPilotReview} from "../review/producers/externalNews";
 
 
 type ExternalEditorialAnalysisResponse =
@@ -2172,6 +2173,7 @@ export default function PanelIA(): ReactElement {
       type: "idle",
       message: "",
     });
+  const [externalNewsReview, setExternalNewsReview] = useState<ExternalNewsPilotReview | null>(null);
   const [externalNewsBatchAnalysis, setExternalNewsBatchAnalysis] =
     useState<ExternalNewsBatchResolveData | null>(null);
   const [isPreparingExternalNewsBatch, setIsPreparingExternalNewsBatch] =
@@ -2804,6 +2806,13 @@ export default function PanelIA(): ReactElement {
     }
 
     const { analysis, resolved, warnings } = analysisPayload.data;
+    const pilotResult = runExternalNewsReviewPilot({source: {id: selectedExternalNews.source, name: selectedExternalNews.sourceName || selectedExternalNewsSource?.name || "Fuente externa"}, item: selectedExternalNews, analysis, resolved, warnings, operation: "analyze"});
+    setExternalNewsReview(pilotResult.review);
+    if (pilotResult.saveBlocked) {
+      setIsAnalyzingExternalNews(false);
+      setExternalNewsStatus({type: pilotResult.review.status === "error" ? "error" : "success", message: pilotResult.review.status === "ready_for_future_resume" ? "Resoluciones preparadas. Pendiente de reanudación controlada; no se ha cargado ni guardado ningún borrador." : pilotResult.review.status === "error" ? `El Centro de revisión falló: ${pilotResult.review.error ?? "error desconocido"}. No se ha guardado el borrador.` : `Caso de revisión ${pilotResult.review.caseId ?? "sin ID"} creado. Pendiente de más evidencia; no se ha cargado ni guardado ningún borrador.`});
+      return;
+    }
     const sourceExtract = createExternalSourceExtract(selectedExternalNews);
     const safeExternalExtract = createSafeNewsExtract(
       analysis.hechoPrincipal || sourceExtract || selectedExternalNews.title
@@ -3106,6 +3115,12 @@ export default function PanelIA(): ReactElement {
       }
 
       const { analysis, resolved, warnings } = analysisPayload.data;
+      const pilotResult = runExternalNewsReviewPilot({source: {id: selectedExternalNews.source, name: selectedExternalNews.sourceName || selectedExternalNewsSource?.name || "Fuente externa"}, item: selectedExternalNews, analysis, resolved, warnings, operation: "create_draft"});
+      setExternalNewsReview(pilotResult.review);
+      if (pilotResult.saveBlocked) {
+        setExternalNewsStatus({type: pilotResult.review.status === "error" ? "error" : "success", message: pilotResult.review.status === "ready_for_future_resume" ? "Resoluciones preparadas. Pendiente de reanudación controlada; el borrador no se ha guardado." : pilotResult.review.status === "error" ? `El Centro de revisión falló: ${pilotResult.review.error ?? "error desconocido"}. El borrador no se ha guardado.` : `La noticia se envió al Centro de revisión (${pilotResult.review.caseId ?? "sin ID"}). El borrador no se ha guardado.`});
+        return;
+      }
 
       if (
         !analysis.debeCrearNoticia ||
@@ -13144,6 +13159,15 @@ export default function PanelIA(): ReactElement {
               >
                 {externalNewsStatus.message}
               </div>
+            ) : null}
+
+            {externalNewsReview ? (
+              <section className="external-review-result" aria-label="Resultado del Centro de revisión">
+                <strong>{externalNewsReview.status === "not_needed" ? "Sin incidencias" : externalNewsReview.status === "ready_for_future_resume" ? "Listo para futura reanudación" : externalNewsReview.status === "error" ? "Error controlado del Centro de revisión" : externalNewsReview.status === "needs_more_evidence" ? "Pendiente de más evidencia" : "Caso de revisión creado"}</strong>
+                <span>Incidencias: {externalNewsReview.issueCount} · resueltas: {externalNewsReview.resolvedIssueCount} · pendientes: {externalNewsReview.pendingIssueCount} · bloqueantes: {externalNewsReview.blockingPendingCount}</span>
+                <span>Resoluciones autónomas aplicadas: {externalNewsReview.autonomousAppliedCount}</span>
+                {externalNewsReview.caseId ? <button type="button" className="review-button review-button-secondary" onClick={() => { window.location.hash = "review-center"; document.getElementById("review-center")?.scrollIntoView({behavior: "smooth", block: "start"}); }}>Abrir caso en el Centro de revisión</button> : null}
+              </section>
             ) : null}
 
             {externalNewsBatchStatus.type !== "idle" ? (
