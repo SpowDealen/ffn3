@@ -11,6 +11,7 @@ import ReviewIssueEditor from "./ReviewIssueEditor";
 import ReviewCaseResolutionStatus from "./ReviewCaseResolutionStatus";
 import ReviewResolutionSummary from "./ReviewResolutionSummary";
 import AutonomousReviewPanel from "./AutonomousReviewPanel";
+import ExternalNewsResumePreviewPanel from "./ExternalNewsResumePreviewPanel";
 
 type ReviewCaseDetailsProps = {
   reviewCase: ReviewCase;
@@ -208,6 +209,7 @@ export default function ReviewCaseDetails({
       </section>
 
       <AutonomousReviewPanel caseId={reviewCase.id} editable={canEdit} />
+      <ExternalNewsResumePreviewPanel reviewCase={reviewCase} />
 
       {reviewCase.resolutions.length ? (
         <section className="review-subsection">

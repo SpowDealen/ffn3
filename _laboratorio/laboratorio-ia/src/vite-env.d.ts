@@ -15,6 +15,7 @@ import type {
 import type {createAutonomousResolverTestCase, createTestReviewCase, createTestReviewCases, createUniversalEditorTestCase} from "./review/development";
 import type {applyAutonomousReview, previewAutonomousReview, runAutonomousReview} from "./review/autonomous";
 import type {createExternalNewsReviewTestCase, createOrUpdateExternalNewsReviewCase, detectExternalNewsIssues, runExternalNewsReviewPilot} from "./review/producers/externalNews";
+import type {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeTestCase} from "./review/resume/externalNews";
 import type {
   addReviewResolution,
   clearAllReviewCases,
@@ -54,6 +55,9 @@ declare global {
       detectExternalNewsIssues: typeof detectExternalNewsIssues;
       createExternalNewsReviewCase: typeof createOrUpdateExternalNewsReviewCase;
       runExternalNewsReviewPilot: typeof runExternalNewsReviewPilot;
+      buildExternalNewsResumePreview: typeof buildExternalNewsResumePreview;
+      applyExternalNewsResolutionsPreview: typeof applyExternalNewsResolutionsPreview;
+      createExternalNewsResumeTestCase: typeof createExternalNewsResumeTestCase;
     };
   }
 }
