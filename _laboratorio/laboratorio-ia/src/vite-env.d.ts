@@ -15,7 +15,7 @@ import type {
 import type {createAutonomousResolverTestCase, createTestReviewCase, createTestReviewCases, createUniversalEditorTestCase} from "./review/development";
 import type {applyAutonomousReview, previewAutonomousReview, runAutonomousReview} from "./review/autonomous";
 import type {createExternalNewsReviewTestCase, createOrUpdateExternalNewsReviewCase, detectExternalNewsIssues, runExternalNewsReviewPilot} from "./review/producers/externalNews";
-import type {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeTestCase} from "./review/resume/externalNews";
+import type {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeExecutionTestCase, createExternalNewsResumeTestCase, executeExternalNewsResumeWithRegisteredExecutor, registerMockExternalNewsResumeExecutor, unregisterMockExternalNewsResumeExecutor} from "./review/resume/externalNews";
 import type {
   addReviewResolution,
   clearAllReviewCases,
@@ -58,6 +58,10 @@ declare global {
       buildExternalNewsResumePreview: typeof buildExternalNewsResumePreview;
       applyExternalNewsResolutionsPreview: typeof applyExternalNewsResolutionsPreview;
       createExternalNewsResumeTestCase: typeof createExternalNewsResumeTestCase;
+      executeExternalNewsResume: typeof executeExternalNewsResumeWithRegisteredExecutor;
+      registerMockExternalNewsResumeExecutor: typeof registerMockExternalNewsResumeExecutor;
+      unregisterMockExternalNewsResumeExecutor: typeof unregisterMockExternalNewsResumeExecutor;
+      createExternalNewsResumeExecutionTestCase: typeof createExternalNewsResumeExecutionTestCase;
     };
   }
 }

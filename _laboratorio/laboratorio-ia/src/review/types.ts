@@ -169,6 +169,21 @@ export type ReviewCase = {
   resumeAttempts: number;
   lastResumeError?: string;
   dismissReason?: string;
+  resumeExecution?: ReviewResumeExecution;
+};
+
+export type ReviewResumeExecution = {
+  status: "never" | "resuming" | "succeeded" | "failed";
+  attemptCount: number;
+  startedAt?: string;
+  completedAt?: string;
+  failedAt?: string;
+  previewFingerprint?: string;
+  caseVersionAtStart?: number;
+  draftId?: string;
+  documentId?: string;
+  error?: {code: string; message: string};
+  summary?: {appliedResolutionCount: number; changeCount: number; sourceName?: string; title?: string};
 };
 
 export type CreateReviewCaseInput = Pick<
@@ -190,5 +205,6 @@ export type UpdateReviewCaseInput = Partial<
     | "resumeAction"
     | "lastResumeError"
     | "dismissReason"
+    | "resumeExecution"
   >
 >;

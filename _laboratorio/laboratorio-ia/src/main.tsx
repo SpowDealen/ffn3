@@ -16,7 +16,7 @@ import {
 import {createAutonomousResolverTestCase, createTestReviewCase, createTestReviewCases, createUniversalEditorTestCase} from "./review/development";
 import {applyAutonomousReview, previewAutonomousReview, runAutonomousReview} from "./review/autonomous";
 import {createExternalNewsReviewTestCase, createOrUpdateExternalNewsReviewCase, detectExternalNewsIssues, runExternalNewsReviewPilot} from "./review/producers/externalNews";
-import {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeTestCase} from "./review/resume/externalNews";
+import {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeExecutionTestCase, createExternalNewsResumeTestCase, executeExternalNewsResumeWithRegisteredExecutor, registerMockExternalNewsResumeExecutor, unregisterMockExternalNewsResumeExecutor} from "./review/resume/externalNews";
 import {
   addReviewResolution,
   clearAllReviewCases,
@@ -58,6 +58,10 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     buildExternalNewsResumePreview,
     applyExternalNewsResolutionsPreview,
     createExternalNewsResumeTestCase,
+    executeExternalNewsResume: executeExternalNewsResumeWithRegisteredExecutor,
+    registerMockExternalNewsResumeExecutor,
+    unregisterMockExternalNewsResumeExecutor,
+    createExternalNewsResumeExecutionTestCase,
   };
 }
 

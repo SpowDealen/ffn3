@@ -4,6 +4,7 @@ import type {
   ReviewCase,
   ReviewCaseStatus,
   ReviewResolution,
+  ReviewResumeExecution,
   UpdateReviewCaseInput,
 } from "../types";
 import {buildReviewCase} from "../cases/createReviewCase";
@@ -156,6 +157,33 @@ export function transitionReviewCase(
   return replaceById(id, (reviewCase) =>
     applyReviewCaseTransition(reviewCase, nextStatus),
   );
+}
+
+const RESUME_START_STATUSES = new Set<ReviewCaseStatus>(["open", "in_review", "stale", "resume_failed", "resolved"]);
+
+export function beginReviewResumeExecution(id: string, input: {expectedVersion: number; execution: ReviewResumeExecution}): ReviewCase | undefined {
+  return replaceById(id, (reviewCase) => {
+    if (reviewCase.version !== input.expectedVersion) throw new Error("La versión del caso cambió antes de iniciar la reanudación.");
+    if (!RESUME_START_STATUSES.has(reviewCase.status)) throw new Error(`El estado ${reviewCase.status} no permite iniciar la reanudación.`);
+    if (reviewCase.resumeExecution?.status === "succeeded" || reviewCase.resumeExecution?.draftId || reviewCase.resumeExecution?.documentId) throw new Error("El caso ya registra un borrador guardado.");
+    const transitioned = applyReviewCaseTransition(reviewCase, "resuming");
+    return applyReviewCaseUpdate(transitioned, {resumeExecution: input.execution});
+  });
+}
+
+export function recordReviewResumeSaved(id: string, execution: ReviewResumeExecution): ReviewCase | undefined {
+  return replaceById(id, (reviewCase) => {
+    if (reviewCase.status !== "resuming") throw new Error("El caso no está en reanudación.");
+    return applyReviewCaseUpdate(reviewCase, {resumeExecution: execution});
+  });
+}
+
+export function failReviewResumeExecution(id: string, execution: ReviewResumeExecution): ReviewCase | undefined {
+  return replaceById(id, (reviewCase) => {
+    if (reviewCase.status !== "resuming") throw new Error("El caso no está en reanudación.");
+    const recorded = applyReviewCaseUpdate(reviewCase, {resumeExecution: execution, lastResumeError: execution.error?.message});
+    return applyReviewCaseTransition(recorded, "resume_failed");
+  });
 }
 
 export function addReviewResolution(

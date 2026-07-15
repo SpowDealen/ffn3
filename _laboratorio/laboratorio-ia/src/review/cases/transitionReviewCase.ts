@@ -11,13 +11,13 @@ import {
 } from "./validateResolution";
 
 const ALLOWED_TRANSITIONS: Record<ReviewCaseStatus, readonly ReviewCaseStatus[]> = {
-  open: ["in_review", "resolved", "stale", "dismissed"],
-  in_review: ["open", "resolved", "stale", "dismissed"],
+  open: ["in_review", "resolved", "resuming", "stale", "dismissed"],
+  in_review: ["open", "resolved", "resuming", "stale", "dismissed"],
   resolved: ["resuming", "open", "stale", "dismissed"],
   resuming: ["resumed", "resume_failed", "stale"],
   resumed: [],
   resume_failed: ["resuming", "open", "stale", "dismissed"],
-  stale: ["open", "dismissed"],
+  stale: ["open", "resuming", "dismissed"],
   dismissed: [],
 };
 

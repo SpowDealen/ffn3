@@ -6,3 +6,8 @@ export * from "./validateExternalNewsResumePayload";
 export * from "./diffExternalNewsPayload";
 export * from "./buildExternalNewsResumePreview";
 export * from "./development";
+export * from "./executionTypes";
+export * from "./createExternalNewsPreviewFingerprint";
+export * from "./mapResumePayloadToContentFormState";
+export * from "./executeExternalNewsResume";
+export * from "./executionDevelopment";

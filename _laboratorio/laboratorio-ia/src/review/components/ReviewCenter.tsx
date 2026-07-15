@@ -107,7 +107,7 @@ export default function ReviewCenter(): ReactElement {
         <div>
           <p className="review-kicker">Revisión editorial transversal</p>
           <h2 id="review-center-title">Centro de revisión</h2>
-          <p>Inspecciona casos persistidos y sus decisiones pendientes. Las acciones de reanudación no se ejecutan desde este visor.</p>
+          <p>Inspecciona casos persistidos y sus decisiones pendientes. Las noticias externas listas pueden reanudarse manualmente con confirmación explícita.</p>
         </div>
       </header>
 

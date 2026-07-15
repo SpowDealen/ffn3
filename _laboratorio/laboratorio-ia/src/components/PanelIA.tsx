@@ -50,6 +50,9 @@ import type {
 } from "../sources/types";
 import { getEnabledExternalNewsSources } from "../sources/sourceRegistry";
 import {runExternalNewsReviewPilot, type ExternalNewsPilotReview} from "../review/producers/externalNews";
+import {registerReviewResumeExecutor} from "../integrations/reviewResumeExecutors";
+import type {ExternalNewsResumeExecutor} from "../review/resume/externalNews";
+import type {ReviewJsonObject} from "../review/types";
 
 
 type ExternalEditorialAnalysisResponse =
@@ -2027,6 +2030,19 @@ function getReferenceEmptyStateMessage(
 }
 
 export default function PanelIA(): ReactElement {
+  const externalNewsResumeExecutor = useMemo<ExternalNewsResumeExecutor>(() => ({
+    buildOutput(formState) {
+      const built = buildContentOutput({contentType: "noticia", form: formState});
+      if (!built.ok || !built.output) throw new Error(built.issues.filter((issue) => issue.severity === "error").map((issue) => issue.message).join(" · ") || "El builder bloqueó el borrador.");
+      return built.output as unknown as ReviewJsonObject;
+    },
+    async saveDraft(output) {
+      const saved = await saveDraft({contentType: "noticia", document: output});
+      return {success: saved.ok, documentId: saved.documentId, message: saved.message, error: saved.error};
+    },
+  }), []);
+
+  useEffect(() => registerReviewResumeExecutor("external_news", externalNewsResumeExecutor), [externalNewsResumeExecutor]);
   const [contentType, setContentType] = useState<ContentTypeId>(
     DEFAULT_CONTENT_TYPE
   );
