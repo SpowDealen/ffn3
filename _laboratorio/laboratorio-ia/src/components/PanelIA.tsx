@@ -10478,14 +10478,31 @@ export default function PanelIA(): ReactElement {
           (response.documentId ? ` (${response.documentId})` : ""),
       });
 
-      notifyDraftCreated({
-        source: "Sanity",
-        count: 1,
-        location: {
-          label: `Sanity Studio → ${contentLabel}`,
-          url: `${API_BASE_URL}/studio`,
-        },
-      });
+      if (contentType === "evento") {
+        const eventName =
+          typeof result.output.nombre === "string" &&
+          result.output.nombre.trim()
+            ? result.output.nombre.trim()
+            : contentLabel;
+
+        notifyEventCreated({
+          source: "Sanity",
+          eventName,
+          location: {
+            label: "Sanity Studio → Eventos",
+            url: `${API_BASE_URL}/studio`,
+          },
+        });
+      } else {
+        notifyDraftCreated({
+          source: "Sanity",
+          count: 1,
+          location: {
+            label: `Sanity Studio → ${contentLabel}`,
+            url: `${API_BASE_URL}/studio`,
+          },
+        });
+      }
 
       await reloadReferenceEntities();
     } catch (error) {

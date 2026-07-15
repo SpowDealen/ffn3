@@ -2,6 +2,7 @@ import type {
   CreateNotificationInput,
   LabNotification,
 } from "./types";
+import {sendLabNotificationToTelegram} from "./remote";
 
 const STORAGE_KEY = "ffn3-lab-notifications-v1";
 const MAX_NOTIFICATIONS = 100;
@@ -114,6 +115,8 @@ export function createNotification(
     notification,
     ...getNotifications(),
   ]);
+
+  sendLabNotificationToTelegram(notification);
 
   return notification;
 }
