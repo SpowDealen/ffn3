@@ -1,5 +1,6 @@
 import {
   memo,
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -8,6 +9,7 @@ import {
 } from "react";
 import {getNotificationVisual} from "./icons";
 import NotificationDeliveryStatus from "./NotificationDeliveryStatus";
+import NotificationAuditDetails from "./NotificationAuditDetails";
 import NotificationGroupingMetadata from "./NotificationGroupingMetadata";
 import NotificationPriorityBadge, {
   getNotificationPriorityPresentation,
@@ -127,9 +129,13 @@ function getStateLabel(
 const ActivityItem = memo(function ActivityItem({
   notification,
   now,
+  auditExpanded,
+  onToggleAudit,
 }: {
   notification: LabNotification;
   now: number;
+  auditExpanded: boolean;
+  onToggleAudit: (id: string) => void;
 }): ReactElement {
   const visual = getNotificationVisual(
     notification.kind,
@@ -187,6 +193,12 @@ const ActivityItem = memo(function ActivityItem({
           {formatRelativeDate(notification.createdAt, now)}
         </span>
       </div>
+
+      <NotificationAuditDetails
+        notification={notification}
+        expanded={auditExpanded}
+        onToggle={onToggleAudit}
+      />
     </article>
   );
 });
@@ -211,6 +223,22 @@ export default function ActivityCenter(): ReactElement {
     useState(false);
   const [lastCheckWasTest, setLastCheckWasTest] =
     useState(false);
+  const [expandedAuditIds, setExpandedAuditIds] =
+    useState<Set<string>>(() => new Set());
+
+  const toggleNotificationAudit = useCallback((id: string) => {
+    setExpandedAuditIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     let isActive = true;
@@ -251,6 +279,22 @@ export default function ActivityCenter(): ReactElement {
       window.clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    const availableIds = new Set(
+      notifications.map((notification) => notification.id),
+    );
+
+    setExpandedAuditIds((current) => {
+      const remainingIds = new Set(
+        [...current].filter((id) => availableIds.has(id)),
+      );
+
+      return remainingIds.size === current.size
+        ? current
+        : remainingIds;
+    });
+  }, [notifications]);
 
   async function checkTelegram(): Promise<void> {
     setIsCheckingTelegram(true);
@@ -899,6 +943,10 @@ export default function ActivityCenter(): ReactElement {
                   key={notification.id}
                   notification={notification}
                   now={now}
+                  auditExpanded={expandedAuditIds.has(
+                    notification.id,
+                  )}
+                  onToggleAudit={toggleNotificationAudit}
                 />
               ))}
             </div>
