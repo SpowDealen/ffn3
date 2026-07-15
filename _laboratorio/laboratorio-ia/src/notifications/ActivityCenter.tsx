@@ -9,6 +9,9 @@ import {
 import {getNotificationVisual} from "./icons";
 import NotificationDeliveryStatus from "./NotificationDeliveryStatus";
 import NotificationGroupingMetadata from "./NotificationGroupingMetadata";
+import NotificationPriorityBadge, {
+  getNotificationPriorityPresentation,
+} from "./NotificationPriorityBadge";
 import {
   getNotifications,
   subscribeToNotifications,
@@ -21,9 +24,14 @@ import {
 import type {
   LabNotification,
   NotificationLevel,
+  NotificationPriority,
 } from "./types";
 
 type LevelFilter = "all" | NotificationLevel;
+type PriorityFilter =
+  | "all"
+  | "unassigned"
+  | NotificationPriority;
 type MetricFilter =
   | "sent"
   | "failed"
@@ -41,6 +49,16 @@ const METRIC_CARDS: Array<{
   {key: "pending", icon: "🟡", label: "Pendientes"},
   {key: "skipped", icon: "⚪", label: "Omitidas"},
   {key: "grouped", icon: "🔄", label: "Agrupadas"},
+];
+
+const PRIORITY_METRIC_CARDS: Array<{
+  key: NotificationPriority;
+  label: string;
+}> = [
+  {key: "critical", label: "Críticas"},
+  {key: "high", label: "Altas"},
+  {key: "normal", label: "Normales"},
+  {key: "low", label: "Bajas"},
 ];
 
 function normalizeSource(value: string): string {
@@ -134,9 +152,14 @@ const ActivityItem = memo(function ActivityItem({
         </div>
 
         <div style={styles.latestBody}>
-          <strong style={styles.latestTitle}>
-            {notification.title}
-          </strong>
+          <div style={styles.activityTitleRow}>
+            <strong style={styles.latestTitle}>
+              {notification.title}
+            </strong>
+            <NotificationPriorityBadge
+              priority={notification.priority}
+            />
+          </div>
 
           <p style={styles.latestMessage}>
             {notification.message}
@@ -178,6 +201,8 @@ export default function ActivityCenter(): ReactElement {
     useState("all");
   const [metricFilter, setMetricFilter] =
     useState<MetricFilter | null>(null);
+  const [priorityFilter, setPriorityFilter] =
+    useState<PriorityFilter>("all");
   const [liveTelegramHealth, setLiveTelegramHealth] =
     useState<TelegramHealthResponse | null>(null);
   const [liveTelegramError, setLiveTelegramError] =
@@ -285,14 +310,32 @@ export default function ActivityCenter(): ReactElement {
           notification,
           metricFilter,
         );
+        const matchesPriority =
+          priorityFilter === "all" ||
+          (priorityFilter === "unassigned"
+            ? notification.priority === undefined
+            : notification.priority === priorityFilter);
 
-        return matchesLevel && matchesSource && matchesMetric;
+        return (
+          matchesLevel &&
+          matchesSource &&
+          matchesMetric &&
+          matchesPriority
+        );
       }),
-    [levelFilter, metricFilter, notifications, sourceFilter],
+    [
+      levelFilter,
+      metricFilter,
+      notifications,
+      priorityFilter,
+      sourceFilter,
+    ],
   );
 
   const hasBaseFilters =
-    levelFilter !== "all" || sourceFilter !== "all";
+    levelFilter !== "all" ||
+    sourceFilter !== "all" ||
+    priorityFilter !== "all";
   const hasActiveFilters =
     hasBaseFilters || metricFilter !== null;
 
@@ -314,6 +357,10 @@ export default function ActivityCenter(): ReactElement {
             metrics.grouped += 1;
           }
 
+          if (notification.priority) {
+            metrics[notification.priority] += 1;
+          }
+
           return metrics;
         },
         {
@@ -322,6 +369,10 @@ export default function ActivityCenter(): ReactElement {
           pending: 0,
           skipped: 0,
           grouped: 0,
+          critical: 0,
+          high: 0,
+          normal: 0,
+          low: 0,
         },
       ),
     [notifications],
@@ -544,6 +595,26 @@ export default function ActivityCenter(): ReactElement {
           </select>
         </label>
 
+        <label style={styles.filterField}>
+          <span style={styles.filterLabel}>Prioridad</span>
+          <select
+            value={priorityFilter}
+            onChange={(event) => {
+              setPriorityFilter(
+                event.target.value as PriorityFilter,
+              );
+            }}
+            style={styles.filterSelect}
+          >
+            <option value="all">Todas</option>
+            <option value="critical">Crítica</option>
+            <option value="high">Alta</option>
+            <option value="normal">Normal</option>
+            <option value="low">Baja</option>
+            <option value="unassigned">Sin prioridad</option>
+          </select>
+        </label>
+
         <span style={styles.resultCount}>
           {filteredNotifications.length}{" "}
           {filteredNotifications.length === 1
@@ -557,6 +628,7 @@ export default function ActivityCenter(): ReactElement {
             onClick={() => {
               setLevelFilter("all");
               setSourceFilter("all");
+              setPriorityFilter("all");
             }}
             style={styles.clearFilters}
           >
@@ -605,6 +677,48 @@ export default function ActivityCenter(): ReactElement {
           </button>
         ) : null}
       </div>
+
+      <section style={styles.priorityMetricsSection}>
+        <span style={styles.priorityMetricsTitle}>
+          Prioridades
+        </span>
+        <div style={styles.priorityMetrics}>
+          {PRIORITY_METRIC_CARDS.map((metric) => {
+            const presentation =
+              getNotificationPriorityPresentation(metric.key);
+            const isActive = priorityFilter === metric.key;
+
+            return (
+              <button
+                key={metric.key}
+                type="button"
+                onClick={() => {
+                  setPriorityFilter((current) =>
+                    current === metric.key ? "all" : metric.key,
+                  );
+                }}
+                style={{
+                  ...styles.priorityMetric,
+                  ...(isActive
+                    ? styles.priorityMetricActive
+                    : {}),
+                }}
+                aria-pressed={isActive}
+              >
+                <span aria-hidden="true">
+                  {presentation.icon}
+                </span>
+                <strong style={styles.priorityMetricValue}>
+                  {deliveryMetrics[metric.key]}
+                </strong>
+                <span style={styles.priorityMetricLabel}>
+                  {metric.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       <section style={styles.telegramHealth}>
         <div style={styles.telegramHealthHeader}>
@@ -992,6 +1106,14 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
   },
 
+  activityTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 7,
+    minWidth: 0,
+  },
+
   latestEyebrow: {
     display: "block",
     marginBottom: 4,
@@ -1005,6 +1127,8 @@ const styles: Record<string, CSSProperties> = {
   latestTitle: {
     display: "block",
     overflow: "hidden",
+    flex: "1 1 180px",
+    minWidth: 0,
     fontSize: 13,
     lineHeight: 1.35,
     textOverflow: "ellipsis",
@@ -1099,6 +1223,62 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 650,
     cursor: "pointer",
+  },
+
+  priorityMetricsSection: {
+    display: "grid",
+    gap: 8,
+  },
+
+  priorityMetricsTitle: {
+    color: "#7d8894",
+    fontSize: 9,
+    fontWeight: 750,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+  },
+
+  priorityMetrics: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(min(100%, 110px), 1fr))",
+    gap: 8,
+  },
+
+  priorityMetric: {
+    display: "grid",
+    gridTemplateColumns: "auto auto minmax(0, 1fr)",
+    alignItems: "center",
+    gap: 7,
+    minHeight: 43,
+    padding: "7px 10px",
+    border: "1px solid rgba(255,255,255,0.07)",
+    borderRadius: 11,
+    background: "rgba(5,8,12,0.26)",
+    color: "#e2e7ec",
+    textAlign: "left",
+    cursor: "pointer",
+  },
+
+  priorityMetricActive: {
+    borderColor: "rgba(96,165,250,0.5)",
+    background: "rgba(59,130,246,0.12)",
+    boxShadow: "inset 0 0 0 1px rgba(96,165,250,0.1)",
+  },
+
+  priorityMetricValue: {
+    fontSize: 16,
+    lineHeight: 1,
+  },
+
+  priorityMetricLabel: {
+    overflow: "hidden",
+    color: "#8994a0",
+    fontSize: 9,
+    fontWeight: 700,
+    textOverflow: "ellipsis",
+    textTransform: "uppercase",
+    whiteSpace: "nowrap",
   },
 
   telegramHealth: {

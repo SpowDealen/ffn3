@@ -17,6 +17,7 @@ import {
 import {getNotificationVisual} from "./icons";
 import NotificationDeliveryStatus from "./NotificationDeliveryStatus";
 import NotificationGroupingMetadata from "./NotificationGroupingMetadata";
+import NotificationPriorityBadge from "./NotificationPriorityBadge";
 import type {
   LabNotification,
   NotificationLevel,
@@ -183,9 +184,14 @@ const NotificationItem = memo(function NotificationItem({
 
       <div style={styles.itemBody}>
         <div style={styles.itemHeader}>
-          <strong style={styles.itemTitle}>
-            {notification.title}
-          </strong>
+          <div style={styles.itemTitleGroup}>
+            <strong style={styles.itemTitle}>
+              {notification.title}
+            </strong>
+            <NotificationPriorityBadge
+              priority={notification.priority}
+            />
+          </div>
 
           <span style={styles.itemTime}>
             {formatRelativeDate(notification.createdAt)}
@@ -545,13 +551,25 @@ const styles: Record<string, CSSProperties> = {
     gap: 12,
   },
 
+  itemTitleGroup: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    flex: "1 1 auto",
+    minWidth: 0,
+  },
+
   itemTitle: {
     overflow: "hidden",
+    flex: "1 1 150px",
+    minWidth: 0,
     color: "#f4f6f8",
     fontSize: 13,
     fontWeight: 650,
     lineHeight: 1.35,
     textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
 
   itemTime: {
