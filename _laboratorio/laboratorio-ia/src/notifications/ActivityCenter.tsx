@@ -77,6 +77,18 @@ function formatRelativeDate(value: string, now: number): string {
   return `Hace ${Math.floor(hours / 24)} d`;
 }
 
+function formatDeliveryDuration(milliseconds: number): string {
+  if (milliseconds < 1_000) {
+    return `${Math.round(milliseconds)} ms`;
+  }
+
+  if (milliseconds < 60_000) {
+    return `${(milliseconds / 1_000).toFixed(1)} s`;
+  }
+
+  return `${(milliseconds / 60_000).toFixed(1)} min`;
+}
+
 function getStateLabel(
   errors: number,
   reviews: number,
@@ -262,6 +274,123 @@ export default function ActivityCenter(): ReactElement {
     [notifications],
   );
 
+  const telegramHealth = useMemo(() => {
+    const summary = notifications.reduce(
+      (current, notification) => {
+        if (notification.deliveryStatus === "sent") {
+          current.sent += 1;
+
+          const deliveredAt = notification.deliveredAt
+            ? new Date(notification.deliveredAt).getTime()
+            : Number.NaN;
+
+          if (Number.isFinite(deliveredAt)) {
+            current.latestSentAt = Math.max(
+              current.latestSentAt,
+              deliveredAt,
+            );
+
+            const createdAt = new Date(
+              notification.createdAt,
+            ).getTime();
+            const duration = deliveredAt - createdAt;
+
+            if (
+              Number.isFinite(createdAt) &&
+              duration >= 0
+            ) {
+              current.totalDeliveryDuration += duration;
+              current.deliveryDurationCount += 1;
+            }
+          }
+        } else if (notification.deliveryStatus === "failed") {
+          current.failed += 1;
+
+          const failedAt = new Date(
+            notification.updatedAt ?? notification.createdAt,
+          ).getTime();
+
+          if (
+            Number.isFinite(failedAt) &&
+            failedAt > current.latestFailedAt
+          ) {
+            current.latestFailedAt = failedAt;
+            current.latestFailureError =
+              notification.deliveryError?.trim() || undefined;
+          } else if (!current.fallbackFailureError) {
+            current.fallbackFailureError =
+              notification.deliveryError?.trim() || undefined;
+          }
+        }
+
+        return current;
+      },
+      {
+        sent: 0,
+        failed: 0,
+        latestSentAt: Number.NEGATIVE_INFINITY,
+        latestFailedAt: Number.NEGATIVE_INFINITY,
+        latestFailureError: undefined as string | undefined,
+        fallbackFailureError: undefined as string | undefined,
+        totalDeliveryDuration: 0,
+        deliveryDurationCount: 0,
+      },
+    );
+
+    const completedAttempts = summary.sent + summary.failed;
+    const hasLatestSent = Number.isFinite(summary.latestSentAt);
+    const hasLatestFailure = Number.isFinite(
+      summary.latestFailedAt,
+    );
+    const channelStatus =
+      completedAttempts === 0
+        ? "Sin datos"
+        : summary.failed > 0 &&
+            (summary.sent === 0 ||
+              (hasLatestFailure &&
+                (!hasLatestSent ||
+                  summary.latestFailedAt > summary.latestSentAt)))
+          ? "Con incidencias"
+          : "Operativo";
+    const successRate =
+      completedAttempts > 0
+        ? `${((summary.sent / completedAttempts) * 100).toFixed(1)} %`
+        : "—";
+    const latestSent = hasLatestSent
+      ? formatRelativeDate(
+          new Date(summary.latestSentAt).toISOString(),
+          now,
+        )
+      : "Sin entregas";
+    const latestFailure = hasLatestFailure
+      ? formatRelativeDate(
+          new Date(summary.latestFailedAt).toISOString(),
+          now,
+        )
+      : summary.failed > 0
+        ? "Fecha no disponible"
+        : "Sin fallos";
+    const averageDelivery =
+      summary.deliveryDurationCount > 0
+        ? formatDeliveryDuration(
+            summary.totalDeliveryDuration /
+              summary.deliveryDurationCount,
+          )
+        : "—";
+
+    return {
+      channelStatus,
+      successRate,
+      latestSent,
+      latestFailure,
+      latestFailureError:
+        hasLatestFailure
+          ? summary.latestFailureError
+          : summary.fallbackFailureError,
+      averageDelivery,
+    };
+  }, [notifications, now]);
+
   const reviewCount = useMemo(
     () =>
       notifications.filter(
@@ -406,6 +535,83 @@ export default function ActivityCenter(): ReactElement {
           </button>
         ) : null}
       </div>
+
+      <section style={styles.telegramHealth}>
+        <div style={styles.telegramHealthHeader}>
+          <div>
+            <strong style={styles.telegramHealthTitle}>
+              Salud de Telegram
+            </strong>
+            <span style={styles.telegramHealthSubtitle}>
+              Calculada sobre el historial local actual
+            </span>
+          </div>
+        </div>
+
+        <div style={styles.telegramHealthGrid}>
+          <div style={styles.telegramHealthItem}>
+            <span style={styles.telegramHealthLabel}>
+              Estado del canal
+            </span>
+            <strong
+              style={{
+                ...styles.telegramHealthValue,
+                ...(telegramHealth.channelStatus === "Operativo"
+                  ? styles.telegramHealthOk
+                  : telegramHealth.channelStatus === "Con incidencias"
+                    ? styles.telegramHealthIssue
+                    : styles.telegramHealthUnknown),
+              }}
+            >
+              {telegramHealth.channelStatus}
+            </strong>
+          </div>
+
+          <div style={styles.telegramHealthItem}>
+            <span style={styles.telegramHealthLabel}>
+              Tasa de éxito
+            </span>
+            <strong style={styles.telegramHealthValue}>
+              {telegramHealth.successRate}
+            </strong>
+          </div>
+
+          <div style={styles.telegramHealthItem}>
+            <span style={styles.telegramHealthLabel}>
+              Última entrega correcta
+            </span>
+            <strong style={styles.telegramHealthValue}>
+              {telegramHealth.latestSent}
+            </strong>
+          </div>
+
+          <div style={styles.telegramHealthItem}>
+            <span style={styles.telegramHealthLabel}>
+              Último fallo
+            </span>
+            <strong style={styles.telegramHealthValue}>
+              {telegramHealth.latestFailure}
+            </strong>
+            {telegramHealth.latestFailureError ? (
+              <span
+                style={styles.telegramHealthError}
+                title={telegramHealth.latestFailureError}
+              >
+                {telegramHealth.latestFailureError}
+              </span>
+            ) : null}
+          </div>
+
+          <div style={styles.telegramHealthItem}>
+            <span style={styles.telegramHealthLabel}>
+              Tiempo medio de entrega
+            </span>
+            <strong style={styles.telegramHealthValue}>
+              {telegramHealth.averageDelivery}
+            </strong>
+          </div>
+        </div>
+      </section>
 
       <div style={styles.contentGrid}>
         <div style={styles.activityPanel}>
@@ -730,6 +936,89 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 650,
     cursor: "pointer",
+  },
+
+  telegramHealth: {
+    display: "grid",
+    gap: 11,
+    padding: 14,
+    border: "1px solid rgba(255,255,255,0.07)",
+    borderRadius: 15,
+    background: "rgba(5,8,12,0.24)",
+  },
+
+  telegramHealthHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  telegramHealthTitle: {
+    display: "block",
+    fontSize: 12,
+    lineHeight: 1.3,
+  },
+
+  telegramHealthSubtitle: {
+    display: "block",
+    marginTop: 3,
+    color: "#707b87",
+    fontSize: 9,
+    lineHeight: 1.4,
+  },
+
+  telegramHealthGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(min(100%, 145px), 1fr))",
+    gap: 8,
+  },
+
+  telegramHealthItem: {
+    display: "grid",
+    alignContent: "start",
+    gap: 5,
+    minHeight: 68,
+    padding: "10px 11px",
+    border: "1px solid rgba(255,255,255,0.055)",
+    borderRadius: 11,
+    background: "rgba(255,255,255,0.025)",
+  },
+
+  telegramHealthLabel: {
+    color: "#77828e",
+    fontSize: 9,
+    fontWeight: 700,
+    lineHeight: 1.35,
+  },
+
+  telegramHealthValue: {
+    color: "#e2e7ec",
+    fontSize: 12,
+    lineHeight: 1.35,
+  },
+
+  telegramHealthOk: {
+    color: "#6ee7b7",
+  },
+
+  telegramHealthIssue: {
+    color: "#fca5a5",
+  },
+
+  telegramHealthUnknown: {
+    color: "#a8b1bb",
+  },
+
+  telegramHealthError: {
+    display: "-webkit-box",
+    overflow: "hidden",
+    color: "#d88f8f",
+    fontSize: 9,
+    lineHeight: 1.35,
+    WebkitBoxOrient: "vertical",
+    WebkitLineClamp: 2,
   },
 
   emptyState: {
