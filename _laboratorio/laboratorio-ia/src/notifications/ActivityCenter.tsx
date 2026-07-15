@@ -19,9 +19,40 @@ import type {
 } from "./types";
 
 type LevelFilter = "all" | NotificationLevel;
+type MetricFilter =
+  | "sent"
+  | "failed"
+  | "pending"
+  | "skipped"
+  | "grouped";
+
+const METRIC_CARDS: Array<{
+  key: MetricFilter;
+  icon: string;
+  label: string;
+}> = [
+  {key: "sent", icon: "🟢", label: "Enviadas"},
+  {key: "failed", icon: "🔴", label: "Fallidas"},
+  {key: "pending", icon: "🟡", label: "Pendientes"},
+  {key: "skipped", icon: "⚪", label: "Omitidas"},
+  {key: "grouped", icon: "🔄", label: "Agrupadas"},
+];
 
 function normalizeSource(value: string): string {
   return value.trim().toLocaleLowerCase("es-ES");
+}
+
+function matchesMetricFilter(
+  notification: LabNotification,
+  metricFilter: MetricFilter | null,
+): boolean {
+  if (!metricFilter) return true;
+
+  if (metricFilter === "grouped") {
+    return (notification.updateCount ?? 0) > 0;
+  }
+
+  return notification.deliveryStatus === metricFilter;
 }
 
 function formatRelativeDate(value: string, now: number): string {
@@ -128,6 +159,8 @@ export default function ActivityCenter(): ReactElement {
     useState<LevelFilter>("all");
   const [sourceFilter, setSourceFilter] =
     useState("all");
+  const [metricFilter, setMetricFilter] =
+    useState<MetricFilter | null>(null);
 
   useEffect(() => {
     function refresh(): void {
@@ -183,14 +216,51 @@ export default function ActivityCenter(): ReactElement {
             ? normalizeSource(notification.source) ===
               normalizeSource(sourceFilter)
             : false);
+        const matchesMetric = matchesMetricFilter(
+          notification,
+          metricFilter,
+        );
 
-        return matchesLevel && matchesSource;
+        return matchesLevel && matchesSource && matchesMetric;
       }),
-    [levelFilter, notifications, sourceFilter],
+    [levelFilter, metricFilter, notifications, sourceFilter],
   );
 
-  const hasActiveFilters =
+  const hasBaseFilters =
     levelFilter !== "all" || sourceFilter !== "all";
+  const hasActiveFilters =
+    hasBaseFilters || metricFilter !== null;
+
+  const deliveryMetrics = useMemo(
+    () =>
+      notifications.reduce(
+        (metrics, notification) => {
+          if (notification.deliveryStatus === "sent") {
+            metrics.sent += 1;
+          } else if (notification.deliveryStatus === "failed") {
+            metrics.failed += 1;
+          } else if (notification.deliveryStatus === "pending") {
+            metrics.pending += 1;
+          } else if (notification.deliveryStatus === "skipped") {
+            metrics.skipped += 1;
+          }
+
+          if ((notification.updateCount ?? 0) > 0) {
+            metrics.grouped += 1;
+          }
+
+          return metrics;
+        },
+        {
+          sent: 0,
+          failed: 0,
+          pending: 0,
+          skipped: 0,
+          grouped: 0,
+        },
+      ),
+    [notifications],
+  );
 
   const reviewCount = useMemo(
     () =>
@@ -208,14 +278,6 @@ export default function ActivityCenter(): ReactElement {
         (notification) =>
           !notification.read &&
           notification.level === "error",
-      ).length,
-    [notifications],
-  );
-
-  const unreadCount = useMemo(
-    () =>
-      notifications.filter(
-        (notification) => !notification.read,
       ).length,
     [notifications],
   );
@@ -290,7 +352,7 @@ export default function ActivityCenter(): ReactElement {
             : "notificaciones"}
         </span>
 
-        {hasActiveFilters ? (
+        {hasBaseFilters ? (
           <button
             type="button"
             onClick={() => {
@@ -300,6 +362,47 @@ export default function ActivityCenter(): ReactElement {
             style={styles.clearFilters}
           >
             Limpiar filtros
+          </button>
+        ) : null}
+      </div>
+
+      <div style={styles.metricsSection}>
+        <div style={styles.metrics}>
+          {METRIC_CARDS.map((metric) => {
+            const isActive = metricFilter === metric.key;
+
+            return (
+              <button
+                key={metric.key}
+                type="button"
+                onClick={() => setMetricFilter(metric.key)}
+                style={{
+                  ...styles.metric,
+                  ...(isActive ? styles.metricActive : {}),
+                }}
+                aria-pressed={isActive}
+              >
+                <span style={styles.metricIcon} aria-hidden="true">
+                  {metric.icon}
+                </span>
+                <span style={styles.metricValue}>
+                  {deliveryMetrics[metric.key]}
+                </span>
+                <span style={styles.metricLabel}>
+                  {metric.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {metricFilter ? (
+          <button
+            type="button"
+            onClick={() => setMetricFilter(null)}
+            style={styles.resetMetrics}
+          >
+            Restablecer vista
           </button>
         ) : null}
       </div>
@@ -338,34 +441,6 @@ export default function ActivityCenter(): ReactElement {
           )}
         </div>
 
-        <div style={styles.metrics}>
-          <div style={styles.metric}>
-            <span style={styles.metricValue}>
-              {unreadCount}
-            </span>
-            <span style={styles.metricLabel}>
-              Pendientes
-            </span>
-          </div>
-
-          <div style={styles.metric}>
-            <span style={styles.metricValue}>
-              {reviewCount}
-            </span>
-            <span style={styles.metricLabel}>
-              Revisiones
-            </span>
-          </div>
-
-          <div style={styles.metric}>
-            <span style={styles.metricValue}>
-              {errorCount}
-            </span>
-            <span style={styles.metricLabel}>
-              Errores
-            </span>
-          </div>
-        </div>
       </div>
     </section>
   );
@@ -590,22 +665,46 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 10,
   },
 
+  metricsSection: {
+    display: "grid",
+    justifyItems: "end",
+    gap: 8,
+  },
+
   metrics: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(min(100%, 105px), 1fr))",
     gap: 8,
+    width: "100%",
   },
 
   metric: {
     display: "grid",
     alignContent: "center",
     justifyItems: "center",
-    minHeight: 94,
+    minHeight: 88,
     padding: 10,
     border: "1px solid rgba(255,255,255,0.07)",
     borderRadius: 14,
     background: "rgba(5,8,12,0.32)",
+    color: "#f5f7fa",
     textAlign: "center",
+    cursor: "pointer",
+    transition:
+      "border-color 140ms ease, background 140ms ease, transform 140ms ease",
+  },
+
+  metricActive: {
+    borderColor: "rgba(96,165,250,0.52)",
+    background: "rgba(59,130,246,0.13)",
+    boxShadow: "inset 0 0 0 1px rgba(96,165,250,0.12)",
+  },
+
+  metricIcon: {
+    marginBottom: 6,
+    fontSize: 15,
+    lineHeight: 1,
   },
 
   metricValue: {
@@ -621,6 +720,16 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 750,
     letterSpacing: "0.07em",
     textTransform: "uppercase",
+  },
+
+  resetMetrics: {
+    padding: 0,
+    border: 0,
+    background: "transparent",
+    color: "#8dbcf5",
+    fontSize: 10,
+    fontWeight: 650,
+    cursor: "pointer",
   },
 
   emptyState: {
