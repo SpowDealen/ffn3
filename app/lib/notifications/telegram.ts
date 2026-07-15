@@ -1,6 +1,7 @@
 import {formatTelegramNotification} from "./formatter";
 import type {
   ServerNotificationInput,
+  TelegramConfigurationStatus,
   TelegramSendResult,
 } from "./types";
 
@@ -17,6 +18,23 @@ function isTelegramEnabled(): boolean {
     process.env.TELEGRAM_NOTIFICATIONS_ENABLED !==
     "false"
   );
+}
+
+export function getTelegramConfigurationStatus(): TelegramConfigurationStatus {
+  const enabled = isTelegramEnabled();
+  const tokenConfigured = Boolean(
+    process.env.TELEGRAM_BOT_TOKEN?.trim(),
+  );
+  const chatIdConfigured = Boolean(
+    process.env.TELEGRAM_CHAT_ID?.trim(),
+  );
+
+  return {
+    enabled,
+    configured: tokenConfigured && chatIdConfigured,
+    tokenConfigured,
+    chatIdConfigured,
+  };
 }
 
 function getTelegramConfiguration(): {

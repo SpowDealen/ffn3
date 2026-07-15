@@ -25,3 +25,10 @@ export type TelegramSendResult = {
   messageId?: number;
   error?: string;
 };
+
+export type TelegramConfigurationStatus = {
+  enabled: boolean;
+  configured: boolean;
+  tokenConfigured: boolean;
+  chatIdConfigured: boolean;
+};

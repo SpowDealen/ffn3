@@ -13,6 +13,11 @@ import {
   getNotifications,
   subscribeToNotifications,
 } from "./store";
+import {
+  getTelegramHealth,
+  testTelegramHealth,
+  type TelegramHealthResponse,
+} from "./telegramHealth";
 import type {
   LabNotification,
   NotificationLevel,
@@ -173,8 +178,18 @@ export default function ActivityCenter(): ReactElement {
     useState("all");
   const [metricFilter, setMetricFilter] =
     useState<MetricFilter | null>(null);
+  const [liveTelegramHealth, setLiveTelegramHealth] =
+    useState<TelegramHealthResponse | null>(null);
+  const [liveTelegramError, setLiveTelegramError] =
+    useState<string | null>(null);
+  const [isCheckingTelegram, setIsCheckingTelegram] =
+    useState(false);
+  const [lastCheckWasTest, setLastCheckWasTest] =
+    useState(false);
 
   useEffect(() => {
+    let isActive = true;
+
     function refresh(): void {
       setNotifications(getNotifications());
       setNow(Date.now());
@@ -188,11 +203,49 @@ export default function ActivityCenter(): ReactElement {
       30_000,
     );
 
+    void getTelegramHealth()
+      .then((health) => {
+        if (!isActive) return;
+
+        setLiveTelegramHealth(health);
+        setLiveTelegramError(health.error ?? null);
+      })
+      .catch((error: unknown) => {
+        if (!isActive) return;
+
+        setLiveTelegramError(
+          error instanceof Error
+            ? error.message
+            : "No se pudo comprobar Telegram.",
+        );
+      });
+
     return () => {
+      isActive = false;
       unsubscribe();
       window.clearInterval(timer);
     };
   }, []);
+
+  async function checkTelegram(): Promise<void> {
+    setIsCheckingTelegram(true);
+    setLiveTelegramError(null);
+    setLastCheckWasTest(true);
+
+    try {
+      const health = await testTelegramHealth();
+      setLiveTelegramHealth(health);
+      setLiveTelegramError(health.error ?? null);
+    } catch (error) {
+      setLiveTelegramError(
+        error instanceof Error
+          ? error.message
+          : "No se pudo comprobar Telegram.",
+      );
+    } finally {
+      setIsCheckingTelegram(false);
+    }
+  }
 
   const availableSources = useMemo(() => {
     const sources = new Map<string, string>();
@@ -411,6 +464,23 @@ export default function ActivityCenter(): ReactElement {
     [notifications],
   );
 
+  const liveStatus = !liveTelegramHealth
+    ? liveTelegramError
+      ? "Error"
+      : "Sin comprobar"
+    : !liveTelegramHealth.enabled
+      ? "Deshabilitado"
+      : !liveTelegramHealth.configured
+        ? "Configuración incompleta"
+        : liveTelegramError
+          ? "Error"
+          : liveTelegramHealth.ok
+            ? "Disponible"
+            : "Error";
+  const liveCheckedAt = liveTelegramHealth?.checkedAt
+    ? formatRelativeDate(liveTelegramHealth.checkedAt, now)
+    : "Sin comprobar";
+
   return (
     <section style={styles.card}>
       <div style={styles.headingRow}>
@@ -610,6 +680,99 @@ export default function ActivityCenter(): ReactElement {
               {telegramHealth.averageDelivery}
             </strong>
           </div>
+        </div>
+
+        <div style={styles.liveTelegramSection}>
+          <div style={styles.liveTelegramHeader}>
+            <div>
+              <strong style={styles.liveTelegramTitle}>
+                Diagnóstico en vivo
+              </strong>
+              <span style={styles.telegramHealthSubtitle}>
+                El estado no incluye ni expone credenciales
+              </span>
+            </div>
+
+            <button
+              type="button"
+              disabled={isCheckingTelegram}
+              onClick={() => {
+                void checkTelegram();
+              }}
+              style={{
+                ...styles.checkTelegramButton,
+                ...(isCheckingTelegram
+                  ? styles.checkTelegramButtonDisabled
+                  : {}),
+              }}
+            >
+              {isCheckingTelegram
+                ? "Comprobando..."
+                : "Comprobar Telegram"}
+            </button>
+          </div>
+
+          <div style={styles.liveTelegramGrid}>
+            <div style={styles.liveTelegramDatum}>
+              <span style={styles.telegramHealthLabel}>
+                Estado en vivo
+              </span>
+              <strong style={styles.telegramHealthValue}>
+                {liveStatus}
+              </strong>
+            </div>
+
+            <div style={styles.liveTelegramDatum}>
+              <span style={styles.telegramHealthLabel}>
+                Credenciales
+              </span>
+              <span style={styles.liveTelegramCredential}>
+                Token:{" "}
+                {liveTelegramHealth
+                  ? liveTelegramHealth.tokenConfigured
+                    ? "configurado"
+                    : "no configurado"
+                  : "—"}
+              </span>
+              <span style={styles.liveTelegramCredential}>
+                Chat ID:{" "}
+                {liveTelegramHealth
+                  ? liveTelegramHealth.chatIdConfigured
+                    ? "configurado"
+                    : "no configurado"
+                  : "—"}
+              </span>
+            </div>
+
+            <div style={styles.liveTelegramDatum}>
+              <span style={styles.telegramHealthLabel}>
+                Última comprobación
+              </span>
+              <strong style={styles.telegramHealthValue}>
+                {liveCheckedAt}
+              </strong>
+            </div>
+          </div>
+
+          {lastCheckWasTest &&
+          liveTelegramHealth?.ok &&
+          !liveTelegramHealth.skipped ? (
+            <span style={styles.liveTelegramSuccess}>
+              Prueba enviada correctamente a Telegram.
+            </span>
+          ) : null}
+
+          {lastCheckWasTest && liveTelegramHealth?.skipped ? (
+            <span style={styles.liveTelegramNotice}>
+              La prueba se omitió porque Telegram está deshabilitado.
+            </span>
+          ) : null}
+
+          {liveTelegramError ? (
+            <span style={styles.liveTelegramError}>
+              {liveTelegramError}
+            </span>
+          ) : null}
         </div>
       </section>
 
@@ -1019,6 +1182,88 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.35,
     WebkitBoxOrient: "vertical",
     WebkitLineClamp: 2,
+  },
+
+  liveTelegramSection: {
+    display: "grid",
+    gap: 10,
+    paddingTop: 12,
+    borderTop: "1px solid rgba(255,255,255,0.065)",
+  },
+
+  liveTelegramHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+
+  liveTelegramTitle: {
+    display: "block",
+    fontSize: 11,
+    lineHeight: 1.35,
+  },
+
+  checkTelegramButton: {
+    minHeight: 30,
+    padding: "0 10px",
+    border: "1px solid rgba(96,165,250,0.28)",
+    borderRadius: 9,
+    background: "rgba(59,130,246,0.1)",
+    color: "#9bc5f8",
+    fontSize: 10,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+
+  checkTelegramButtonDisabled: {
+    borderColor: "rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.035)",
+    color: "#68737f",
+    cursor: "default",
+  },
+
+  liveTelegramGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(auto-fit, minmax(min(100%, 160px), 1fr))",
+    gap: 8,
+  },
+
+  liveTelegramDatum: {
+    display: "grid",
+    alignContent: "start",
+    gap: 4,
+    minHeight: 58,
+    padding: "9px 10px",
+    borderRadius: 10,
+    background: "rgba(255,255,255,0.02)",
+  },
+
+  liveTelegramCredential: {
+    color: "#b2bbc4",
+    fontSize: 10,
+    lineHeight: 1.35,
+  },
+
+  liveTelegramSuccess: {
+    color: "#6ee7b7",
+    fontSize: 10,
+    lineHeight: 1.4,
+  },
+
+  liveTelegramNotice: {
+    color: "#c8b77c",
+    fontSize: 10,
+    lineHeight: 1.4,
+  },
+
+  liveTelegramError: {
+    color: "#fca5a5",
+    fontSize: 10,
+    lineHeight: 1.4,
+    overflowWrap: "anywhere",
   },
 
   emptyState: {

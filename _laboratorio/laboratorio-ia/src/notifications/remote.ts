@@ -28,7 +28,7 @@ export type RemoteNotificationResult =
       status?: number;
     };
 
-function getApiBaseUrl(): string {
+export function getApiBaseUrl(): string {
   const raw =
     import.meta.env.VITE_FFN3_API_BASE_URL;
 
