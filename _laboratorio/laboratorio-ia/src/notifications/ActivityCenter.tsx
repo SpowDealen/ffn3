@@ -13,16 +13,25 @@ import {
   getNotifications,
   subscribeToNotifications,
 } from "./store";
-import type {LabNotification} from "./types";
+import type {
+  LabNotification,
+  NotificationLevel,
+} from "./types";
 
-function formatRelativeDate(value: string): string {
+type LevelFilter = "all" | NotificationLevel;
+
+function normalizeSource(value: string): string {
+  return value.trim().toLocaleLowerCase("es-ES");
+}
+
+function formatRelativeDate(value: string, now: number): string {
   const timestamp = new Date(value).getTime();
 
   if (!Number.isFinite(timestamp)) return "";
 
   const seconds = Math.max(
     0,
-    Math.floor((Date.now() - timestamp) / 1000),
+    Math.floor((now - timestamp) / 1000),
   );
 
   if (seconds < 10) return "Ahora";
@@ -49,7 +58,7 @@ function getStateLabel(
   return "Todo en orden";
 }
 
-const LatestActivity = memo(function LatestActivity({
+const ActivityItem = memo(function ActivityItem({
   notification,
   now,
 }: {
@@ -62,42 +71,52 @@ const LatestActivity = memo(function LatestActivity({
   );
 
   return (
-    <div style={styles.latestActivity}>
-      <div
-        style={{
-          ...styles.latestIcon,
-          background: visual.background,
-          color: visual.color,
-          borderColor: visual.borderColor,
-        }}
-        aria-hidden="true"
-      >
-        {visual.emoji}
+    <article style={styles.activityItem}>
+      <div style={styles.latestActivity}>
+        <div
+          style={{
+            ...styles.latestIcon,
+            background: visual.background,
+            color: visual.color,
+            borderColor: visual.borderColor,
+          }}
+          aria-hidden="true"
+        >
+          {visual.emoji}
+        </div>
+
+        <div style={styles.latestBody}>
+          <strong style={styles.latestTitle}>
+            {notification.title}
+          </strong>
+
+          <p style={styles.latestMessage}>
+            {notification.message}
+          </p>
+
+          <NotificationGroupingMetadata
+            notification={notification}
+            now={now}
+          />
+
+          <NotificationDeliveryStatus
+            notification={notification}
+          />
+        </div>
       </div>
 
-      <div style={styles.latestBody}>
-        <span style={styles.latestEyebrow}>
-          Última actividad
+      <div style={styles.latestMeta}>
+        <span>
+          {notification.source
+            ? `Origen: ${notification.source}`
+            : "Origen: Laboratorio"}
         </span>
 
-        <strong style={styles.latestTitle}>
-          {notification.title}
-        </strong>
-
-        <p style={styles.latestMessage}>
-          {notification.message}
-        </p>
-
-        <NotificationGroupingMetadata
-          notification={notification}
-          now={now}
-        />
-
-        <NotificationDeliveryStatus
-          notification={notification}
-        />
+        <span>
+          {formatRelativeDate(notification.createdAt, now)}
+        </span>
       </div>
-    </div>
+    </article>
   );
 });
 
@@ -105,6 +124,10 @@ export default function ActivityCenter(): ReactElement {
   const [notifications, setNotifications] =
     useState<LabNotification[]>([]);
   const [now, setNow] = useState(Date.now());
+  const [levelFilter, setLevelFilter] =
+    useState<LevelFilter>("all");
+  const [sourceFilter, setSourceFilter] =
+    useState("all");
 
   useEffect(() => {
     function refresh(): void {
@@ -126,7 +149,48 @@ export default function ActivityCenter(): ReactElement {
     };
   }, []);
 
-  const latest = notifications[0];
+  const availableSources = useMemo(() => {
+    const sources = new Map<string, string>();
+
+    for (const notification of notifications) {
+      const source = notification.source?.trim();
+
+      if (source) {
+        const key = normalizeSource(source);
+
+        if (!sources.has(key)) {
+          sources.set(key, source);
+        }
+      }
+    }
+
+    return [...sources.values()].sort((left, right) =>
+      left.localeCompare(right, "es-ES", {
+        sensitivity: "base",
+      }),
+    );
+  }, [notifications]);
+
+  const filteredNotifications = useMemo(
+    () =>
+      notifications.filter((notification) => {
+        const matchesLevel =
+          levelFilter === "all" ||
+          notification.level === levelFilter;
+        const matchesSource =
+          sourceFilter === "all" ||
+          (notification.source
+            ? normalizeSource(notification.source) ===
+              normalizeSource(sourceFilter)
+            : false);
+
+        return matchesLevel && matchesSource;
+      }),
+    [levelFilter, notifications, sourceFilter],
+  );
+
+  const hasActiveFilters =
+    levelFilter !== "all" || sourceFilter !== "all";
 
   const reviewCount = useMemo(
     () =>
@@ -184,35 +248,90 @@ export default function ActivityCenter(): ReactElement {
         </div>
       </div>
 
+      <div style={styles.filterBar}>
+        <label style={styles.filterField}>
+          <span style={styles.filterLabel}>Nivel</span>
+          <select
+            value={levelFilter}
+            onChange={(event) => {
+              setLevelFilter(event.target.value as LevelFilter);
+            }}
+            style={styles.filterSelect}
+          >
+            <option value="all">Todos</option>
+            <option value="success">Éxito</option>
+            <option value="review">Revisión</option>
+            <option value="error">Error</option>
+          </select>
+        </label>
+
+        <label style={styles.filterField}>
+          <span style={styles.filterLabel}>Fuente</span>
+          <select
+            value={sourceFilter}
+            onChange={(event) => {
+              setSourceFilter(event.target.value);
+            }}
+            style={styles.filterSelect}
+          >
+            <option value="all">Todas las fuentes</option>
+            {availableSources.map((source) => (
+              <option key={normalizeSource(source)} value={source}>
+                {source}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <span style={styles.resultCount}>
+          {filteredNotifications.length}{" "}
+          {filteredNotifications.length === 1
+            ? "notificación"
+            : "notificaciones"}
+        </span>
+
+        {hasActiveFilters ? (
+          <button
+            type="button"
+            onClick={() => {
+              setLevelFilter("all");
+              setSourceFilter("all");
+            }}
+            style={styles.clearFilters}
+          >
+            Limpiar filtros
+          </button>
+        ) : null}
+      </div>
+
       <div style={styles.contentGrid}>
         <div style={styles.activityPanel}>
-          {latest ? (
-            <>
-              <LatestActivity
-                notification={latest}
-                now={now}
-              />
-
-              <div style={styles.latestMeta}>
-                <span>
-                  {latest.source
-                    ? `Origen: ${latest.source}`
-                    : "Origen: Laboratorio"}
-                </span>
-
-                <span>
-                  {formatRelativeDate(latest.createdAt)}
-                </span>
-              </div>
-            </>
+          {filteredNotifications.length > 0 ? (
+            <div style={styles.activityList}>
+              {filteredNotifications.map((notification) => (
+                <ActivityItem
+                  key={notification.id}
+                  notification={notification}
+                  now={now}
+                />
+              ))}
+            </div>
           ) : (
             <div style={styles.emptyState}>
-              <span style={styles.emptyIcon}>✓</span>
+              <span style={styles.emptyIcon}>
+                {hasActiveFilters ? "⌕" : "✓"}
+              </span>
 
               <div>
-                <strong>Sin actividad todavía</strong>
+                <strong>
+                  {hasActiveFilters
+                    ? "Sin coincidencias"
+                    : "Sin actividad todavía"}
+                </strong>
                 <p style={styles.emptyText}>
-                  Los análisis, borradores y errores aparecerán aquí al momento.
+                  {hasActiveFilters
+                    ? "No hay notificaciones que coincidan con estos filtros."
+                    : "Los análisis, borradores y errores aparecerán aquí al momento."}
                 </p>
               </div>
             </div>
@@ -324,10 +443,67 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: "0 0 10px currentColor",
   },
 
+  filterBar: {
+    display: "flex",
+    alignItems: "flex-end",
+    gap: 10,
+    flexWrap: "wrap",
+    padding: "12px 13px",
+    border: "1px solid rgba(255,255,255,0.07)",
+    borderRadius: 14,
+    background: "rgba(5,8,12,0.24)",
+  },
+
+  filterField: {
+    display: "grid",
+    flex: "1 1 150px",
+    gap: 5,
+    minWidth: 0,
+  },
+
+  filterLabel: {
+    color: "#7d8894",
+    fontSize: 9,
+    fontWeight: 750,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+  },
+
+  filterSelect: {
+    width: "100%",
+    minHeight: 32,
+    padding: "0 28px 0 9px",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 9,
+    background: "#151b22",
+    color: "#dce3ea",
+    fontSize: 11,
+  },
+
+  resultCount: {
+    flex: "0 0 auto",
+    paddingBottom: 8,
+    color: "#8994a0",
+    fontSize: 10,
+    whiteSpace: "nowrap",
+  },
+
+  clearFilters: {
+    flex: "0 0 auto",
+    marginBottom: 7,
+    padding: 0,
+    border: 0,
+    background: "transparent",
+    color: "#8dbcf5",
+    fontSize: 10,
+    fontWeight: 650,
+    cursor: "pointer",
+  },
+
   contentGrid: {
     display: "grid",
     gridTemplateColumns:
-      "minmax(0, 1fr) minmax(230px, 0.42fr)",
+      "repeat(auto-fit, minmax(min(100%, 230px), 1fr))",
     gap: 14,
   },
 
@@ -337,6 +513,18 @@ const styles: Record<string, CSSProperties> = {
     border: "1px solid rgba(255,255,255,0.07)",
     borderRadius: 15,
     background: "rgba(5,8,12,0.32)",
+  },
+
+  activityList: {
+    display: "grid",
+    maxHeight: 430,
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+  },
+
+  activityItem: {
+    padding: "12px 0",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
   },
 
   latestActivity: {
