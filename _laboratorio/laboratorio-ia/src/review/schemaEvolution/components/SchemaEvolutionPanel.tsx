@@ -24,6 +24,7 @@ export default function SchemaEvolutionPanel({ result }: { result: SchemaEvoluti
               </div>
               <span className="review-badge">RIESGO {proposal.risk.toUpperCase()}</span>
             </header>
+            <p><strong>Detectado en:</strong> {proposal.occurrenceCount} {proposal.occurrenceCount === 1 ? "entidad preparada" : "entidades preparadas"}</p>
             <section>
               <h6>Problema detectado</h6>
               <p>{proposal.recommendationSummary}</p>
