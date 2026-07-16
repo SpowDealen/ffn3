@@ -1,5 +1,79 @@
-import {useMemo, type ReactElement} from "react";
-import type {PreparedEntityRequirementReport} from "../../schemaRequirements";
-import {runSchemaEvolutionEngine} from "..";
+import type { ReactElement } from "react";
+import type { SchemaEvolutionResult } from "../types";
 
-export default function SchemaEvolutionPanel({report}: {report: PreparedEntityRequirementReport | null}): ReactElement | null { const result = useMemo(() => report ? runSchemaEvolutionEngine({report}) : null, [report]); if (!result?.proposals.length) return null; return <section className="review-subsection schema-evolution-panel" aria-labelledby={`schema-evolution-title-${result.caseId}`}><div><p className="review-kicker">EVOLUCIÓN DEL SCHEMA · SOLO DIAGNÓSTICO</p><h4 className="review-subtitle" id={`schema-evolution-title-${result.caseId}`}>Propuestas de evolución editorial</h4><p>El motor compara la restricción técnica con su significado editorial. No modifica ningún schema ni decide automáticamente.</p></div><div className="schema-evolution-proposals">{result.proposals.map((proposal) => <article className="schema-evolution-proposal" key={proposal.id}><header><div><h5>{proposal.problem}</h5><p>{proposal.entityType} · {proposal.field}</p></div><span className="review-badge">RIESGO {proposal.risk.toUpperCase()}</span></header><section><h6>Problema detectado</h6><p>{proposal.recommendationSummary}</p>{proposal.contradictions.map((item) => <p className="review-readonly-message" key={item}>{item}</p>)}</section><section><h6>Impacto</h6><p>{proposal.riskReason}</p><ul className="review-plain-list">{proposal.impacts.filter((impact) => impact.affected).map((impact) => <li key={impact.area}><strong>{impact.area}</strong>: {impact.reason} {impact.verificationRequired ? "Requiere verificación." : "Auditado."}</li>)}</ul></section><section><h6>Alternativas puntuadas</h6><ol className="schema-evolution-alternatives">{proposal.alternatives.map((alternative) => <li key={alternative.id}><div><strong>{alternative.title}</strong><span>{alternative.score}/100</span></div><p>{alternative.description}</p><details><summary>Beneficios y riesgos</summary><p>Beneficios: {alternative.benefits.join(" ")}</p><p>Riesgos: {alternative.risks.join(" ")}</p><p>{alternative.requiresMigration ? "Requeriría planificar migración." : "No exige migración inmediata."}</p></details></li>)}</ol></section><section><h6>Recomendación</h6><p>{proposal.recommendationSummary}</p><p className="review-readonly-message">La recomendación requiere auditoría y decisión humana antes de cualquier cambio.</p></section></article>)}</div></section>; }
+export default function SchemaEvolutionPanel({ result }: { result: SchemaEvolutionResult | null }): ReactElement | null {
+  if (!result?.proposals.length) return null;
+  return (
+    <section className="review-subsection schema-evolution-panel" aria-labelledby={`schema-evolution-title-${result.caseId}`}>
+      <div>
+        <p className="review-kicker">EVOLUCIÓN DEL SCHEMA · SOLO DIAGNÓSTICO</p>
+        <h4 className="review-subtitle" id={`schema-evolution-title-${result.caseId}`}>
+          Propuestas de evolución editorial
+        </h4>
+        <p>El motor compara la restricción técnica con su significado editorial. No modifica ningún schema ni decide automáticamente.</p>
+      </div>
+      <div className="schema-evolution-proposals">
+        {result.proposals.map((proposal) => (
+          <article className="schema-evolution-proposal" key={proposal.id}>
+            <header>
+              <div>
+                <h5>{proposal.problem}</h5>
+                <p>
+                  {proposal.entityType} · {proposal.field} · {proposal.outcome}
+                </p>
+              </div>
+              <span className="review-badge">RIESGO {proposal.risk.toUpperCase()}</span>
+            </header>
+            <section>
+              <h6>Problema detectado</h6>
+              <p>{proposal.recommendationSummary}</p>
+              {proposal.contradictions.map((item) => (
+                <p className="review-readonly-message" key={item}>
+                  {item}
+                </p>
+              ))}
+            </section>
+            <section>
+              <h6>Impacto</h6>
+              <p>{proposal.riskReason}</p>
+              <ul className="review-plain-list">
+                {proposal.impacts
+                  .filter((impact) => impact.affected)
+                  .map((impact) => (
+                    <li key={impact.area}>
+                      <strong>{impact.area}</strong>: {impact.reason} {impact.verificationRequired ? "Requiere verificación." : "Auditado."}
+                    </li>
+                  ))}
+              </ul>
+            </section>
+            <section>
+              <h6>Alternativas puntuadas</h6>
+              <ol className="schema-evolution-alternatives">
+                {proposal.alternatives.map((alternative) => (
+                  <li key={alternative.id}>
+                    <div>
+                      <strong>{alternative.title}</strong>
+                      <span>{alternative.score}/100</span>
+                    </div>
+                    <p>{alternative.description}</p>
+                    <details>
+                      <summary>Beneficios y riesgos</summary>
+                      <p>Beneficios: {alternative.benefits.join(" ")}</p>
+                      <p>Riesgos: {alternative.risks.join(" ")}</p>
+                      <p>{alternative.requiresMigration ? "Requeriría planificar migración." : "No exige migración inmediata."}</p>
+                    </details>
+                  </li>
+                ))}
+              </ol>
+            </section>
+            <section>
+              <h6>Recomendación</h6>
+              <p>{proposal.recommendationSummary}</p>
+              <p className="review-readonly-message">La recomendación requiere auditoría y decisión humana antes de cualquier cambio.</p>
+            </section>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
