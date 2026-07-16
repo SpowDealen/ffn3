@@ -1,0 +1,10 @@
+import type {DecisionOutcomeRecord} from "./types";
+export const outcomesByCase = (records: readonly DecisionOutcomeRecord[], caseId: string) => records.filter((item) => item.caseId === caseId);
+export const outcomesByStatus = (records: readonly DecisionOutcomeRecord[], status: DecisionOutcomeRecord["currentStatus"]) => records.filter((item) => item.currentStatus === status);
+export const pendingEditorialConfirmation = (records: readonly DecisionOutcomeRecord[]) => records.filter((item) => item.editorialStatus === "pending_confirmation" || (item.technicalStatus === "succeeded" && item.editorialStatus === "unknown"));
+export const failedOutcomes = (records: readonly DecisionOutcomeRecord[]) => records.filter((item) => item.currentStatus === "failed");
+export const reconciliationRequired = (records: readonly DecisionOutcomeRecord[]) => records.filter((item) => item.reconciliationRequired);
+export const supersededOutcomes = (records: readonly DecisionOutcomeRecord[]) => records.filter((item) => item.currentStatus === "superseded");
+export const technicallySucceededButUnconfirmed = (records: readonly DecisionOutcomeRecord[]) => records.filter((item) => item.technicalStatus === "succeeded" && item.editorialStatus !== "confirmed");
+export const structurallyInvalid = (records: readonly DecisionOutcomeRecord[]) => records.filter((item) => item.structuralStatus === "invalid");
+export const operationallyIncomplete = (records: readonly DecisionOutcomeRecord[]) => records.filter((item) => item.operationalStatus === "pending" || (item.technicalStatus === "succeeded" && item.operationalStatus === "unknown"));

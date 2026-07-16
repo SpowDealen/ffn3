@@ -30,6 +30,7 @@ import {
   getReviewCases,
   transitionReviewCase,
 } from "./review/store/reviewStore";
+import {exportOutcomeLedger, getOutcomeById, getOutcomeEvents, getOutcomeRecords, getOutcomesForCase, reconcileOutcome, validateOutcomeStore} from "./review/outcomes";
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
   window.LAB_NOTIFICATIONS = {
@@ -89,6 +90,13 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     previewPreparedEntityEnrichment,
     applyPreparedEntityEnrichment,
     createSchemaRequirementTestCase,
+    getOutcomeRecords,
+    getOutcomeById,
+    getOutcomesForCase,
+    getOutcomeEvents,
+    reconcileOutcome,
+    validateOutcomeStore,
+    exportOutcomeLedger,
   };
 }
 

@@ -1,6 +1,7 @@
 import {addReviewResolution, getReviewCase} from "../store/reviewStore";
 import {resolveReviewCase} from "./resolveReviewCase";
 import type {AutonomousApplyResult, AutonomousCaseResolutionResult, AutonomousReviewRunResult, RunAutonomousReviewOptions} from "./types";
+import {observeResolutionApplied} from "../outcomes";
 
 export function applyAutonomousResolutionResult(caseId: string, result: AutonomousCaseResolutionResult): AutonomousApplyResult {
   const report: AutonomousApplyResult = {caseId, applied: [], skipped: [], failed: []};
@@ -11,7 +12,8 @@ export function applyAutonomousResolutionResult(caseId: string, result: Autonomo
       if (!before) { report.failed.push({issueId: decision.issueId, error: "El caso no existe."}); continue; }
       const existing = before.resolutions.find((item) => item.issueId === decision.issueId);
       if (existing && JSON.stringify(existing) === JSON.stringify(decision.proposedResolution)) { report.skipped.push({issueId: decision.issueId, reason: "La resolución idéntica ya está guardada."}); continue; }
-      addReviewResolution(caseId, decision.proposedResolution);
+      const updated = addReviewResolution(caseId, decision.proposedResolution);
+      if (updated) observeResolutionApplied(updated, decision.proposedResolution);
       report.applied.push(decision.issueId);
     } catch (error) { report.failed.push({issueId: decision.issueId, error: error instanceof Error ? error.message : "Error no serializable al guardar."}); }
   }

@@ -21,6 +21,7 @@ import {
   type ReviewCaseRepository,
 } from "./localStorageRepository";
 import {migrateReviewCases} from "./migrations";
+import {observeResolutionOutcome} from "../outcomes";
 
 const listeners = new Set<() => void>();
 const BROADCAST_CHANNEL_NAME = "ffn3.review-cases";
@@ -191,12 +192,14 @@ export function addReviewResolution(
   id: string,
   resolution: ReviewResolution,
 ): ReviewCase | undefined {
-  return replaceById(id, (reviewCase) => {
+  const updated = replaceById(id, (reviewCase) => {
     if (!["open", "in_review", "stale", "resume_failed"].includes(reviewCase.status)) {
       throw new Error("El estado actual del caso no permite editar resoluciones.");
     }
     return applyReviewResolution(reviewCase, resolution);
   });
+  if (updated) observeResolutionOutcome(updated, resolution);
+  return updated;
 }
 
 export function materializeReviewResolution(id: string, resolution: ReviewResolution, entityMaterialization: ReviewEntityMaterialization): ReviewCase | undefined {

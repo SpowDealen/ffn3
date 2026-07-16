@@ -2,6 +2,7 @@ import {useEffect, useState, type ReactElement} from "react";
 import {buildExternalNewsResumePreview, createExternalNewsPreviewFingerprint, executeExternalNewsResume, type ExecuteExternalNewsResumeResult, type ExternalNewsResumeExecutor, type ExternalNewsResumePreview} from "../resume/externalNews";
 import type {ReviewCase} from "../types";
 import {getReviewResumeExecutor, subscribeReviewResumeExecutors} from "../../integrations/reviewResumeExecutors";
+import {observeResumeForCase} from "../outcomes";
 
 const STATUS = {ready: "LISTO PARA REANUDACIÓN", not_ready: "BLOQUEADO", snapshot_incomplete: "SNAPSHOT INCOMPLETO", blocked_by_duplicate: "BLOQUEADO POR DUPLICADO", blocked_by_prepared_entity: "BLOQUEADO POR ENTIDAD PREPARADA", invalid_payload: "PAYLOAD INVÁLIDO"} as const;
 const json = (value: unknown): string => { try { return JSON.stringify(value, null, 2); } catch { return "Contenido no serializable"; } };
@@ -23,7 +24,7 @@ export default function ExternalNewsResumePreviewPanel({reviewCase}: {reviewCase
   return <section className="review-subsection resume-preview" aria-labelledby={`resume-preview-title-${reviewCase.id}`}>
     <div className="review-row review-row-wrap"><div><p className="review-kicker">PREVISUALIZACIÓN · NO EJECUTADO</p><h4 className="review-subtitle" id={`resume-preview-title-${reviewCase.id}`}>Reanudación de noticia externa</h4></div>{preview ? <strong className="review-mode-label">{STATUS[preview.status]}</strong> : null}</div>
     <p className="review-muted">Reconstruye una copia local del payload. No guarda, no reanuda y no cambia el caso.</p>
-    <button type="button" className="review-button" disabled={executing} onClick={() => {setPreview(buildExternalNewsResumePreview(reviewCase)); setPreviewVersion(reviewCase.version); setExecution(null);}}>Preparar reanudación</button>
+    <button type="button" className="review-button" disabled={executing} onClick={() => {const next = buildExternalNewsResumePreview(reviewCase); setPreview(next); setPreviewVersion(reviewCase.version); setExecution(null); observeResumeForCase(reviewCase, {type: "resume_preview_generated", idempotencyKey: `resume-preview:${reviewCase.id}:${reviewCase.version}:${createExternalNewsPreviewFingerprint(reviewCase, next)}`, status: next.status, previewFingerprint: createExternalNewsPreviewFingerprint(reviewCase, next), occurredAt: next.generatedAt});}}>Preparar reanudación</button>
     {preview ? <>
       <p className="review-feedback" role="status">Can resume: {preview.canResume ? "Sí, preparado para una ejecución futura" : "No, bloqueado"}.</p>
       {preview.reasons.length ? <ul className="resume-preview-reasons">{preview.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul> : null}

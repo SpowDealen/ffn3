@@ -1,0 +1,3 @@
+import type {ReactElement} from "react";
+import type {DecisionOutcomeEvent} from "../types";
+export default function OutcomeTimeline({events}: {events: DecisionOutcomeEvent[]}): ReactElement { return <ol className="outcome-timeline">{events.map((event) => <li key={event.id}><div><strong>{event.type.replace(/_/g, " ")}</strong><span>{new Date(event.occurredAt).toLocaleString("es-ES")} · {event.source}</span></div><p>{event.operation ?? event.status}</p>{event.error ? <p className="review-readonly-message">{event.error.code}: {event.error.message}</p> : null}{event.validation?.reasons.map((reason) => <p key={reason}>{reason}</p>)}</li>)}</ol>; }

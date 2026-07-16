@@ -4,6 +4,7 @@ import type {ReviewEntityMaterialization} from "../types";
 import {getEntityCreationExecutor} from "./entityCreationRegistry";
 import type {MaterializationErrorCode, PreparedEntityDraft, PreparedEntityMaterializationPreview, PreparedEntityMaterializationResult, PreparedEntityPreviewItem, ValidatedPreparedEntity} from "./types";
 import {validatePreparedEntity} from "./validatePreparedEntity";
+import {observeMaterialization} from "../outcomes";
 
 const active = new Map<string, Promise<PreparedEntityMaterializationResult>>();
 const ALLOWED_STATES = new Set(["open", "in_review", "resolved", "resume_failed"]);
@@ -46,7 +47,9 @@ async function run(caseId: string, options: {confirmed: boolean; expectedVersion
   const attemptCount = (initial.entityMaterialization?.attemptCount ?? 0) + 1;
   updateReviewCase(caseId, {entityMaterialization: {status: "running", attemptCount, startedAt: generatedAt, issueResults: []}});
   const items: PreparedEntityMaterializationResult["items"] = [];
-  for (const item of prepared(caseId)) {
+  const preparedItems = prepared(caseId);
+  for (const item of preparedItems) observeMaterialization(initial, {type: "materialization_started", issueId: item.issueId, idempotencyKey: `materialization:${caseId}:${attemptCount}:${item.issueId}:started`, entityType: item.entityType, status: "started", occurredAt: generatedAt});
+  for (const item of preparedItems) {
     const validation = validatePreparedEntity(item);
     if (!validation.valid || !validation.entity) { items.push({issueId: item.issueId, entityType: item.entityType, status: "failed", error: {code: "prepared_entity_invalid", message: validation.errors.join(" ")}}); continue; }
     const entity = validation.entity;
@@ -57,7 +60,7 @@ async function run(caseId: string, options: {confirmed: boolean; expectedVersion
       let status: "created" | "existing" = entityId ? "existing" : "created";
       if (!entityId) { const creation = await executor.createEntity({entityType: entity.entityType, payload: entity.sanityPayload, idempotencyKey: `editorial-agent:create:${entity.entityType}:${entity.identityKey}`}); if (!creation.success || !creation.entityId) { items.push({issueId: item.issueId, entityType: item.entityType, identityKey: entity.identityKey, status: "failed", error: {code: "create_failed", message: creation.error || "La creación no devolvió un ID real."}}); continue; } entityId = creation.entityId; status = creation.alreadyExisted ? "existing" : "created"; }
       const current = getReviewCase(caseId); const resolution = current?.resolutions.find((candidate) => candidate.issueId === item.issueId);
-      if (!current || resolution?.type !== "create_entity") { const reconciliation = buildMetadata(attemptCount, "reconciliation_required", items, {issueId: item.issueId, entityType: item.entityType, identityKey: entity.identityKey, entityId, status: "reconciliation_required", error: {code: "create_succeeded_resolution_failed", message: "La entidad existe pero la resolución cambió antes de reemplazarla."}}, now()); updateReviewCase(caseId, {entityMaterialization: reconciliation}); return {caseId, status: "failed", items: [...items, {issueId: item.issueId, entityType: item.entityType, identityKey: entity.identityKey, entityId, status: "reconciliation_required", error: {code: "create_succeeded_resolution_failed", message: "Requiere reconciliación."}}], previewRegenerated: false, canResume: false, generatedAt, warnings: ["No se volverá a crear la entidad registrada."]}; }
+      if (!current || resolution?.type !== "create_entity") { const reconciliation = buildMetadata(attemptCount, "reconciliation_required", items, {issueId: item.issueId, entityType: item.entityType, identityKey: entity.identityKey, entityId, status: "reconciliation_required", error: {code: "create_succeeded_resolution_failed", message: "La entidad existe pero la resolución cambió antes de reemplazarla."}}, now()); updateReviewCase(caseId, {entityMaterialization: reconciliation}); observeMaterialization(initial, {type: "materialization_failed", issueId: item.issueId, idempotencyKey: `materialization:${caseId}:${attemptCount}:${item.issueId}:reconciliation`, entityId, entityType: item.entityType, status: "reconciliation_required", error: {code: "create_succeeded_resolution_failed", message: "La entidad existe, pero el store no confirmó el reemplazo.", reconciliationRequired: true}, occurredAt: now()}); return {caseId, status: "failed", items: [...items, {issueId: item.issueId, entityType: item.entityType, identityKey: entity.identityKey, entityId, status: "reconciliation_required", error: {code: "create_succeeded_resolution_failed", message: "Requiere reconciliación."}}], previewRegenerated: false, canResume: false, generatedAt, warnings: ["No se volverá a crear la entidad registrada."]}; }
       const nextItem = {issueId: item.issueId, entityType: item.entityType, identityKey: entity.identityKey, entityId, status} as const;
       const metadata = buildMetadata(attemptCount, "running", items, nextItem, now());
       materializeReviewResolution(caseId, {type: "link_reference", issueId: item.issueId, sanityId: entityId}, metadata);
@@ -67,6 +70,7 @@ async function run(caseId: string, options: {confirmed: boolean; expectedVersion
   let canResume = false; let previewRegenerated = false;
   try { const preview = buildExternalNewsResumePreview(caseId, {now}); canResume = preview.canResume; previewRegenerated = true; } catch { /* se registra abajo */ }
   const status = items.every((item) => ["created", "existing"].includes(item.status)) ? "completed" : items.some((item) => ["created", "existing"].includes(item.status)) ? "partially_completed" : "failed";
+  for (const item of items) observeMaterialization(initial, {type: ["created", "existing"].includes(item.status) ? "materialization_succeeded" : "materialization_failed", issueId: item.issueId, idempotencyKey: `materialization:${caseId}:${attemptCount}:${item.issueId}:terminal`, entityId: item.entityId, entityType: item.entityType, status: item.status, error: item.error ? {code: item.error.code, message: item.error.message, reconciliationRequired: item.status === "reconciliation_required"} : undefined, occurredAt: now()});
   updateReviewCase(caseId, {entityMaterialization: buildMetadata(attemptCount, status === "completed" ? "succeeded" : "failed", items, undefined, now())});
   return {caseId, status, items, previewRegenerated, canResume, generatedAt, warnings: previewRegenerated ? [] : ["No se pudo regenerar la preview."]};
 }

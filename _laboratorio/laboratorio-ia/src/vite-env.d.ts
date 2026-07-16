@@ -29,6 +29,7 @@ import type {
   getReviewCases,
   transitionReviewCase,
 } from "./review/store/reviewStore";
+import type {exportOutcomeLedger, getOutcomeById, getOutcomeEvents, getOutcomeRecords, getOutcomesForCase, reconcileOutcome, validateOutcomeStore} from "./review/outcomes";
 
 declare global {
   interface Window {
@@ -87,6 +88,13 @@ declare global {
       previewPreparedEntityEnrichment: typeof previewPreparedEntityEnrichment;
       applyPreparedEntityEnrichment: typeof applyPreparedEntityEnrichment;
       createSchemaRequirementTestCase: typeof createSchemaRequirementTestCase;
+      getOutcomeRecords: typeof getOutcomeRecords;
+      getOutcomeById: typeof getOutcomeById;
+      getOutcomesForCase: typeof getOutcomesForCase;
+      getOutcomeEvents: typeof getOutcomeEvents;
+      reconcileOutcome: typeof reconcileOutcome;
+      validateOutcomeStore: typeof validateOutcomeStore;
+      exportOutcomeLedger: typeof exportOutcomeLedger;
     };
   }
 }

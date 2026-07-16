@@ -26,6 +26,19 @@
   --panel-error-text: #fecaca;
 }
 
+.outcome-records { display: grid; gap: 1rem; }
+.outcome-record { border: 1px solid var(--panel-border); border-radius: .75rem; padding: 1rem; min-width: 0; }
+.outcome-record > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.outcome-record h5 { margin: 0; }
+.outcome-record header p { overflow-wrap: anywhere; }
+.outcome-status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; margin: 1rem 0; }
+.outcome-status { display: inline-flex; flex-wrap: wrap; gap: .25rem; border: 1px solid currentColor; border-radius: 999px; padding: .35rem .65rem; font-size: .78rem; text-transform: uppercase; }
+.outcome-timeline { display: grid; gap: .75rem; padding-left: 1.25rem; }
+.outcome-timeline li > div { display: flex; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+.outcome-timeline li p { margin: .25rem 0; }
+@media (max-width: 760px) { .outcome-status-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 460px) { .outcome-status-grid { grid-template-columns: 1fr; } }
+
 * {
   box-sizing: border-box;
 }

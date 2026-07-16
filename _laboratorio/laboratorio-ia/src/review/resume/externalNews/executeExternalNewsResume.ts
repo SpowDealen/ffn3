@@ -5,6 +5,7 @@ import {buildExternalNewsResumePreview} from "./buildExternalNewsResumePreview";
 import {createExternalNewsPreviewFingerprint} from "./createExternalNewsPreviewFingerprint";
 import type {ExecuteExternalNewsResumeOptions, ExecuteExternalNewsResumeResult, ExternalNewsResumeErrorCode, ExternalNewsResumeExecutor} from "./executionTypes";
 import {mapResumePayloadToContentFormState} from "./mapResumePayloadToContentFormState";
+import {observeResumeForCase} from "../../outcomes";
 
 const activeExecutions = new Map<string, Promise<ExecuteExternalNewsResumeResult>>();
 const SENSITIVE = /(token|secret|password|authorization|cookie|api[_-]?key|headers?)/i;
@@ -31,6 +32,7 @@ async function run(caseId: string, executor: ExternalNewsResumeExecutor, options
   try { const started = beginReviewResumeExecution(caseId, {expectedVersion: reviewCase.version, execution: startingExecution}); if (!started || started.status !== "resuming") throw new Error("No se pudo persistir el estado resuming."); }
   catch (error) { const current = getReviewCase(caseId); return result(caseId, current?.status === "resuming" ? "already_resuming" : "transition_failed", error instanceof Error ? error.message : "No se pudo iniciar la transición."); }
   await notify(executor, {type: "started", caseId, message: "Reanudación iniciada."});
+  observeResumeForCase(reviewCase, {type: "resume_started", idempotencyKey: `resume:${caseId}:${attemptCount}:started`, status: "started", previewFingerprint: fingerprint, occurredAt: startedAt});
   let saved = false; let savedResult: Awaited<ReturnType<ExternalNewsResumeExecutor["saveDraft"]>> | undefined;
   try {
     let form;
@@ -44,13 +46,16 @@ async function run(caseId: string, executor: ExternalNewsResumeExecutor, options
     const completedAt = options.now?.() ?? new Date().toISOString();
     const completed: ReviewResumeExecution = {...startingExecution, status: "succeeded", completedAt, draftId: savedResult.draftId, documentId: savedResult.documentId};
     try { const recorded = recordReviewResumeSaved(caseId, completed); if (!recorded) throw new Error("No se pudo registrar el borrador guardado."); const transitioned = transitionReviewCase(caseId, "resumed"); if (!transitioned || transitioned.status !== "resumed") throw new Error("No se pudo persistir el estado resumed."); }
-    catch (error) { return result(caseId, "draft_saved_state_failed", `El borrador se guardó, pero el estado necesita reconciliación: ${error instanceof Error ? error.message : "error desconocido"}.`, {draftId: savedResult.draftId, documentId: savedResult.documentId, previewFingerprint: fingerprint}); }
+    catch (error) { const message = `El borrador se guardó, pero el estado necesita reconciliación: ${error instanceof Error ? error.message : "error desconocido"}.`; observeResumeForCase(reviewCase, {type: "resume_failed", idempotencyKey: `resume:${caseId}:${attemptCount}:state-reconciliation`, status: "reconciliation_required", previewFingerprint: fingerprint, draftId: savedResult.draftId, documentId: savedResult.documentId, error: {code: "draft_saved_state_failed", message, reconciliationRequired: true}, occurredAt: completedAt}); return result(caseId, "draft_saved_state_failed", message, {draftId: savedResult.draftId, documentId: savedResult.documentId, previewFingerprint: fingerprint}); }
+    observeResumeForCase(reviewCase, {type: "resume_succeeded", idempotencyKey: `resume:${caseId}:${attemptCount}:succeeded`, status: "succeeded", previewFingerprint: fingerprint, draftId: savedResult.draftId, documentId: savedResult.documentId, occurredAt: completedAt});
+    if (savedResult.draftId || savedResult.documentId) observeResumeForCase(reviewCase, {type: "draft_created", idempotencyKey: `resume:${caseId}:${attemptCount}:draft`, status: "created", previewFingerprint: fingerprint, draftId: savedResult.draftId, documentId: savedResult.documentId, occurredAt: completedAt});
     await notify(executor, {type: "succeeded", caseId, message: "Borrador guardado."});
     return result(caseId, "succeeded", savedResult.message || "Borrador guardado y caso reanudado.", {draftId: savedResult.draftId, documentId: savedResult.documentId, previewFingerprint: fingerprint, caseVersion: getReviewCase(caseId)?.version});
   } catch (error) {
     const code = (error && typeof error === "object" && "code" in error ? String(error.code) : "unknown_error") as ExternalNewsResumeErrorCode;
     const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Error desconocido durante la reanudación.";
     if (!saved) { const failedAt = options.now?.() ?? new Date().toISOString(); try { failReviewResumeExecution(caseId, {...startingExecution, status: "failed", failedAt, error: {code, message}}); } catch { /* Se devuelve el error original. */ } }
+    observeResumeForCase(reviewCase, {type: "resume_failed", idempotencyKey: `resume:${caseId}:${attemptCount}:failed:${code}`, status: "failed", previewFingerprint: fingerprint, draftId: savedResult?.draftId, documentId: savedResult?.documentId, error: {code, message, reconciliationRequired: saved}, occurredAt: options.now?.() ?? new Date().toISOString()});
     await notify(executor, {type: "failed", caseId, message});
     return result(caseId, code, message, {draftId: savedResult?.draftId, documentId: savedResult?.documentId, previewFingerprint: fingerprint});
   }

@@ -15,6 +15,7 @@ import ExternalNewsResumePreviewPanel from "./ExternalNewsResumePreviewPanel";
 import AutonomousInvestigationPanel from "../investigation/components/AutonomousInvestigationPanel";
 import PreparedEntityMaterializationPanel from "../materialization/components/PreparedEntityMaterializationPanel";
 import PreparedEntitySchemaRequirementsPanel from "../schemaRequirements/components/PreparedEntitySchemaRequirementsPanel";
+import DecisionOutcomePanel from "../outcomes/components/DecisionOutcomePanel";
 
 type ReviewCaseDetailsProps = {
   reviewCase: ReviewCase;
@@ -216,6 +217,7 @@ export default function ReviewCaseDetails({
       <PreparedEntityMaterializationPanel reviewCase={reviewCase} />
       <PreparedEntitySchemaRequirementsPanel reviewCase={reviewCase} />
       <ExternalNewsResumePreviewPanel reviewCase={reviewCase} />
+      <DecisionOutcomePanel reviewCase={reviewCase} />
 
       {reviewCase.resolutions.length ? (
         <section className="review-subsection">

@@ -17,6 +17,7 @@ export * from "./schemaRequirements";
 export * from "./schemaEvolution";
 export * from "./modelEvolution";
 export * from "./laboratoryAudit";
+export * from "./outcomes";
 export * from "./cases/validateResolution";
 export * from "./store/localStorageRepository";
 export * from "./store/migrations";
