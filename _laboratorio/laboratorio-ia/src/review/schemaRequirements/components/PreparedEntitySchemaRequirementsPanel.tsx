@@ -109,6 +109,7 @@ export default function PreparedEntitySchemaRequirementsPanel({ reviewCase }: { 
             reviewCase,
             schemaRequirements: historical ?? undefined,
             preparedEntities: prepared.map((resolution) => ({ issueId: resolution.issueId, entityType: resolution.entityType, draft: resolution.draft })),
+            auditedArtifacts: { laboratory: ["PreparedEntitySchemaRequirementsPanel"] },
           })
         : null,
     [historical, prepared, reviewCase, schemaEvolution],

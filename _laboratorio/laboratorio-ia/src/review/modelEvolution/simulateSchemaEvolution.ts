@@ -1,23 +1,21 @@
-import type { AlternativeSimulationContext, SimulationAreaImpact } from "./types";
+import type { AlternativeSimulationContext, EvolutionImpactFinding } from "./types";
 
-export function simulateSchemaEvolution({ proposal, alternative }: AlternativeSimulationContext): SimulationAreaImpact[] {
+export function simulateSchemaEvolution({ proposal, alternative }: AlternativeSimulationContext): EvolutionImpactFinding[] {
   const changesSchema = !["keep_current", "fallback_policy"].includes(alternative.type);
   return [
     {
       area: "sanity_schema",
-      affected: changesSchema,
-      changeKind: changesSchema ? "schema" : "none",
-      affectedArtifacts: changesSchema ? [`${proposal.entityType}.${proposal.field}`] : [],
-      estimatedDocuments: 0,
-      reason: changesSchema ? `La alternativa ${alternative.type} requeriría diseñar y aprobar un cambio de modelo.` : "El modelo persistido se mantendría sin cambios.",
+      status: changesSchema ? "confirmed" : "not_affected",
+      evidence: changesSchema ? [`Propuesta 4D5 sobre ${proposal.entityType}.${proposal.field}`] : [],
+      reason: changesSchema ? "La alternativa modifica explícitamente el contrato editorial diagnosticado." : "El schema permanecería sin cambios.",
+      requiresVerification: false,
     },
     {
       area: "materialization",
-      affected: changesSchema,
-      changeKind: changesSchema ? "code" : "none",
-      affectedArtifacts: changesSchema ? [proposal.entityType] : [],
-      estimatedDocuments: 0,
-      reason: changesSchema ? "La materialización tendría que emitir la nueva representación editorial." : "La materialización conservaría el contrato actual.",
+      status: changesSchema ? "likely" : "not_affected",
+      evidence: changesSchema ? [`El materializador consume el draft de ${proposal.entityType}`] : [],
+      reason: changesSchema ? "El materializador probablemente deberá emitir la nueva representación; falta auditoría de implementación." : "La materialización conservaría el contrato actual.",
+      requiresVerification: changesSchema,
     },
   ];
 }

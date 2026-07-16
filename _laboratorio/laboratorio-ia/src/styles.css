@@ -324,6 +324,7 @@ textarea {
 .model-evolution-simulation > header p { margin-top: 4px; color: var(--panel-text-soft); font-size: 12px; }
 .model-evolution-alternative { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--panel-border); border-radius: 12px; background: rgba(0,0,0,.12); }
 .model-evolution-alternative > header span { color: #bfdbfe; font-size: 11px; font-weight: 800; }
+.model-evolution-alternative > header small { display: block; margin-top: 4px; color: var(--panel-text-soft); }
 .model-evolution-recommended { border-color: rgba(16,185,129,.5); background: rgba(16,185,129,.07); }
 .model-evolution-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
 .model-evolution-metrics span { display: grid; gap: 3px; padding: 8px; border: 1px solid var(--panel-border); border-radius: 9px; color: var(--panel-text-soft); font-size: 11px; }
@@ -334,6 +335,10 @@ textarea {
 .model-evolution-alternative details ul,
 .model-evolution-alternative details ol { margin: 6px 0 0; padding-left: 22px; color: var(--panel-text-soft); }
 .model-evolution-alternative details p { margin-top: 6px; color: var(--panel-text-soft); }
+.model-evolution-impact-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.model-evolution-impact-groups section { padding: 10px; border: 1px solid var(--panel-border); border-radius: 10px; }
+.model-evolution-impact-groups ul { margin: 7px 0 0; padding-left: 20px; color: var(--panel-text-soft); }
+.model-evolution-impact-groups p { margin-top: 7px; color: var(--panel-text-soft); }
 @media (max-width: 640px) {
   .schema-requirements-actions { display: grid; grid-template-columns: 1fr; }
   .schema-requirements-actions .review-button { width: 100%; }
@@ -341,6 +346,7 @@ textarea {
   .schema-evolution-proposal > header { display: grid; }
   .model-evolution-simulation > header,
   .model-evolution-alternative > header { display: grid; }
+  .model-evolution-impact-groups { grid-template-columns: 1fr; }
   .schema-requirements-entity > header .review-badge { justify-self: start; }
 }
 .review-resolution-summary small { color: var(--panel-text-muted); }

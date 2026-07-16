@@ -1,13 +1,13 @@
-import type { AlternativeSimulationContext, SimulationAreaImpact } from "./types";
+import type { AlternativeSimulationContext, EvolutionImpactFinding } from "./types";
 
-export function simulateProducerChanges({ proposal, alternative, auditedArtifacts }: AlternativeSimulationContext): SimulationAreaImpact {
-  const affected = alternative.affectedAreas.includes("producers");
+export function simulateProducerChanges({ alternative, auditedArtifacts }: AlternativeSimulationContext): EvolutionImpactFinding {
+  const evidence = [...(auditedArtifacts.producers ?? [])].sort();
+  const expected = alternative.affectedAreas.includes("producers");
   return {
     area: "producers",
-    affected,
-    changeKind: affected ? "code" : "none",
-    affectedArtifacts: affected ? [...(auditedArtifacts.producers ?? [`producer:${proposal.entityType}`])].sort() : [],
-    estimatedDocuments: 0,
-    reason: affected ? "Cada productor deberá emitir datos compatibles con el modelo propuesto." : "Los productores no requieren cambios según el alcance conocido.",
+    status: evidence.length ? "confirmed" : expected ? "possible" : "not_affected",
+    evidence,
+    reason: evidence.length ? "La auditoría identifica productores que emiten el campo." : expected ? "Debe verificarse qué productores escriben esta relación." : "La alternativa no proyecta cambios en productores.",
+    requiresVerification: expected && !evidence.length,
   };
 }

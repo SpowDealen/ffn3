@@ -1,13 +1,13 @@
-import type { AlternativeSimulationContext, SimulationAreaImpact } from "./types";
+import type { AlternativeSimulationContext, EvolutionImpactFinding } from "./types";
 
-export function simulateBuilderChanges({ proposal, alternative, auditedArtifacts }: AlternativeSimulationContext): SimulationAreaImpact {
-  const affected = alternative.affectedAreas.includes("builders");
+export function simulateBuilderChanges({ alternative, auditedArtifacts }: AlternativeSimulationContext): EvolutionImpactFinding {
+  const evidence = [...(auditedArtifacts.builders ?? [])].sort();
+  const expected = alternative.affectedAreas.includes("builders");
   return {
     area: "builders",
-    affected,
-    changeKind: affected ? "code" : "none",
-    affectedArtifacts: affected ? [...(auditedArtifacts.builders ?? [`builder:${proposal.entityType}`])].sort() : [],
-    estimatedDocuments: 0,
-    reason: affected ? "Los builders que producen el campo deben adaptarse al contrato simulado." : "No se detecta cambio de contrato para builders.",
+    status: evidence.length ? "confirmed" : expected ? "possible" : "not_affected",
+    evidence,
+    reason: evidence.length ? "La auditoría identifica builders consumidores del contrato." : expected ? "La alternativa podría afectar builders, pero todavía deben inventariarse." : "La alternativa no proyecta cambios en builders.",
+    requiresVerification: expected && !evidence.length,
   };
 }

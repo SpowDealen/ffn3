@@ -5,18 +5,31 @@ import type { ReviewCase } from "../types";
 
 export type EvolutionComplexity = "none" | "low" | "medium" | "high" | "very_high";
 export type EvolutionPriority = "low" | "normal" | "high" | "critical";
-export type SimulationChangeKind = "none" | "configuration" | "code" | "schema" | "data" | "editorial_process";
+export type ImpactStatus = "confirmed" | "likely" | "possible" | "not_affected";
+export type EstimationConfidence = "low" | "medium" | "high";
+export type VerificationStatus = "provisional" | "partially_verified" | "verified";
+export type ExistingDocumentAuditStatus = "not_started" | "partial" | "complete";
+export type HoursRange = { min: number; max: number };
 
 export type AuditedEditorialArtifacts = Partial<Record<"builders" | "queries" | "producers" | "laboratory", string[]>> & {
-  estimatedDocumentCount?: number;
+  affectedExistingDocumentEstimate?: number;
+  knownAffectedDocumentIds?: string[];
+  existingDocumentAuditStatus?: ExistingDocumentAuditStatus;
 };
 
-export type SimulationAreaImpact = {
+export type EvolutionImpactFinding = {
   area: SchemaImpactArea;
-  affected: boolean;
-  changeKind: SimulationChangeKind;
-  affectedArtifacts: string[];
-  estimatedDocuments: number;
+  status: ImpactStatus;
+  evidence: string[];
+  reason: string;
+  requiresVerification: boolean;
+};
+
+export type EvolutionDependency = {
+  id: string;
+  label: string;
+  area?: SchemaImpactArea;
+  status: "required" | "needs_verification" | "satisfied";
   reason: string;
 };
 
@@ -26,14 +39,17 @@ export type EvolutionSimulationStep = {
   area: SchemaImpactArea;
   action: string;
   reason: string;
-  dependencies: string[];
-  estimatedHours: number;
+  dependencyIds: string[];
+  effort: HoursRange;
   rollbackAction: string;
 };
 
 export type MigrationSimulation = {
   required: boolean;
-  estimatedDocuments: number;
+  preparedEntityCount: number;
+  affectedExistingDocumentEstimate?: number;
+  knownAffectedDocumentIds: string[];
+  existingDocumentAuditStatus: ExistingDocumentAuditStatus;
   strategy: string;
   validation: string[];
   rollbackPossible: boolean;
@@ -47,21 +63,35 @@ export type EditorialConsequences = {
   editorialChanges: string[];
 };
 
-export type EvolutionCost = {
+export type EvolutionCostEstimate = {
   complexity: EvolutionComplexity;
-  estimatedHours: number;
-  engineeringHours: number;
-  editorialHours: number;
-  migrationHours: number;
+  auditHours: HoursRange;
+  implementationHours: HoursRange;
+  migrationHours: HoursRange;
+  validationHours: HoursRange;
+  totalHours: HoursRange;
+  confidence: EstimationConfidence;
+  assumptions: string[];
+  unknowns: string[];
   score: number;
 };
 
 export type EvolutionRiskAssessment = {
-  level: SchemaEvolutionRisk;
+  technicalRisk: SchemaEvolutionRisk;
+  editorialRisk: SchemaEvolutionRisk;
+  migrationRisk: SchemaEvolutionRisk;
+  operationalRisk: SchemaEvolutionRisk;
+  overallRisk: SchemaEvolutionRisk;
   score: number;
   factors: string[];
   mitigations: string[];
   rollbackPossible: boolean;
+};
+
+export type EvolutionRoiAssessment = {
+  score: number;
+  status: VerificationStatus;
+  reasons: string[];
 };
 
 export type EvolutionAlternativeSimulation = {
@@ -71,15 +101,15 @@ export type EvolutionAlternativeSimulation = {
   alternativeType: SchemaModelAlternative["type"];
   title: string;
   summary: string;
-  impacts: SimulationAreaImpact[];
+  impacts: EvolutionImpactFinding[];
   steps: EvolutionSimulationStep[];
-  dependencies: string[];
+  dependencies: EvolutionDependency[];
   migration: MigrationSimulation;
   consequences: EditorialConsequences;
-  cost: EvolutionCost;
+  cost: EvolutionCostEstimate;
   risk: EvolutionRiskAssessment;
   priority: EvolutionPriority;
-  roi: number;
+  roi: EvolutionRoiAssessment;
   rollbackPossible: boolean;
   rollbackPlan: string;
   alternativeScore: number;
@@ -116,5 +146,6 @@ export type ModelEvolutionInput = {
 export type AlternativeSimulationContext = {
   proposal: SchemaEvolutionProposal;
   alternative: SchemaModelAlternative;
+  preparedEntityCount: number;
   auditedArtifacts: AuditedEditorialArtifacts;
 };
