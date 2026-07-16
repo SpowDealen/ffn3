@@ -1,0 +1,7 @@
+import type {ReferenceEntityOption} from "../data/referenceEntities";
+import {createSanityReadSource, registerInvestigationSource, type SanityInvestigationReader} from "../review/investigation";
+import type {ReferenceTarget} from "../types";
+type ReferenceData = Record<ReferenceTarget, ReferenceEntityOption[]>;
+const target: Record<string, ReferenceTarget | undefined> = {fighter: "luchador", organization: "organizacion", discipline: "disciplina", event: "evento", category: "categoriaPeso"};
+export function createReferenceDataInvestigationReader(data: ReferenceData): SanityInvestigationReader { return {async findEntities(input) { const type = target[input.entityType]; if (!type) return []; const names = input.names.map((name) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()); return (data[type] ?? []).filter((item) => names.includes(item.label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim())).slice(0, Math.min(input.limit ?? 10, 10)).map((item) => ({id: item.value, entityType: input.entityType, name: item.label, disciplineIds: item.disciplineIds, organizationIds: item.organizationIds, eventIds: item.eventIds})); }, async findRelatedContent() { return []; }}; }
+export function registerPanelSanityInvestigationSource(data: ReferenceData): () => void { return registerInvestigationSource("sanity_read", createSanityReadSource(createReferenceDataInvestigationReader(data))); }

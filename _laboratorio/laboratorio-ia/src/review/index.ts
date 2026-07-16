@@ -10,6 +10,7 @@ export * from "./resolution/valueValidation";
 export * from "./cases/createReviewCase";
 export * from "./cases/deduplicateReviewCase";
 export * from "./cases/transitionReviewCase";
+export * from "./investigation";
 export * from "./cases/validateResolution";
 export * from "./store/localStorageRepository";
 export * from "./store/migrations";

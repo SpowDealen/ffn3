@@ -15,6 +15,7 @@ import {
 } from "./notifications/store";
 import {createAutonomousResolverTestCase, createTestReviewCase, createTestReviewCases, createUniversalEditorTestCase} from "./review/development";
 import {applyAutonomousReview, previewAutonomousReview, runAutonomousReview} from "./review/autonomous";
+import {applyAutonomousInvestigation, createMissingFightersInvestigationTestCase, previewAutonomousInvestigation, registerMockInvestigationSources, runAutonomousInvestigation, unregisterMockInvestigationSources} from "./review/investigation";
 import {createExternalNewsReviewTestCase, createOrUpdateExternalNewsReviewCase, detectExternalNewsIssues, runExternalNewsReviewPilot} from "./review/producers/externalNews";
 import {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeExecutionTestCase, createExternalNewsResumeTestCase, executeExternalNewsResumeWithRegisteredExecutor, registerMockExternalNewsResumeExecutor, unregisterMockExternalNewsResumeExecutor} from "./review/resume/externalNews";
 import {
@@ -62,6 +63,12 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     registerMockExternalNewsResumeExecutor,
     unregisterMockExternalNewsResumeExecutor,
     createExternalNewsResumeExecutionTestCase,
+    runAutonomousInvestigation,
+    previewAutonomousInvestigation,
+    applyAutonomousInvestigation,
+    registerMockInvestigationSources,
+    unregisterMockInvestigationSources,
+    createMissingFightersInvestigationTestCase,
   };
 }
 

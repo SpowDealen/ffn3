@@ -14,6 +14,7 @@ import type {
 } from "./notifications/store";
 import type {createAutonomousResolverTestCase, createTestReviewCase, createTestReviewCases, createUniversalEditorTestCase} from "./review/development";
 import type {applyAutonomousReview, previewAutonomousReview, runAutonomousReview} from "./review/autonomous";
+import type {applyAutonomousInvestigation, createMissingFightersInvestigationTestCase, previewAutonomousInvestigation, registerMockInvestigationSources, runAutonomousInvestigation, unregisterMockInvestigationSources} from "./review/investigation";
 import type {createExternalNewsReviewTestCase, createOrUpdateExternalNewsReviewCase, detectExternalNewsIssues, runExternalNewsReviewPilot} from "./review/producers/externalNews";
 import type {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeExecutionTestCase, createExternalNewsResumeTestCase, executeExternalNewsResumeWithRegisteredExecutor, registerMockExternalNewsResumeExecutor, unregisterMockExternalNewsResumeExecutor} from "./review/resume/externalNews";
 import type {
@@ -62,6 +63,12 @@ declare global {
       registerMockExternalNewsResumeExecutor: typeof registerMockExternalNewsResumeExecutor;
       unregisterMockExternalNewsResumeExecutor: typeof unregisterMockExternalNewsResumeExecutor;
       createExternalNewsResumeExecutionTestCase: typeof createExternalNewsResumeExecutionTestCase;
+      runAutonomousInvestigation: typeof runAutonomousInvestigation;
+      previewAutonomousInvestigation: typeof previewAutonomousInvestigation;
+      applyAutonomousInvestigation: typeof applyAutonomousInvestigation;
+      registerMockInvestigationSources: typeof registerMockInvestigationSources;
+      unregisterMockInvestigationSources: typeof unregisterMockInvestigationSources;
+      createMissingFightersInvestigationTestCase: typeof createMissingFightersInvestigationTestCase;
     };
   }
 }

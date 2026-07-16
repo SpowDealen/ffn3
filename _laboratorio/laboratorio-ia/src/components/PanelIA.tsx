@@ -51,6 +51,7 @@ import type {
 import { getEnabledExternalNewsSources } from "../sources/sourceRegistry";
 import {runExternalNewsReviewPilot, type ExternalNewsPilotReview} from "../review/producers/externalNews";
 import {registerReviewResumeExecutor} from "../integrations/reviewResumeExecutors";
+import {registerPanelSanityInvestigationSource} from "../integrations/reviewInvestigationSources";
 import type {ExternalNewsResumeExecutor} from "../review/resume/externalNews";
 import type {ReviewJsonObject} from "../review/types";
 
@@ -2071,6 +2072,7 @@ export default function PanelIA(): ReactElement {
   const [referenceData, setReferenceData] = useState<
     Record<ReferenceTarget, ReferenceEntityOption[]>
   >(EMPTY_REFERENCE_DATA);
+  useEffect(() => registerPanelSanityInvestigationSource(referenceData), [referenceData]);
 
 
   const [officialNewsItems, setOfficialNewsItems] = useState<UfcOfficialNewsItem[]>(
