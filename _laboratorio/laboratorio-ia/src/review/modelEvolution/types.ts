@@ -63,13 +63,22 @@ export type EditorialConsequences = {
   editorialChanges: string[];
 };
 
+export type OngoingEvolutionCost = {
+  type: "editorial_blocking" | "manual_review" | "technical_debt" | "data_inaccuracy";
+  description: string;
+  severity: SchemaEvolutionRisk;
+};
+
 export type EvolutionCostEstimate = {
   complexity: EvolutionComplexity;
-  auditHours: HoursRange;
-  implementationHours: HoursRange;
-  migrationHours: HoursRange;
-  validationHours: HoursRange;
-  totalHours: HoursRange;
+  changeCost: {
+    auditHours: HoursRange;
+    implementationHours: HoursRange;
+    migrationHours: HoursRange;
+    validationHours: HoursRange;
+    totalHours: HoursRange;
+  };
+  ongoingCost: OngoingEvolutionCost[];
   confidence: EstimationConfidence;
   assumptions: string[];
   unknowns: string[];
@@ -78,7 +87,8 @@ export type EvolutionCostEstimate = {
 
 export type EvolutionRiskAssessment = {
   technicalRisk: SchemaEvolutionRisk;
-  editorialRisk: SchemaEvolutionRisk;
+  editorialRiskOfInaction: SchemaEvolutionRisk;
+  editorialChangeRisk: SchemaEvolutionRisk;
   migrationRisk: SchemaEvolutionRisk;
   operationalRisk: SchemaEvolutionRisk;
   overallRisk: SchemaEvolutionRisk;
@@ -113,6 +123,7 @@ export type EvolutionAlternativeSimulation = {
   rollbackPossible: boolean;
   rollbackPlan: string;
   alternativeScore: number;
+  editorialCoverage: number;
 };
 
 export type ModelEvolutionSimulation = {

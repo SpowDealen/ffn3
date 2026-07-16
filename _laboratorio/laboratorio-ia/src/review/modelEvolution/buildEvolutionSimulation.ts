@@ -26,6 +26,7 @@ function additionalImpacts(context: AlternativeSimulationContext): EvolutionImpa
 }
 
 const priority = (roi: number, technicalRisk: number): EvolutionPriority => (roi >= 75 && technicalRisk < 90 ? "critical" : roi >= 60 ? "high" : roi >= 35 ? "normal" : "low");
+const COVERAGE: Record<AlternativeSimulationContext["alternative"]["type"], number> = { keep_current: 5, fallback_policy: 25, make_optional: 55, change_semantics: 65, split_relationship: 95, new_entity: 80, new_document: 85 };
 const verificationStatus = (impacts: EvolutionImpactFinding[]): VerificationStatus => {
   const active = impacts.filter((item) => item.status !== "not_affected");
   if (active.every((item) => item.status === "confirmed")) return "verified";
@@ -43,14 +44,17 @@ function buildAlternative(context: AlternativeSimulationContext): EvolutionAlter
     migrationResult.impact,
     ...additionalImpacts(context),
   ].sort((left, right) => left.area.localeCompare(right.area));
-  const cost = calculateEvolutionCost(impacts, migrationResult.migration);
+  const cost = calculateEvolutionCost(context.alternative, impacts, migrationResult.migration);
   const risk = calculateEvolutionRisk(context.proposal, context.alternative, impacts, migrationResult.migration);
   const consequences = simulateEditorialConsequences(context);
   const status = verificationStatus(impacts);
   const confirmed = impacts.filter((item) => item.status === "confirmed").length;
   const unresolved = impacts.filter((item) => item.status === "possible").length;
-  const confidencePenalty = status === "provisional" ? 12 : status === "partially_verified" ? 5 : 0;
-  const roiScore = Math.max(0, Math.min(100, Math.round(context.alternative.score * 0.72 + confirmed * 3 - unresolved * 2 - cost.score * 0.08 - risk.score * 0.08 - confidencePenalty)));
+  const editorialCoverage = COVERAGE[context.alternative.type];
+  const confidencePenalty = status === "provisional" ? 10 : status === "partially_verified" ? 4 : 0;
+  const unresolvedProblemPenalty = context.alternative.type === "keep_current" ? 30 : context.alternative.type === "fallback_policy" ? 18 : 0;
+  const complexityPenalty = context.alternative.type === "new_document" ? 8 : context.alternative.type === "new_entity" ? 5 : 0;
+  const roiScore = Math.max(0, Math.min(100, Math.round(context.alternative.score * 0.42 + editorialCoverage * 0.38 + confirmed * 2 - unresolved - cost.score * 0.12 - risk.score * 0.06 - confidencePenalty - unresolvedProblemPenalty - complexityPenalty)));
   const plan = buildSimulationPlan(impacts, migrationResult.migration);
   const id = `simulation:${context.proposal.id}:${context.alternative.id}`;
   return {
@@ -74,13 +78,16 @@ function buildAlternative(context: AlternativeSimulationContext): EvolutionAlter
       reasons: [
         `Valor editorial de la alternativa: ${context.alternative.score}/100.`,
         `${confirmed} impacto(s) confirmado(s) y ${unresolved} pendiente(s) de auditoría.`,
-        `Coste provisional: ${cost.totalHours.min}–${cost.totalHours.max} h con confianza ${cost.confidence}.`,
-        `Riesgo técnico ${risk.technicalRisk}; riesgo editorial de no actuar ${risk.editorialRisk}.`,
+        `Cobertura semántica estimada: ${editorialCoverage}/100.`,
+        `Coste de cambio provisional: ${cost.changeCost.totalHours.min}–${cost.changeCost.totalHours.max} h con confianza ${cost.confidence}.`,
+        `Riesgo técnico ${risk.technicalRisk}; riesgo editorial de no actuar ${risk.editorialRiskOfInaction}.`,
+        ...(cost.ongoingCost.length ? ["El bajo coste inmediato no resuelve los costes editoriales recurrentes."] : []),
       ],
     },
     rollbackPossible: risk.rollbackPossible,
     rollbackPlan: migrationResult.migration.rollbackPlan,
     alternativeScore: context.alternative.score,
+    editorialCoverage,
   };
 }
 

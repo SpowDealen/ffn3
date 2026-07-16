@@ -10,7 +10,7 @@ export function validateEvolutionSimulation(result: ModelEvolutionResult): Evolu
     if (!simulation.proposalIdentity) errors.push(`${simulation.id}:missing_identity`);
     if (!simulation.alternatives.length) errors.push(`${simulation.id}:missing_alternatives`);
     for (const alternative of simulation.alternatives) {
-      const ranges = [alternative.cost.auditHours, alternative.cost.implementationHours, alternative.cost.migrationHours, alternative.cost.validationHours, alternative.cost.totalHours];
+      const ranges = [alternative.cost.changeCost.auditHours, alternative.cost.changeCost.implementationHours, alternative.cost.changeCost.migrationHours, alternative.cost.changeCost.validationHours, alternative.cost.changeCost.totalHours];
       if (ranges.some((range) => !Number.isInteger(range.min) || !Number.isInteger(range.max) || range.min < 0 || range.max < range.min)) errors.push(`${alternative.id}:invalid_cost_range`);
       if (alternative.roi.score < 0 || alternative.roi.score > 100) errors.push(`${alternative.id}:invalid_roi`);
       if (alternative.risk.score < 0 || alternative.risk.score > 100) errors.push(`${alternative.id}:invalid_risk`);
@@ -19,6 +19,7 @@ export function validateEvolutionSimulation(result: ModelEvolutionResult): Evolu
       if (alternative.dependencies.some((item) => item.label.includes(alternative.proposalIdentity) || item.label.includes(":step:"))) errors.push(`${alternative.id}:technical_dependency_label`);
       if (alternative.steps.some((step, index) => step.order !== index + 1)) errors.push(`${alternative.id}:unstable_step_order`);
       if (alternative.migration.existingDocumentAuditStatus === "not_started" && alternative.migration.affectedExistingDocumentEstimate !== undefined) errors.push(`${alternative.id}:unaudited_document_estimate`);
+      if (alternative.alternativeType === "keep_current" && (alternative.cost.changeCost.implementationHours.max > 0 || alternative.cost.changeCost.migrationHours.max > 0)) errors.push(`${alternative.id}:keep_current_has_change_hours`);
     }
   }
   try { JSON.stringify(result); } catch { errors.push("not_json_serializable"); }
