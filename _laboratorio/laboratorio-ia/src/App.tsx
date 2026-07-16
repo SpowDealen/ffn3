@@ -1,5 +1,5 @@
-import PanelIA from "./components/PanelIA";
+import LaboratoryApp from "./app/LaboratoryApp";
 
 export default function App() {
-  return <PanelIA />;
+  return <LaboratoryApp />;
 }

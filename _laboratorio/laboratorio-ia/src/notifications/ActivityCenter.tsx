@@ -203,7 +203,9 @@ const ActivityItem = memo(function ActivityItem({
   );
 });
 
-export default function ActivityCenter(): ReactElement {
+export type ActivityCenterView = "summary" | "activity" | "telegram";
+
+export default function ActivityCenter({view = "activity"}: {view?: ActivityCenterView}): ReactElement {
   const [notifications, setNotifications] =
     useState<LabNotification[]>([]);
   const [now, setNow] = useState(Date.now());
@@ -577,15 +579,15 @@ export default function ActivityCenter(): ReactElement {
     : "Sin comprobar";
 
   return (
-    <section id="laboratory-status" style={styles.card}>
+    <section id={view === "summary" ? "laboratory-status" : view === "telegram" ? "telegram-status" : "activity-center"} style={styles.card}>
       <div style={styles.headingRow}>
         <div>
           <p style={styles.eyebrow}>
-            Centro de actividad
+            {view === "telegram" ? "Canal de entrega" : view === "summary" ? "Resumen operativo" : "Centro de actividad"}
           </p>
 
           <h2 style={styles.title}>
-            Estado del laboratorio
+            {view === "telegram" ? "Estado de Telegram" : view === "summary" ? "Estado del laboratorio" : "Actividad y procesos"}
           </h2>
         </div>
 
@@ -604,6 +606,18 @@ export default function ActivityCenter(): ReactElement {
         </div>
       </div>
 
+      {view === "summary" ? (
+        <div className="laboratory-summary-grid" aria-label="Resumen del laboratorio">
+          <div><strong>{deliveryMetrics.pending}</strong><span>Entregas pendientes</span></div>
+          <div><strong>{reviewCount}</strong><span>Revisiones sin leer</span></div>
+          <div><strong>{errorCount}</strong><span>Errores activos</span></div>
+          <div><strong>{telegramHealth.channelStatus}</strong><span>Telegram</span></div>
+          <div><strong>{notifications.length}</strong><span>Actividades registradas</span></div>
+        </div>
+      ) : null}
+
+      {view === "activity" ? (
+      <>
       <div style={styles.filterBar}>
         <label style={styles.filterField}>
           <span style={styles.filterLabel}>Nivel</span>
@@ -763,8 +777,11 @@ export default function ActivityCenter(): ReactElement {
           })}
         </div>
       </section>
+      </>
+      ) : null}
 
-      <section id="telegram-status" style={styles.telegramHealth}>
+      {view === "telegram" ? (
+      <section style={styles.telegramHealth}>
         <div style={styles.telegramHealthHeader}>
           <div>
             <strong style={styles.telegramHealthTitle}>
@@ -933,7 +950,9 @@ export default function ActivityCenter(): ReactElement {
           ) : null}
         </div>
       </section>
+      ) : null}
 
+      {view === "activity" ? (
       <div style={styles.contentGrid}>
         <div style={styles.activityPanel}>
           {filteredNotifications.length > 0 ? (
@@ -973,6 +992,7 @@ export default function ActivityCenter(): ReactElement {
         </div>
 
       </div>
+      ) : null}
     </section>
   );
 }

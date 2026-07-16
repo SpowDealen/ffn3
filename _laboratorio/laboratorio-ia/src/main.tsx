@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App";
+import LaboratoryApp from "./app/LaboratoryApp";
 import {
   inspectNotification,
   testCriticalNotification,
@@ -100,6 +100,6 @@ if (!container) {
 
 ReactDOM.createRoot(container).render(
   <React.StrictMode>
-    <App />
+    <LaboratoryApp />
   </React.StrictMode>
 );

@@ -20,11 +20,7 @@ import {
   notifyReviewRecommended,
   notifySourceLoaded,
 } from "../notifications/notify";
-import NotificationBell from "../notifications/NotificationBell";
-import ActivityCenter from "../notifications/ActivityCenter";
-import ProcessBar from "../processes/ProcessBar";
-import ReviewCenter from "../review/components/ReviewCenter";
-import LaboratoryMenu from "./LaboratoryMenu";
+import {navigateLaboratory} from "../app/useLaboratoryRouter";
 import {
   completeProcess,
   failProcess,
@@ -10883,24 +10879,6 @@ export default function PanelIA(): ReactElement {
   return (
     <div style={styles.page}>
       <div style={styles.container}>
-        <nav style={styles.stickyNav}>
-          <div style={styles.stickyBrand}>
-            <span style={styles.stickyBrandMark}>FFN3</span>
-            <span style={styles.stickyBrandText}>Laboratorio IA</span>
-          </div>
-
-          <div className="review-nav-actions">
-            <LaboratoryMenu />
-            <NotificationBell />
-          </div>
-        </nav>
-
-        <ProcessBar />
-
-        <ActivityCenter />
-
-        <ReviewCenter />
-
         <header style={styles.header}>
           <div>
             <p style={styles.eyebrow}>FFN3 · Laboratorio IA</p>
@@ -13194,7 +13172,7 @@ export default function PanelIA(): ReactElement {
                 <strong>{externalNewsReview.status === "not_needed" ? "Sin incidencias" : externalNewsReview.status === "ready_for_future_resume" ? "Listo para futura reanudación" : externalNewsReview.status === "error" ? "Error controlado del Centro de revisión" : externalNewsReview.status === "needs_more_evidence" ? "Pendiente de más evidencia" : "Caso de revisión creado"}</strong>
                 <span>Incidencias: {externalNewsReview.issueCount} · resueltas: {externalNewsReview.resolvedIssueCount} · pendientes: {externalNewsReview.pendingIssueCount} · bloqueantes: {externalNewsReview.blockingPendingCount}</span>
                 <span>Resoluciones autónomas aplicadas: {externalNewsReview.autonomousAppliedCount}</span>
-                {externalNewsReview.caseId ? <button type="button" className="review-button review-button-secondary" onClick={() => { window.location.hash = "review-center"; document.getElementById("review-center")?.scrollIntoView({behavior: "smooth", block: "start"}); }}>{externalNewsReview.status === "ready_for_future_resume" ? "Preparar reanudación" : "Abrir caso en el Centro de revisión"}</button> : null}
+                {externalNewsReview.caseId ? <button type="button" className="review-button review-button-secondary" onClick={() => navigateLaboratory("/revision", `?case=${encodeURIComponent(externalNewsReview.caseId ?? "")}`)}>{externalNewsReview.status === "ready_for_future_resume" ? "Preparar reanudación" : "Abrir caso en el Centro de revisión"}</button> : null}
               </section>
             ) : null}
 
