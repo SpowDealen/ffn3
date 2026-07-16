@@ -209,7 +209,7 @@ export function materializeReviewResolution(id: string, resolution: ReviewResolu
 
 export function replacePreparedEntityDraft(id: string, issueId: string, draft: import("../types").ReviewJsonObject): ReviewCase | undefined {
   return replaceById(id, (reviewCase) => {
-    if (!["open", "in_review", "resolved", "resume_failed"].includes(reviewCase.status)) throw new Error("El estado actual no permite enriquecer entidades preparadas.");
+    if (!["open", "in_review", "resolved", "stale", "resume_failed"].includes(reviewCase.status)) throw new Error("El estado actual no permite enriquecer entidades preparadas.");
     const resolution = reviewCase.resolutions.find((item) => item.issueId === issueId);
     if (resolution?.type !== "create_entity") throw new Error("No existe una entidad preparada para el issue.");
     return applyReviewResolution(reviewCase, {...resolution, draft});

@@ -279,6 +279,29 @@ textarea {
 .investigation-results details { border: 1px solid #d8dee8; border-radius: 8px; padding: 10px; overflow-wrap: anywhere; }
 .investigation-results summary { cursor: pointer; font-weight: 700; }
 @media (max-width: 640px) { .investigation-panel .review-button { width: 100%; } }
+.schema-requirements-panel { min-width: 0; }
+.schema-requirements-metrics { display: flex; flex-wrap: wrap; gap: 8px; }
+.schema-requirements-metrics span { padding: 7px 9px; border: 1px solid var(--panel-border); border-radius: 999px; color: var(--panel-text-soft); }
+.schema-requirements-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.schema-requirements-entities,
+.schema-requirements-list { display: grid; gap: 10px; min-width: 0; }
+.schema-requirements-entity { display: grid; gap: 12px; min-width: 0; padding: 14px; border: 1px solid var(--panel-border); border-radius: 14px; background: rgba(255,255,255,.025); overflow-wrap: anywhere; }
+.schema-requirements-entity > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.schema-requirements-entity h5,
+.schema-requirements-entity p { margin: 0; }
+.schema-requirements-entity header p { margin-top: 4px; color: var(--panel-text-soft); font-size: 12px; }
+.schema-requirements-list > details,
+.schema-requirements-technical { min-width: 0; padding: 10px; border: 1px solid var(--panel-border); border-radius: 10px; }
+.schema-requirements-list summary,
+.schema-requirements-technical summary { cursor: pointer; font-weight: 800; }
+.schema-requirements-list details details { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--panel-border); }
+.schema-requirements-id { overflow-wrap: anywhere; word-break: break-word; }
+@media (max-width: 640px) {
+  .schema-requirements-actions { display: grid; grid-template-columns: 1fr; }
+  .schema-requirements-actions .review-button { width: 100%; }
+  .schema-requirements-entity > header { display: grid; }
+  .schema-requirements-entity > header .review-badge { justify-self: start; }
+}
 .review-resolution-summary small { color: var(--panel-text-muted); }
 .review-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
