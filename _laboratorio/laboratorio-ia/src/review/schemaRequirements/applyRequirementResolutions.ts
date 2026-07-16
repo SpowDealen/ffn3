@@ -1,0 +1,10 @@
+import {getReviewCase, replacePreparedEntityDraft, updateReviewCase} from "../store/reviewStore";
+import type {ReviewJsonObject, ReviewJsonValue} from "../types";
+import {resolveEntityRequirements} from "./resolveEntityRequirements";
+import type {PreparedEntityRequirementReport, RequirementResolutionConclusion} from "./types";
+
+const SENSITIVE = /(token|secret|authorization|cookie|password|api[_-]?key|headers?)/i; const DANGEROUS = new Set(["__proto__", "prototype", "constructor"]);
+function safePatch(value: ReviewJsonValue): boolean { if (!value || typeof value !== "object") return true; return Object.entries(value).every(([key, child]) => !SENSITIVE.test(key) && !DANGEROUS.has(key) && safePatch(child)); }
+function applyPatch(draft: ReviewJsonObject, conclusions: RequirementResolutionConclusion[]): ReviewJsonObject { const next: ReviewJsonObject = {...draft}; for (const item of conclusions) { if (item.status !== "resolved" || !item.proposedDraftPatch || !safePatch(item.proposedDraftPatch)) continue; Object.assign(next, item.proposedDraftPatch); } const resolvedFields = new Set(conclusions.filter((item) => item.status === "resolved").flatMap((item) => Object.keys(item.proposedDraftPatch ?? {}))); if (Array.isArray(next.unknownFields)) next.unknownFields = next.unknownFields.filter((field) => typeof field !== "string" || !resolvedFields.has(field)); return next; }
+export function previewPreparedEntityEnrichment(caseId: string): PreparedEntityRequirementReport { return resolveEntityRequirements(caseId); }
+export function applyPreparedEntityEnrichment(caseId: string): PreparedEntityRequirementReport { const report = resolveEntityRequirements(caseId); if (!getReviewCase(caseId)) return report; for (const item of report.items) { const draft = applyPatch(item.draft, item.conclusions); if (JSON.stringify(draft) !== JSON.stringify(item.draft)) replacePreparedEntityDraft(caseId, item.issueId, draft); } const current = getReviewCase(caseId); if (current) updateReviewCase(caseId, {context: {...current.context, schemaRequirementAcquisition: report as unknown as ReviewJsonObject}}); return resolveEntityRequirements(caseId); }

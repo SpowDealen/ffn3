@@ -55,6 +55,8 @@ import {registerPanelSanityInvestigationSource} from "../integrations/reviewInve
 import {registerReviewEditorialAgentCapabilities} from "../integrations/reviewEditorialAgentCapabilities";
 import {editorialEntityCreationExecutor} from "../integrations/editorialEntityCreationExecutor";
 import {registerEntityCreationExecutor, registerPreparedEntityCapabilities} from "../review/materialization";
+import {registerSchemaRequirementCapabilities} from "../review/schemaRequirements";
+import {registerEditorialSchemaRequirements} from "../integrations/editorialSchemaRequirements";
 import type {ExternalNewsResumeExecutor} from "../review/resume/externalNews";
 import type {ReviewJsonObject} from "../review/types";
 
@@ -2049,6 +2051,7 @@ export default function PanelIA(): ReactElement {
   useEffect(() => registerReviewResumeExecutor("external_news", externalNewsResumeExecutor), [externalNewsResumeExecutor]);
   useEffect(() => registerReviewEditorialAgentCapabilities(), []);
   useEffect(() => registerPreparedEntityCapabilities(), []);
+  useEffect(() => registerSchemaRequirementCapabilities(), []);
   useEffect(() => registerEntityCreationExecutor(editorialEntityCreationExecutor), []);
   const [contentType, setContentType] = useState<ContentTypeId>(
     DEFAULT_CONTENT_TYPE
@@ -2079,6 +2082,7 @@ export default function PanelIA(): ReactElement {
     Record<ReferenceTarget, ReferenceEntityOption[]>
   >(EMPTY_REFERENCE_DATA);
   useEffect(() => registerPanelSanityInvestigationSource(referenceData), [referenceData]);
+  useEffect(() => registerEditorialSchemaRequirements(referenceData), [referenceData]);
 
 
   const [officialNewsItems, setOfficialNewsItems] = useState<UfcOfficialNewsItem[]>(

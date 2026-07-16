@@ -18,6 +18,7 @@ import type {applyAutonomousInvestigation, createMissingFightersInvestigationTes
 import type {buildEditorialAgentPlan, listEditorialCapabilities, runEditorialAgent} from "./review/agent";
 import type {runReviewEditorialAgent} from "./integrations/reviewEditorialAgentCapabilities";
 import type {executePreparedEntityMaterialization, previewPreparedEntityMaterialization, registerMockEntityCreationExecutor, runPreparedEntityAgent, unregisterMockEntityCreationExecutor} from "./review/materialization";
+import type {applyPreparedEntityEnrichment, createSchemaRequirementTestCase, inspectPreparedEntityRequirements, previewPreparedEntityEnrichment, runPreparedEntityRequirementAgent} from "./review/schemaRequirements";
 import type {createExternalNewsReviewTestCase, createOrUpdateExternalNewsReviewCase, detectExternalNewsIssues, runExternalNewsReviewPilot} from "./review/producers/externalNews";
 import type {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeExecutionTestCase, createExternalNewsResumeTestCase, executeExternalNewsResumeWithRegisteredExecutor, registerMockExternalNewsResumeExecutor, unregisterMockExternalNewsResumeExecutor} from "./review/resume/externalNews";
 import type {
@@ -81,6 +82,11 @@ declare global {
       registerMockEntityCreationExecutor: typeof registerMockEntityCreationExecutor;
       unregisterMockEntityCreationExecutor: typeof unregisterMockEntityCreationExecutor;
       runPreparedEntityAgent: typeof runPreparedEntityAgent;
+      inspectPreparedEntityRequirements: typeof inspectPreparedEntityRequirements;
+      runPreparedEntityRequirementAgent: typeof runPreparedEntityRequirementAgent;
+      previewPreparedEntityEnrichment: typeof previewPreparedEntityEnrichment;
+      applyPreparedEntityEnrichment: typeof applyPreparedEntityEnrichment;
+      createSchemaRequirementTestCase: typeof createSchemaRequirementTestCase;
     };
   }
 }

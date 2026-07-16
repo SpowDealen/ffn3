@@ -19,6 +19,7 @@ import {applyAutonomousInvestigation, createMissingFightersInvestigationTestCase
 import {buildEditorialAgentPlan, listEditorialCapabilities, runEditorialAgent} from "./review/agent";
 import {runReviewEditorialAgent} from "./integrations/reviewEditorialAgentCapabilities";
 import {executePreparedEntityMaterialization, previewPreparedEntityMaterialization, registerMockEntityCreationExecutor, runPreparedEntityAgent, unregisterMockEntityCreationExecutor} from "./review/materialization";
+import {applyPreparedEntityEnrichment, createSchemaRequirementTestCase, inspectPreparedEntityRequirements, previewPreparedEntityEnrichment, runPreparedEntityRequirementAgent} from "./review/schemaRequirements";
 import {createExternalNewsReviewTestCase, createOrUpdateExternalNewsReviewCase, detectExternalNewsIssues, runExternalNewsReviewPilot} from "./review/producers/externalNews";
 import {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeExecutionTestCase, createExternalNewsResumeTestCase, executeExternalNewsResumeWithRegisteredExecutor, registerMockExternalNewsResumeExecutor, unregisterMockExternalNewsResumeExecutor} from "./review/resume/externalNews";
 import {
@@ -83,6 +84,11 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     registerMockEntityCreationExecutor,
     unregisterMockEntityCreationExecutor,
     runPreparedEntityAgent,
+    inspectPreparedEntityRequirements,
+    runPreparedEntityRequirementAgent,
+    previewPreparedEntityEnrichment,
+    applyPreparedEntityEnrichment,
+    createSchemaRequirementTestCase,
   };
 }
 

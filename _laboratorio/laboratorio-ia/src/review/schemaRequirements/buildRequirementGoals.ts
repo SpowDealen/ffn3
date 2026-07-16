@@ -1,0 +1,4 @@
+import type {EditorialAgentGoal} from "../agent";
+import type {PreparedEntityRequirementReport} from "./types";
+
+export function buildRequirementGoals(report: PreparedEntityRequirementReport): EditorialAgentGoal[] { return report.items.flatMap((item) => item.missing.map((missing) => ({id: `requirement:${report.caseId}:${item.issueId}:${missing.requirement.id}`, objective: `Determinar de forma demostrable el requisito ${missing.requirement.label}.`, target: {caseId: report.caseId, issueId: item.issueId, entityType: item.entityType, requirementId: missing.requirement.id, field: missing.requirement.field}, requiredOutcomes: [missing.requirement.expectedType === "reference" || missing.requirement.expectedType === "references" ? "required_reference_investigated" : "requirement_semantics_evaluated"]}))); }

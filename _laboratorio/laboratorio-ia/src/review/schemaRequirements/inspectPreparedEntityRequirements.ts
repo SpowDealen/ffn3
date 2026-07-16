@@ -1,0 +1,12 @@
+import {getReviewCase} from "../store/reviewStore";
+import type {ReviewJsonObject, ReviewJsonValue} from "../types";
+import {getSchemaRequirementAdapter} from "./schemaRequirementRegistry";
+import type {EntitySchemaRequirement, MissingEntityRequirement, PreparedEntityRequirementReport} from "./types";
+
+const present = (requirement: EntitySchemaRequirement, value: ReviewJsonValue | undefined, draft: ReviewJsonObject): boolean => requirement.field === "slug" ? typeof draft.name === "string" && Boolean(draft.name.trim()) : requirement.expectedType === "references" ? Array.isArray(value) && value.some((item) => typeof item === "string" && item.trim()) : typeof value === "string" ? Boolean(value.trim()) : value !== undefined && value !== null;
+export function inspectPreparedEntityRequirements(caseId: string, now = () => new Date().toISOString()): PreparedEntityRequirementReport {
+  const reviewCase = getReviewCase(caseId); if (!reviewCase) return {caseId, status: "case_not_found", dryRun: true, items: [], generatedAt: now(), warnings: ["El caso no existe."]};
+  const prepared = reviewCase.resolutions.filter((item) => item.type === "create_entity"); if (!prepared.length) return {caseId, status: "no_prepared_entities", dryRun: true, items: [], generatedAt: now(), warnings: ["No hay entidades preparadas."]};
+  const items = prepared.map((item) => { const adapter = getSchemaRequirementAdapter(item.entityType); if (!adapter) return {issueId: item.issueId, entityType: item.entityType, draft: item.draft, requirements: [], missing: [], conclusions: [], validAfterEnrichment: false, blockingReasons: [`No existe adapter de schema para ${item.entityType}.`]}; const requirements = adapter.inspect(item.draft); const missing: MissingEntityRequirement[] = requirements.filter((requirement) => !present(requirement, item.draft[requirement.field], item.draft)).map((requirement) => ({requirement, status: "missing", evidence: [], reasons: [requirement.message]})); return {issueId: item.issueId, entityType: item.entityType, draft: item.draft, requirements, missing, conclusions: [], validAfterEnrichment: missing.length === 0, blockingReasons: missing.map((entry) => entry.requirement.message)}; });
+  const adapterMissing = items.some((item) => item.requirements.length === 0); return {caseId, status: adapterMissing ? "adapter_missing" : items.every((item) => item.validAfterEnrichment) ? "ready" : "blocked", dryRun: true, items, generatedAt: now(), warnings: []};
+}
