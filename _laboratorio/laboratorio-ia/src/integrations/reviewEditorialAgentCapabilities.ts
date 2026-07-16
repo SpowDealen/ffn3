@@ -1,6 +1,6 @@
 import {getReviewCase} from "../review/store/reviewStore";
 import {runAutonomousInvestigation} from "../review/investigation";
-import {registerEditorialCapability, runEditorialAgent, type EditorialAgentFact, type EditorialCapabilityAdapter} from "../review/agent";
+import {registerEditorialCapability, runEditorialAgent, type EditorialAgentFact, type EditorialAgentRun, type EditorialCapabilityAdapter} from "../review/agent";
 import type {ReviewJsonObject} from "../review/types";
 
 const inspectReviewCase: EditorialCapabilityAdapter = {
@@ -33,6 +33,6 @@ export function registerReviewEditorialAgentCapabilities(): () => void {
   return () => { unregisterInvestigation(); unregisterInspect(); };
 }
 
-export function runReviewEditorialAgent(caseId: string) {
+export function runReviewEditorialAgent(caseId: string): Promise<EditorialAgentRun> {
   return runEditorialAgent({id: `review:${caseId}`, objective: "Comprender e investigar las incidencias del caso antes de proponer cualquier acción.", target: {caseId}, requiredOutcomes: ["review_issues_investigated"]});
 }

@@ -7,7 +7,7 @@ import type {ExternalNewsResumeOptions, ExternalNewsResumePreview, ExternalNewsR
 import {validateExternalNewsResumePayload} from "./validateExternalNewsResumePayload";
 
 function empty(caseId: string, generatedAt: string, reason: string): ExternalNewsResumePreview {
-  const application: ExternalNewsResolutionApplicationResult = {caseId, originalPayload: {}, resultingPayload: {}, applied: [], skipped: [], failed: [], warnings: [], preparedEntities: [], generatedAt};
+  const application: ExternalNewsResolutionApplicationResult = {caseId, originalPayload: {}, resultingPayload: {}, applied: [], metadata: [], skipped: [], failed: [], warnings: [], preparedEntities: [], generatedAt};
   const validation: ExternalNewsResumeValidation = {valid: false, errors: [], warnings: [], blockingReasons: [reason]};
   return {caseId, status: "snapshot_incomplete", originalPayload: {}, resultingPayload: {}, application, validation, changes: [], unresolvedIssueIds: [], preparedEntities: [], canResume: false, reasons: [reason], generatedAt};
 }

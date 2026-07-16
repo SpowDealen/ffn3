@@ -53,9 +53,9 @@ export function applyExternalNewsResolutions({reviewCase, snapshot, options = {}
   const generatedAt = options.now?.() ?? new Date().toISOString();
   let originalPayload: ReviewJsonObject;
   try { originalPayload = safeClone(snapshot.payload) as ReviewJsonObject; }
-  catch (error) { return {caseId: reviewCase.id, originalPayload: {}, resultingPayload: {}, applied: [], skipped: [], failed: [{issueId: "snapshot", error: error instanceof Error ? error.message : "Snapshot inválido."}], warnings: [], preparedEntities: [], generatedAt}; }
+  catch (error) { return {caseId: reviewCase.id, originalPayload: {}, resultingPayload: {}, applied: [], metadata: [], skipped: [], failed: [{issueId: "snapshot", error: error instanceof Error ? error.message : "Snapshot inválido."}], warnings: [], preparedEntities: [], generatedAt}; }
   const resultingPayload = safeClone(originalPayload) as ReviewJsonObject;
-  const result: ExternalNewsResolutionApplicationResult = {caseId: reviewCase.id, originalPayload, resultingPayload, applied: [], skipped: [], failed: [], warnings: [], preparedEntities: [], generatedAt};
+  const result: ExternalNewsResolutionApplicationResult = {caseId: reviewCase.id, originalPayload, resultingPayload, applied: [], metadata: [], skipped: [], failed: [], warnings: [], preparedEntities: [], generatedAt};
   for (const resolution of reviewCase.resolutions) {
     const issue = reviewCase.issues.find((item) => item.id === resolution.issueId);
     if (!issue) { result.skipped.push({issueId: resolution.issueId, reason: "La resolución ya no corresponde a una incidencia vigente."}); continue; }
@@ -63,11 +63,12 @@ export function applyExternalNewsResolutions({reviewCase, snapshot, options = {}
     if (!validation.valid) { result.failed.push({issueId: issue.id, error: validation.error}); continue; }
     try {
       if (resolution.type === "retry") { result.skipped.push({issueId: issue.id, reason: "Retry pendiente; no modifica el payload."}); continue; }
-      if (resolution.type === "discard") { result.skipped.push({issueId: issue.id, reason: "Incidencia opcional descartada intencionadamente."}); continue; }
+      if (resolution.type === "discard") { result.metadata.push({issueId: issue.id, resolutionType: resolution.type, status: "skipped_non_payload", reason: "La resolución cierra una incidencia opcional y no modifica el payload."}); continue; }
       if (resolution.type === "confirm_duplicate") { result.duplicateDecision = {confirmed: true, targetId: resolution.duplicateId}; result.applied.push({issueId: issue.id, resolutionType: resolution.type, path: "metadata.duplicateDecision", nextValue: resolution.duplicateId}); continue; }
       if (resolution.type === "reject_duplicate") { result.duplicateDecision = {confirmed: false}; result.applied.push({issueId: issue.id, resolutionType: resolution.type, path: "metadata.duplicateDecision", nextValue: false}); continue; }
       if (resolution.type === "create_entity") { const prepared = safeClone({issueId: issue.id, entityType: resolution.entityType, draft: resolution.draft}) as ReviewJsonObject; result.preparedEntities.push(prepared); result.applied.push({issueId: issue.id, resolutionType: resolution.type, path: "metadata.preparedEntities", nextValue: prepared}); continue; }
       const field = mapIssueToPayloadField(issue);
+      if (!field && (issue.kind === "contradictory_data" && !issue.fieldPath || issue.expected?.controlOnly === true)) { result.metadata.push({issueId: issue.id, resolutionType: resolution.type, status: "applied_metadata", reason: "La resolución cierra una incidencia de control y no modifica el payload."}); continue; }
       if (!field) { result.failed.push({issueId: issue.id, error: "La incidencia no tiene un campo permitido en el payload."}); continue; }
       const value = nextValue(resolution, issue);
       if (value === undefined) { result.failed.push({issueId: issue.id, error: "La resolución no aporta un valor aplicable."}); continue; }

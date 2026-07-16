@@ -170,7 +170,10 @@ export type ReviewCase = {
   lastResumeError?: string;
   dismissReason?: string;
   resumeExecution?: ReviewResumeExecution;
+  entityMaterialization?: ReviewEntityMaterialization;
 };
+
+export type ReviewEntityMaterialization = {status: "never" | "running" | "succeeded" | "failed" | "reconciliation_required"; attemptCount: number; startedAt?: string; completedAt?: string; failedAt?: string; issueResults: Array<{issueId: string; identityKey?: string; entityType: string; entityId?: string; status: string; error?: {code: string; message: string}}>};
 
 export type ReviewResumeExecution = {
   status: "never" | "resuming" | "succeeded" | "failed";
@@ -206,5 +209,6 @@ export type UpdateReviewCaseInput = Partial<
     | "lastResumeError"
     | "dismissReason"
     | "resumeExecution"
+    | "entityMaterialization"
   >
 >;

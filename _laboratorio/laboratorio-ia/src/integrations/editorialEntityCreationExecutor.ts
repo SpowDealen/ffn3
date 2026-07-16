@@ -1,0 +1,7 @@
+import type {CreateEditorialEntityExecutor, EntityDuplicateResult} from "../review/materialization";
+const baseUrl = (): string => { const raw = import.meta.env.VITE_FFN3_API_BASE_URL; return typeof raw === "string" && raw.trim() ? raw.trim().replace(/\/+$/, "") : "http://localhost:3000"; };
+async function post(body: Record<string, unknown>): Promise<Record<string, unknown>> { const response = await fetch(`${baseUrl()}/api/editorial-agent/entities`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}); const data = await response.json() as Record<string, unknown>; if (!response.ok || data.success !== true) throw new Error(typeof data.error === "string" ? data.error : `HTTP ${response.status}`); return data; }
+export const editorialEntityCreationExecutor: CreateEditorialEntityExecutor = {
+  async checkDuplicate(input) { const data = await post({action: "check_duplicate", ...input}); return {status: data.status as EntityDuplicateResult["status"], candidates: Array.isArray(data.candidates) ? data.candidates as EntityDuplicateResult["candidates"] : []}; },
+  async createEntity(input) { try { const data = await post({action: "create", confirm: true, ...input}); return {success: true, entityId: typeof data.entityId === "string" ? data.entityId : undefined, documentId: typeof data.documentId === "string" ? data.documentId : undefined, alreadyExisted: data.alreadyExisted === true}; } catch (error) { return {success: false, error: error instanceof Error ? error.message : "Error desconocido."}; }},
+};

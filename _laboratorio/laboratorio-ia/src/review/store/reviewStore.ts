@@ -4,6 +4,7 @@ import type {
   ReviewCase,
   ReviewCaseStatus,
   ReviewResolution,
+  ReviewEntityMaterialization,
   ReviewResumeExecution,
   UpdateReviewCaseInput,
 } from "../types";
@@ -195,6 +196,14 @@ export function addReviewResolution(
       throw new Error("El estado actual del caso no permite editar resoluciones.");
     }
     return applyReviewResolution(reviewCase, resolution);
+  });
+}
+
+export function materializeReviewResolution(id: string, resolution: ReviewResolution, entityMaterialization: ReviewEntityMaterialization): ReviewCase | undefined {
+  return replaceById(id, (reviewCase) => {
+    if (!["open", "in_review", "resolved", "resume_failed"].includes(reviewCase.status)) throw new Error("El estado actual no permite materializar entidades.");
+    const resolved = applyReviewResolution(reviewCase, resolution);
+    return {...resolved, entityMaterialization};
   });
 }
 

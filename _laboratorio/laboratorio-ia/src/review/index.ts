@@ -12,6 +12,7 @@ export * from "./cases/deduplicateReviewCase";
 export * from "./cases/transitionReviewCase";
 export * from "./investigation";
 export * from "./agent";
+export * from "./materialization";
 export * from "./cases/validateResolution";
 export * from "./store/localStorageRepository";
 export * from "./store/migrations";

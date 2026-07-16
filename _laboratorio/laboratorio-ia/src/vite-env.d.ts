@@ -17,6 +17,7 @@ import type {applyAutonomousReview, previewAutonomousReview, runAutonomousReview
 import type {applyAutonomousInvestigation, createMissingFightersInvestigationTestCase, previewAutonomousInvestigation, registerMockInvestigationSources, runAutonomousInvestigation, unregisterMockInvestigationSources} from "./review/investigation";
 import type {buildEditorialAgentPlan, listEditorialCapabilities, runEditorialAgent} from "./review/agent";
 import type {runReviewEditorialAgent} from "./integrations/reviewEditorialAgentCapabilities";
+import type {executePreparedEntityMaterialization, previewPreparedEntityMaterialization, registerMockEntityCreationExecutor, runPreparedEntityAgent, unregisterMockEntityCreationExecutor} from "./review/materialization";
 import type {createExternalNewsReviewTestCase, createOrUpdateExternalNewsReviewCase, detectExternalNewsIssues, runExternalNewsReviewPilot} from "./review/producers/externalNews";
 import type {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeExecutionTestCase, createExternalNewsResumeTestCase, executeExternalNewsResumeWithRegisteredExecutor, registerMockExternalNewsResumeExecutor, unregisterMockExternalNewsResumeExecutor} from "./review/resume/externalNews";
 import type {
@@ -75,6 +76,11 @@ declare global {
       buildEditorialAgentPlan: typeof buildEditorialAgentPlan;
       runEditorialAgent: typeof runEditorialAgent;
       runReviewEditorialAgent: typeof runReviewEditorialAgent;
+      previewPreparedEntityMaterialization: typeof previewPreparedEntityMaterialization;
+      executePreparedEntityMaterialization: typeof executePreparedEntityMaterialization;
+      registerMockEntityCreationExecutor: typeof registerMockEntityCreationExecutor;
+      unregisterMockEntityCreationExecutor: typeof unregisterMockEntityCreationExecutor;
+      runPreparedEntityAgent: typeof runPreparedEntityAgent;
     };
   }
 }

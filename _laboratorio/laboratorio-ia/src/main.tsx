@@ -18,6 +18,7 @@ import {applyAutonomousReview, previewAutonomousReview, runAutonomousReview} fro
 import {applyAutonomousInvestigation, createMissingFightersInvestigationTestCase, previewAutonomousInvestigation, registerMockInvestigationSources, runAutonomousInvestigation, unregisterMockInvestigationSources} from "./review/investigation";
 import {buildEditorialAgentPlan, listEditorialCapabilities, runEditorialAgent} from "./review/agent";
 import {runReviewEditorialAgent} from "./integrations/reviewEditorialAgentCapabilities";
+import {executePreparedEntityMaterialization, previewPreparedEntityMaterialization, registerMockEntityCreationExecutor, runPreparedEntityAgent, unregisterMockEntityCreationExecutor} from "./review/materialization";
 import {createExternalNewsReviewTestCase, createOrUpdateExternalNewsReviewCase, detectExternalNewsIssues, runExternalNewsReviewPilot} from "./review/producers/externalNews";
 import {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeExecutionTestCase, createExternalNewsResumeTestCase, executeExternalNewsResumeWithRegisteredExecutor, registerMockExternalNewsResumeExecutor, unregisterMockExternalNewsResumeExecutor} from "./review/resume/externalNews";
 import {
@@ -74,7 +75,14 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     listEditorialCapabilities,
     buildEditorialAgentPlan,
     runEditorialAgent,
-    runReviewEditorialAgent,
+    runReviewEditorialAgent: async (caseId: string) => {
+      return runReviewEditorialAgent(caseId);
+    },
+    previewPreparedEntityMaterialization,
+    executePreparedEntityMaterialization,
+    registerMockEntityCreationExecutor,
+    unregisterMockEntityCreationExecutor,
+    runPreparedEntityAgent,
   };
 }
 

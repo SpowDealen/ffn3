@@ -53,6 +53,8 @@ import {runExternalNewsReviewPilot, type ExternalNewsPilotReview} from "../revie
 import {registerReviewResumeExecutor} from "../integrations/reviewResumeExecutors";
 import {registerPanelSanityInvestigationSource} from "../integrations/reviewInvestigationSources";
 import {registerReviewEditorialAgentCapabilities} from "../integrations/reviewEditorialAgentCapabilities";
+import {editorialEntityCreationExecutor} from "../integrations/editorialEntityCreationExecutor";
+import {registerEntityCreationExecutor, registerPreparedEntityCapabilities} from "../review/materialization";
 import type {ExternalNewsResumeExecutor} from "../review/resume/externalNews";
 import type {ReviewJsonObject} from "../review/types";
 
@@ -2046,6 +2048,8 @@ export default function PanelIA(): ReactElement {
 
   useEffect(() => registerReviewResumeExecutor("external_news", externalNewsResumeExecutor), [externalNewsResumeExecutor]);
   useEffect(() => registerReviewEditorialAgentCapabilities(), []);
+  useEffect(() => registerPreparedEntityCapabilities(), []);
+  useEffect(() => registerEntityCreationExecutor(editorialEntityCreationExecutor), []);
   const [contentType, setContentType] = useState<ContentTypeId>(
     DEFAULT_CONTENT_TYPE
   );
