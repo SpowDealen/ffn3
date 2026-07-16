@@ -15,6 +15,8 @@ import type {
 import type {createAutonomousResolverTestCase, createTestReviewCase, createTestReviewCases, createUniversalEditorTestCase} from "./review/development";
 import type {applyAutonomousReview, previewAutonomousReview, runAutonomousReview} from "./review/autonomous";
 import type {applyAutonomousInvestigation, createMissingFightersInvestigationTestCase, previewAutonomousInvestigation, registerMockInvestigationSources, runAutonomousInvestigation, unregisterMockInvestigationSources} from "./review/investigation";
+import type {buildEditorialAgentPlan, listEditorialCapabilities, runEditorialAgent} from "./review/agent";
+import type {runReviewEditorialAgent} from "./integrations/reviewEditorialAgentCapabilities";
 import type {createExternalNewsReviewTestCase, createOrUpdateExternalNewsReviewCase, detectExternalNewsIssues, runExternalNewsReviewPilot} from "./review/producers/externalNews";
 import type {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeExecutionTestCase, createExternalNewsResumeTestCase, executeExternalNewsResumeWithRegisteredExecutor, registerMockExternalNewsResumeExecutor, unregisterMockExternalNewsResumeExecutor} from "./review/resume/externalNews";
 import type {
@@ -69,6 +71,10 @@ declare global {
       registerMockInvestigationSources: typeof registerMockInvestigationSources;
       unregisterMockInvestigationSources: typeof unregisterMockInvestigationSources;
       createMissingFightersInvestigationTestCase: typeof createMissingFightersInvestigationTestCase;
+      listEditorialCapabilities: typeof listEditorialCapabilities;
+      buildEditorialAgentPlan: typeof buildEditorialAgentPlan;
+      runEditorialAgent: typeof runEditorialAgent;
+      runReviewEditorialAgent: typeof runReviewEditorialAgent;
     };
   }
 }

@@ -52,6 +52,7 @@ import { getEnabledExternalNewsSources } from "../sources/sourceRegistry";
 import {runExternalNewsReviewPilot, type ExternalNewsPilotReview} from "../review/producers/externalNews";
 import {registerReviewResumeExecutor} from "../integrations/reviewResumeExecutors";
 import {registerPanelSanityInvestigationSource} from "../integrations/reviewInvestigationSources";
+import {registerReviewEditorialAgentCapabilities} from "../integrations/reviewEditorialAgentCapabilities";
 import type {ExternalNewsResumeExecutor} from "../review/resume/externalNews";
 import type {ReviewJsonObject} from "../review/types";
 
@@ -2044,6 +2045,7 @@ export default function PanelIA(): ReactElement {
   }), []);
 
   useEffect(() => registerReviewResumeExecutor("external_news", externalNewsResumeExecutor), [externalNewsResumeExecutor]);
+  useEffect(() => registerReviewEditorialAgentCapabilities(), []);
   const [contentType, setContentType] = useState<ContentTypeId>(
     DEFAULT_CONTENT_TYPE
   );
