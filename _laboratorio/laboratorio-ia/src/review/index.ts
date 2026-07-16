@@ -15,6 +15,7 @@ export * from "./agent";
 export * from "./materialization";
 export * from "./schemaRequirements";
 export * from "./schemaEvolution";
+export * from "./modelEvolution";
 export * from "./cases/validateResolution";
 export * from "./store/localStorageRepository";
 export * from "./store/migrations";

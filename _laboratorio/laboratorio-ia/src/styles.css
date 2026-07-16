@@ -311,11 +311,36 @@ textarea {
 .schema-evolution-alternatives li > div { display: flex; justify-content: space-between; gap: 10px; }
 .schema-evolution-alternatives li > p { margin-top: 6px; color: var(--panel-text-soft); }
 .schema-evolution-alternatives details { margin-top: 8px; }
+.model-evolution-panel,
+.model-evolution-alternatives { display: grid; gap: 12px; min-width: 0; }
+.model-evolution-simulation { display: grid; gap: 14px; min-width: 0; padding: 14px; border: 1px solid rgba(96,165,250,.4); border-radius: 14px; background: rgba(59,130,246,.055); overflow-wrap: anywhere; }
+.model-evolution-simulation > header,
+.model-evolution-alternative > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.model-evolution-simulation h5,
+.model-evolution-simulation h6,
+.model-evolution-simulation p { margin: 0; }
+.model-evolution-simulation h5 { font-size: 15px; }
+.model-evolution-simulation h6 { font-size: 13px; }
+.model-evolution-simulation > header p { margin-top: 4px; color: var(--panel-text-soft); font-size: 12px; }
+.model-evolution-alternative { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--panel-border); border-radius: 12px; background: rgba(0,0,0,.12); }
+.model-evolution-alternative > header span { color: #bfdbfe; font-size: 11px; font-weight: 800; }
+.model-evolution-recommended { border-color: rgba(16,185,129,.5); background: rgba(16,185,129,.07); }
+.model-evolution-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.model-evolution-metrics span { display: grid; gap: 3px; padding: 8px; border: 1px solid var(--panel-border); border-radius: 9px; color: var(--panel-text-soft); font-size: 11px; }
+.model-evolution-metrics strong { color: var(--panel-text); font-size: 14px; text-transform: uppercase; }
+.model-evolution-alternative details { padding-top: 8px; border-top: 1px solid var(--panel-border); }
+.model-evolution-alternative summary { cursor: pointer; font-weight: 800; }
+.model-evolution-alternative details h6 { margin-top: 12px; }
+.model-evolution-alternative details ul,
+.model-evolution-alternative details ol { margin: 6px 0 0; padding-left: 22px; color: var(--panel-text-soft); }
+.model-evolution-alternative details p { margin-top: 6px; color: var(--panel-text-soft); }
 @media (max-width: 640px) {
   .schema-requirements-actions { display: grid; grid-template-columns: 1fr; }
   .schema-requirements-actions .review-button { width: 100%; }
   .schema-requirements-entity > header { display: grid; }
   .schema-evolution-proposal > header { display: grid; }
+  .model-evolution-simulation > header,
+  .model-evolution-alternative > header { display: grid; }
   .schema-requirements-entity > header .review-badge { justify-self: start; }
 }
 .review-resolution-summary small { color: var(--panel-text-muted); }

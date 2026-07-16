@@ -4,6 +4,8 @@ import type { ReviewCase, ReviewJsonObject, ReviewJsonValue } from "../../types"
 import { applyPreparedEntityEnrichment, inspectPreparedEntityRequirements, runPreparedEntityRequirementAgent, type EntitySchemaRequirement, type PreparedEntityRequirementItem, type PreparedEntityRequirementReport, type RequirementResolutionConclusion } from "..";
 import SchemaEvolutionPanel from "../../schemaEvolution/components/SchemaEvolutionPanel";
 import { runSchemaEvolutionEngine } from "../../schemaEvolution/schemaEvolutionEngine";
+import ModelEvolutionPanel from "../../modelEvolution/ModelEvolutionPanel";
+import { buildEvolutionSimulation } from "../../modelEvolution/buildEvolutionSimulation";
 
 type PanelError = "case_not_found" | "no_prepared_entities" | "schema_adapter_unavailable" | "inspection_failed" | "investigation_failed" | "blocked_by_policy" | "enrichment_failed" | "revalidation_failed" | "stale_case" | "invalid_state" | "unknown_error";
 const READ_ONLY = new Set(["resuming", "resumed", "dismissed"]);
@@ -99,6 +101,18 @@ export default function PreparedEntitySchemaRequirementsPanel({ reviewCase }: { 
     [display, historical],
   );
   const schemaEvolution = useMemo(() => (historical ? runSchemaEvolutionEngine({ report: historical }) : null), [historical]);
+  const modelEvolution = useMemo(
+    () =>
+      schemaEvolution?.proposals.length
+        ? buildEvolutionSimulation({
+            proposals: schemaEvolution.proposals,
+            reviewCase,
+            schemaRequirements: historical ?? undefined,
+            preparedEntities: prepared.map((resolution) => ({ issueId: resolution.issueId, entityType: resolution.entityType, draft: resolution.draft })),
+          })
+        : null,
+    [historical, prepared, reviewCase, schemaEvolution],
+  );
   if (!prepared.length) return null;
   const readOnly = READ_ONLY.has(reviewCase.status);
   const canApply = APPLYABLE.has(reviewCase.status) && !readOnly;
@@ -230,6 +244,7 @@ export default function PreparedEntitySchemaRequirementsPanel({ reviewCase }: { 
         ) : null}
       </section>
       <SchemaEvolutionPanel result={schemaEvolution} />
+      <ModelEvolutionPanel result={modelEvolution} />
     </>
   );
 }
