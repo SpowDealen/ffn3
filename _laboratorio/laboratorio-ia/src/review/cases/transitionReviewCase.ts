@@ -21,6 +21,20 @@ const ALLOWED_TRANSITIONS: Record<ReviewCaseStatus, readonly ReviewCaseStatus[]>
   dismissed: [],
 };
 
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => [key, canonicalize(child)]),
+  );
+}
+
+function structurallyEqual(left: unknown, right: unknown): boolean {
+  return JSON.stringify(canonicalize(left)) === JSON.stringify(canonicalize(right));
+}
+
 function withVersion(
   reviewCase: ReviewCase,
   changes: Partial<ReviewCase>,
@@ -95,7 +109,7 @@ export function applyReviewResolution(
   const existing = reviewCase.resolutions.find(
     (current) => current.issueId === resolution.issueId,
   );
-  if (existing && JSON.stringify(existing) === JSON.stringify(resolution)) {
+  if (existing && structurallyEqual(existing, resolution)) {
     return reviewCase;
   }
 

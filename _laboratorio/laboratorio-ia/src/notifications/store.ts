@@ -417,6 +417,7 @@ export async function retryNotificationDelivery(
   );
 
   if (!existingNotification) return;
+  if (existingNotification.deliveryStatus === "sent") return;
 
   const channels = resolveNotificationChannels(
     existingNotification.channels,
