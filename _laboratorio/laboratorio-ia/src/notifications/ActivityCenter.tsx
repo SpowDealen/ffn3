@@ -28,6 +28,10 @@ import type {
   NotificationLevel,
   NotificationPriority,
 } from "./types";
+import {
+  calculateDeliveryMetrics,
+  calculateTelegramDeliveryHealth,
+} from "./metrics";
 
 type LevelFilter = "all" | NotificationLevel;
 type PriorityFilter =
@@ -386,160 +390,35 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
     hasBaseFilters || metricFilter !== null;
 
   const deliveryMetrics = useMemo(
-    () =>
-      notifications.reduce(
-        (metrics, notification) => {
-          if (notification.deliveryStatus === "sent") {
-            metrics.sent += 1;
-          } else if (notification.deliveryStatus === "failed") {
-            metrics.failed += 1;
-          } else if (notification.deliveryStatus === "pending") {
-            metrics.pending += 1;
-          } else if (notification.deliveryStatus === "skipped") {
-            metrics.skipped += 1;
-          }
-
-          if ((notification.updateCount ?? 0) > 0) {
-            metrics.grouped += 1;
-          }
-
-          if (notification.priority) {
-            metrics[notification.priority] += 1;
-          }
-
-          return metrics;
-        },
-        {
-          sent: 0,
-          failed: 0,
-          pending: 0,
-          skipped: 0,
-          grouped: 0,
-          critical: 0,
-          high: 0,
-          normal: 0,
-          low: 0,
-        },
-      ),
+    () => calculateDeliveryMetrics(notifications),
     [notifications],
   );
 
   const telegramHealth = useMemo(() => {
-    const summary = notifications.reduce(
-      (current, notification) => {
-        if (notification.deliveryStatus === "sent") {
-          current.sent += 1;
-
-          const deliveredAt = notification.deliveredAt
-            ? new Date(notification.deliveredAt).getTime()
-            : Number.NaN;
-
-          if (Number.isFinite(deliveredAt)) {
-            current.latestSentAt = Math.max(
-              current.latestSentAt,
-              deliveredAt,
-            );
-
-            const createdAt = new Date(
-              notification.createdAt,
-            ).getTime();
-            const duration = deliveredAt - createdAt;
-
-            if (
-              Number.isFinite(createdAt) &&
-              duration >= 0
-            ) {
-              current.totalDeliveryDuration += duration;
-              current.deliveryDurationCount += 1;
-            }
-          }
-        } else if (notification.deliveryStatus === "failed") {
-          current.failed += 1;
-
-          const failedAt = new Date(
-            notification.updatedAt ?? notification.createdAt,
-          ).getTime();
-
-          if (
-            Number.isFinite(failedAt) &&
-            failedAt > current.latestFailedAt
-          ) {
-            current.latestFailedAt = failedAt;
-            current.latestFailureError =
-              notification.deliveryError?.trim() || undefined;
-          } else if (!current.fallbackFailureError) {
-            current.fallbackFailureError =
-              notification.deliveryError?.trim() || undefined;
-          }
-        }
-
-        return current;
-      },
-      {
-        sent: 0,
-        failed: 0,
-        latestSentAt: Number.NEGATIVE_INFINITY,
-        latestFailedAt: Number.NEGATIVE_INFINITY,
-        latestFailureError: undefined as string | undefined,
-        fallbackFailureError: undefined as string | undefined,
-        totalDeliveryDuration: 0,
-        deliveryDurationCount: 0,
-      },
-    );
-
-    const completedAttempts = summary.sent + summary.failed;
-    const hasLatestSent = Number.isFinite(summary.latestSentAt);
-    const hasLatestFailure = Number.isFinite(
-      summary.latestFailedAt,
-    );
-    const channelStatus =
-      completedAttempts === 0
-        ? "Sin datos"
-        : summary.failed > 0 &&
-            (summary.sent === 0 ||
-              (hasLatestFailure &&
-                (!hasLatestSent ||
-                  summary.latestFailedAt > summary.latestSentAt)))
-          ? "Con incidencias"
-          : "Operativo";
-    const successRate =
-      completedAttempts > 0
-        ? `${((summary.sent / completedAttempts) * 100).toFixed(1)} %`
-        : "—";
-    const latestSent = hasLatestSent
-      ? formatRelativeDate(
-          new Date(summary.latestSentAt).toISOString(),
-          now,
-        )
-      : "Sin entregas";
-    const latestFailure = hasLatestFailure
-      ? formatRelativeDate(
-          new Date(summary.latestFailedAt).toISOString(),
-          now,
-        )
-      : summary.failed > 0
-        ? "Fecha no disponible"
-        : "Sin fallos";
-    const averageDelivery =
-      summary.deliveryDurationCount > 0
-        ? formatDeliveryDuration(
-            summary.totalDeliveryDuration /
-              summary.deliveryDurationCount,
-          )
-        : "—";
-
+    const calculated = calculateTelegramDeliveryHealth(notifications);
     return {
-      channelStatus,
-      successRate,
-      latestSent,
-      latestFailure,
-      latestFailureError:
-        hasLatestFailure
-          ? summary.latestFailureError
-          : summary.fallbackFailureError,
-      averageDelivery,
+      channelStatus: calculated.channelStatus,
+      successRate:
+        calculated.successRate === null
+          ? "—"
+          : `${calculated.successRate.toFixed(1)} %`,
+      latestSent: calculated.latestSentAt
+        ? formatRelativeDate(calculated.latestSentAt, now)
+        : "Sin entregas",
+      latestFailure: calculated.latestFailedAt
+        ? formatRelativeDate(calculated.latestFailedAt, now)
+        : deliveryMetrics.failed > 0
+          ? "Fecha no disponible"
+          : "Sin fallos",
+      latestFailureError: calculated.latestFailureError,
+      averageDelivery:
+        calculated.averageDeliveryMs === null
+          ? "—"
+          : formatDeliveryDuration(
+              calculated.averageDeliveryMs,
+            ),
     };
-  }, [notifications, now]);
+  }, [deliveryMetrics.failed, notifications, now]);
 
   const reviewCount = useMemo(
     () =>

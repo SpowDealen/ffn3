@@ -17,6 +17,19 @@ const groupedDeliveryTimers = new Map<
   string,
   ReturnType<typeof setTimeout>
 >();
+type NotificationTransport = typeof sendLabNotificationToTelegram;
+let notificationTransport: NotificationTransport =
+  sendLabNotificationToTelegram;
+
+export function setNotificationTransportForTests(
+  transport: NotificationTransport,
+): () => void {
+  const previous = notificationTransport;
+  notificationTransport = transport;
+  return () => {
+    notificationTransport = previous;
+  };
+}
 
 type ResolvedNotificationChannels = {
   activityCenter: boolean;
@@ -250,7 +263,7 @@ async function executeNotificationDelivery(
   }
 
   const result =
-    await sendLabNotificationToTelegram(notification);
+    await notificationTransport(notification);
   applyDeliveryResult(
     notification.id,
     getNotificationVersion(notification),
