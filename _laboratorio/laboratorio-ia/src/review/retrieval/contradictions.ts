@@ -1,0 +1,9 @@
+import type {RetrievalCandidate, RetrievalContradiction} from "./types";
+export function detectRetrievalContradictions(candidates: RetrievalCandidate[]): RetrievalContradiction[] {
+  const output: RetrievalContradiction[] = []; const groups = new Map<string, RetrievalCandidate[]>();
+  candidates.forEach((item) => { const current = groups.get(item.clusterId) ?? []; current.push(item); groups.set(item.clusterId, current); });
+  groups.forEach((items) => { const active = items.filter((item) => item.candidateStatus !== "excluded"); if (active.some((item) => item.positiveOrNegative === "positive") && active.some((item) => item.positiveOrNegative === "negative")) output.push({type: "confirmed_and_rejected", memoryIds: active.map((item) => item.memoryId).sort(), explanation: "Existen memorias confirmadas y rechazadas compatibles; no se elige ganadora."}); if (items.some((item) => item.clusterState === "contested")) output.push({type: "contested_cluster", memoryIds: items.map((item) => item.memoryId).sort(), explanation: "El clúster está contested y bloquea cualquier interpretación favorable."}); });
+  const superseded = candidates.filter((item) => item.memoryState === "superseded"); if (superseded.length) output.push({type: "supersession", memoryIds: superseded.map((item) => item.memoryId).sort(), explanation: "Existen memorias superseded; se conservan como historia no vigente y no se elige un reemplazo automáticamente."});
+  const versionConflicts = candidates.filter((item) => item.blockingReasons.some((reason) => /schema|version/i.test(reason))); if (versionConflicts.length) output.push({type: "version_conflict", memoryIds: versionConflicts.map((item) => item.memoryId).sort(), explanation: "Existen incompatibilidades de schema o versión; esas memorias quedan excluidas."});
+  return output.sort((a, b) => a.type.localeCompare(b.type) || a.memoryIds.join().localeCompare(b.memoryIds.join()));
+}

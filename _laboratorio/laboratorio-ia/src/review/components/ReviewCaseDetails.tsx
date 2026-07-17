@@ -17,6 +17,7 @@ import PreparedEntityMaterializationPanel from "../materialization/components/Pr
 import PreparedEntitySchemaRequirementsPanel from "../schemaRequirements/components/PreparedEntitySchemaRequirementsPanel";
 import DecisionOutcomePanel from "../outcomes/components/DecisionOutcomePanel";
 import DecisionMemoryPanel from "../memory/components/DecisionMemoryPanel";
+import RelevantMemoryPanel from "../retrieval/components/RelevantMemoryPanel";
 
 type ReviewCaseDetailsProps = {
   reviewCase: ReviewCase;
@@ -220,6 +221,7 @@ export default function ReviewCaseDetails({
       <ExternalNewsResumePreviewPanel reviewCase={reviewCase} />
       <DecisionOutcomePanel reviewCase={reviewCase} />
       <DecisionMemoryPanel reviewCase={reviewCase} />
+      <RelevantMemoryPanel reviewCase={reviewCase} />
 
       {reviewCase.resolutions.length ? (
         <section className="review-subsection">

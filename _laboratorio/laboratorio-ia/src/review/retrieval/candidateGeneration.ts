@@ -1,0 +1,4 @@
+import type {DecisionMemoryRecord} from "../memory";
+import {MAX_INITIAL_CANDIDATES} from "./constants";
+import type {RetrievalQuery} from "./types";
+export function generateMemoryCandidates(query: RetrievalQuery, memories: DecisionMemoryRecord[], limit = MAX_INITIAL_CANDIDATES): DecisionMemoryRecord[] { return memories.filter((memory) => memory.issueType === query.issueType && (!query.entityType || memory.entityType === query.entityType)).sort((left, right) => { const rank = (memory: DecisionMemoryRecord) => memory.issueType === query.issueType && memory.entityType === query.entityType && memory.decisionType === query.decisionType ? 0 : memory.issueType === query.issueType && memory.entityType === query.entityType ? 1 : 2; return rank(left) - rank(right) || left.id.localeCompare(right.id); }).slice(0, Math.max(0, limit)); }

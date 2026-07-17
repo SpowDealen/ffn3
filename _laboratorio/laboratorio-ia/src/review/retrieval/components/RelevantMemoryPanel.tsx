@@ -1,0 +1,14 @@
+import {useSyncExternalStore} from "react";
+import type {ReviewCase} from "../../types";
+import {retrieveRelevantDecisionMemories} from "../integrations";
+import {addRetrievalNote, getLatestRetrievalForIssue, getRetrievalStoreVersion, reconcileDecisionRetrieval, subscribeRetrievalStore} from "../retrievalStore";
+import RetrievalDiagnostics from "./RetrievalDiagnostics";
+import RetrievalResultCard from "./RetrievalResultCard";
+export default function RelevantMemoryPanel({reviewCase}: {reviewCase: ReviewCase}) {
+  useSyncExternalStore(subscribeRetrievalStore, getRetrievalStoreVersion, getRetrievalStoreVersion);
+  const note = (id: string) => { const actor = window.prompt("Identificador del editor:", "editor")?.trim(); const value = window.prompt("Nota local auditable:", "")?.trim(); if (actor && value) addRetrievalNote(id, actor, value); };
+  return <section className="review-subsection retrieval-panel"><p className="review-kicker">MEMORIA RELEVANTE · ANÁLISIS LOCAL</p><h4 className="review-subtitle">Evidencia editorial histórica</h4><p className="review-muted">La búsqueda es explícita. Presenta antecedentes, pero no aplica decisiones ni modifica casos, outcomes o memorias.</p><div className="retrieval-issues">{reviewCase.issues.map((issue) => {
+    const result = getLatestRetrievalForIssue(issue.id);
+    return <article className="retrieval-issue" key={issue.id}><header><div><h5>{issue.label}</h5><p>{issue.kind} · {issue.id}</p></div><button className="review-button review-button-secondary" type="button" onClick={() => retrieveRelevantDecisionMemories(reviewCase.id, issue.id)}>{result ? "Volver a buscar" : "Buscar memoria relevante"}</button></header>{result ? <div className="retrieval-result"><p><strong>{result.status}</strong> · {result.candidates.length} candidatas · {result.negativeEvidence.length} negativas · {result.contradictions.length} contradicciones</p>{result.stale ? <p className="review-readonly-message">Resultado stale. Requiere una nueva búsqueda explícita.</p> : null}<div className="review-actions"><button className="review-button review-button-secondary" type="button" onClick={() => reconcileDecisionRetrieval(result.id)}>Reconciliar localmente</button><button className="review-button review-button-secondary" type="button" onClick={() => note(result.id)}>Añadir nota</button></div>{result.summary.map((item) => <p key={item}>{item}</p>)}{result.contradictions.map((item, index) => <p className="review-readonly-message" key={`${item.type}:${index}`}>{item.explanation}</p>)}<div className="retrieval-cards">{result.candidates.map((candidate) => <RetrievalResultCard candidate={candidate} key={candidate.memoryId} />)}</div><RetrievalDiagnostics result={result} /></div> : <p className="review-muted">Sin consulta. Abrir o renderizar el caso no ejecuta retrieval.</p>}</article>;
+  })}</div></section>;
+}

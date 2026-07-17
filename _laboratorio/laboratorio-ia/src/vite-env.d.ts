@@ -31,6 +31,7 @@ import type {
 } from "./review/store/reviewStore";
 import type {exportOutcomeLedger, getOutcomeById, getOutcomeEvents, getOutcomeRecords, getOutcomesForCase, reconcileOutcome, validateOutcomeStore} from "./review/outcomes";
 import type {exportDecisionMemory, getConfirmedMemories, getContestedMemoryClusters, getDecisionMemories, getDecisionMemory, getDecisionMemoryById, getDecisionMemoriesForCase, getDecisionMemoriesForOutcome, getDecisionMemoryCluster, getDecisionMemoryClusters, getInvalidMemories, getMemoriesForCase, getMemoryClusters, getMemoryEvents, getRejectedMemories, getReusableMemoryCandidates, importDecisionMemoriesFromOutcomes, importExistingOutcomesToMemory, reconcileAllMemories, reconcileDecisionMemory, reconcileMemory, validateDecisionMemoryStore} from "./review/memory";
+import type {buildDecisionRetrievalQuery, clearDecisionRetrievalHistory, exportDecisionRetrieval, getRetrievalResult as getDecisionRetrievalResult, getRetrievalResults as getDecisionRetrievalResults, getRetrievalResultsForCase as getDecisionRetrievalResultsForCase, getRetrievalResultsForIssue as getDecisionRetrievalResultsForIssue, reconcileDecisionRetrieval, retrieveRelevantDecisionMemories, validateDecisionRetrievalStore} from "./review/retrieval";
 
 declare global {
   interface Window {
@@ -118,6 +119,16 @@ declare global {
       getDecisionMemoryCluster: typeof getDecisionMemoryCluster;
       reconcileDecisionMemory: typeof reconcileDecisionMemory;
       importDecisionMemoriesFromOutcomes: typeof importDecisionMemoriesFromOutcomes;
+      buildDecisionRetrievalQuery: typeof buildDecisionRetrievalQuery;
+      retrieveRelevantDecisionMemories: typeof retrieveRelevantDecisionMemories;
+      getDecisionRetrievalResults: typeof getDecisionRetrievalResults;
+      getDecisionRetrievalResult: typeof getDecisionRetrievalResult;
+      getDecisionRetrievalResultsForCase: typeof getDecisionRetrievalResultsForCase;
+      getDecisionRetrievalResultsForIssue: typeof getDecisionRetrievalResultsForIssue;
+      validateDecisionRetrievalStore: typeof validateDecisionRetrievalStore;
+      reconcileDecisionRetrieval: typeof reconcileDecisionRetrieval;
+      exportDecisionRetrieval: typeof exportDecisionRetrieval;
+      clearDecisionRetrievalHistory: typeof clearDecisionRetrievalHistory;
     };
   }
 }

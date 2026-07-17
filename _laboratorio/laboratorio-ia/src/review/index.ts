@@ -19,6 +19,7 @@ export * from "./modelEvolution";
 export * from "./laboratoryAudit";
 export * from "./outcomes";
 export * from "./memory";
+export * from "./retrieval";
 export * from "./cases/validateResolution";
 export * from "./store/localStorageRepository";
 export * from "./store/migrations";
