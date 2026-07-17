@@ -33,6 +33,7 @@ import {
 import {exportOutcomeLedger, getOutcomeById, getOutcomeEvents, getOutcomeRecords, getOutcomesForCase, reconcileOutcome, validateOutcomeStore} from "./review/outcomes";
 import {exportDecisionMemory, getConfirmedMemories, getContestedMemoryClusters, getDecisionMemories, getDecisionMemory, getDecisionMemoryById, getDecisionMemoriesForCase, getDecisionMemoriesForOutcome, getDecisionMemoryCluster, getDecisionMemoryClusters, getInvalidMemories, getMemoriesForCase, getMemoryClusters, getMemoryEvents, getRejectedMemories, getReusableMemoryCandidates, importDecisionMemoriesFromOutcomes, importExistingOutcomesToMemory, reconcileAllMemories, reconcileDecisionMemory, reconcileMemory, validateDecisionMemoryStore} from "./review/memory";
 import {buildDecisionRetrievalQuery, clearDecisionRetrievalHistory, exportDecisionRetrieval, getRetrievalResult as getDecisionRetrievalResult, getRetrievalResults as getDecisionRetrievalResults, getRetrievalResultsForCase as getDecisionRetrievalResultsForCase, getRetrievalResultsForIssue as getDecisionRetrievalResultsForIssue, reconcileDecisionRetrieval, retrieveRelevantDecisionMemories, validateDecisionRetrievalStore} from "./review/retrieval";
+import {buildReviewInvestigationPlan, cancelReviewInvestigation, clearReviewInvestigationHistory, exportReviewInvestigations, getInvestigationClaims, getInvestigationConflicts, getInvestigationEvidence, getInvestigationFindings, getLatestReviewInvestigationForIssue, getReviewInvestigation, getReviewInvestigations, getReviewInvestigationsForCase, getReviewInvestigationsForIssue, investigateReviewIssue as investigateDeepReviewIssue, reconcileReviewInvestigations, validateReviewInvestigationStore} from "./review/investigation/deep";
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
   window.LAB_NOTIFICATIONS = {
@@ -131,6 +132,22 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     reconcileDecisionRetrieval,
     exportDecisionRetrieval,
     clearDecisionRetrievalHistory,
+    buildReviewInvestigationPlan,
+    investigateReviewIssue: investigateDeepReviewIssue,
+    cancelReviewInvestigation,
+    getReviewInvestigations,
+    getReviewInvestigation,
+    getReviewInvestigationsForCase,
+    getReviewInvestigationsForIssue,
+    getLatestReviewInvestigationForIssue,
+    getInvestigationEvidence,
+    getInvestigationClaims,
+    getInvestigationConflicts,
+    getInvestigationFindings,
+    validateReviewInvestigationStore,
+    reconcileReviewInvestigations,
+    exportReviewInvestigations,
+    clearReviewInvestigationHistory,
   };
 }
 

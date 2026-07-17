@@ -18,6 +18,7 @@ import PreparedEntitySchemaRequirementsPanel from "../schemaRequirements/compone
 import DecisionOutcomePanel from "../outcomes/components/DecisionOutcomePanel";
 import DecisionMemoryPanel from "../memory/components/DecisionMemoryPanel";
 import RelevantMemoryPanel from "../retrieval/components/RelevantMemoryPanel";
+import InvestigationPanel from "../investigation/deep/InvestigationPanel";
 
 type ReviewCaseDetailsProps = {
   reviewCase: ReviewCase;
@@ -222,6 +223,7 @@ export default function ReviewCaseDetails({
       <DecisionOutcomePanel reviewCase={reviewCase} />
       <DecisionMemoryPanel reviewCase={reviewCase} />
       <RelevantMemoryPanel reviewCase={reviewCase} />
+      <InvestigationPanel reviewCase={reviewCase} />
 
       {reviewCase.resolutions.length ? (
         <section className="review-subsection">

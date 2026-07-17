@@ -9,3 +9,4 @@ export * from "./autonomousInvestigationOrchestrator";
 export * from "./sources/localSources";
 export * from "./sources/sanityReadSource";
 export * from "./development";
+export * from "./deep";

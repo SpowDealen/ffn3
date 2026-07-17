@@ -1,0 +1,49 @@
+import {stableHash} from "./normalization";
+import type {CandidateAssessment, Claim, DeepInvestigationPlan, EvidenceDependencyGraph, EvidenceItem, InvestigationConflict, InvestigationCoverage, InvestigationFinding, InvestigationSufficiency} from "./types";
+
+const valueKey = (value: unknown) => JSON.stringify(value);
+export function deduplicateEvidence(items: EvidenceItem[]): EvidenceItem[] {
+  const groups = new Map<string, EvidenceItem[]>();
+  items.forEach((item) => { const key = valueKey([item.sourceFingerprint, item.subject, item.predicate, item.normalizedValue, item.independenceGroup, item.providerRunId]); groups.set(key, [...(groups.get(key) ?? []), item]); });
+  return [...groups.values()].map((group) => ({...group[0], equivalentEvidenceIds: group.slice(1).map((item) => item.id).sort()})).sort((a, b) => a.id.localeCompare(b.id));
+}
+export function buildEvidenceDependencyGraph(evidence: EvidenceItem[]): EvidenceDependencyGraph {
+  const ids = new Set(evidence.map((item) => item.id)); const edges = evidence.flatMap((item) => item.parentEvidenceIds.filter((parent) => ids.has(parent)).map((parent) => ({from: parent, to: item.id, transformation: item.transformations.join(",") || "derived"})));
+  const visiting = new Set<string>(); const visited = new Set<string>(); const errors: string[] = [];
+  const visit = (id: string): void => { if (visiting.has(id)) { errors.push(`circular_dependency:${id}`); return; } if (visited.has(id)) return; visiting.add(id); edges.filter((edge) => edge.from === id).forEach((edge) => visit(edge.to)); visiting.delete(id); visited.add(id); };
+  evidence.forEach((item) => visit(item.id)); return {nodes: evidence.map((item) => ({evidenceId: item.id, independenceGroup: item.independenceGroup})), edges, valid: errors.length === 0, errors};
+}
+export function extractClaimsFromEvidence(evidence: EvidenceItem[]): Claim[] {
+  const groups = new Map<string, EvidenceItem[]>(); evidence.filter((item) => item.normalizedValue !== undefined && item.status !== "excluded").forEach((item) => { const key = valueKey([item.subject, item.predicate, item.normalizedValue]); groups.set(key, [...(groups.get(key) ?? []), item]); });
+  const allByPredicate = new Map<string, EvidenceItem[]>(); evidence.forEach((item) => allByPredicate.set(`${item.subject}:${item.predicate}`, [...(allByPredicate.get(`${item.subject}:${item.predicate}`) ?? []), item]));
+  return [...groups.entries()].map(([key, sources]): Claim => {
+    const first = sources[0]; const opposing = (allByPredicate.get(`${first.subject}:${first.predicate}`) ?? []).filter((item) => valueKey(item.normalizedValue) !== valueKey(first.normalizedValue)); const groupsCount = new Set(sources.map((item) => item.independenceGroup)).size; const staleOnly = sources.every((item) => item.status === "stale");
+    return {id: `claim:${stableHash(key)}`, subject: first.subject, predicate: first.predicate, normalizedValue: first.normalizedValue!, claimType: first.predicate, sourceEvidenceIds: sources.map((item) => item.id).sort(), opposingEvidenceIds: opposing.map((item) => item.id).sort(), dependencyGroups: [...new Set(sources.map((item) => item.independenceGroup))].sort(), assessment: staleOnly ? "stale_only" : opposing.length ? "contradicted" : groupsCount > 0 ? "supported" : "insufficient_evidence", confidence: staleOnly ? 0.25 : Math.min(0.9, 0.55 + (groupsCount - 1) * 0.15), explanation: opposing.length ? "Existen valores incompatibles para el mismo sujeto y predicado." : "La afirmación procede explícitamente de evidencia estructurada.", limitations: [...new Set(sources.flatMap((item) => item.limitations))].sort()};
+  }).sort((a, b) => a.id.localeCompare(b.id));
+}
+export function detectInvestigationConflicts(claims: Claim[], evidence: EvidenceItem[]): InvestigationConflict[] {
+  const groups = new Map<string, Claim[]>(); claims.forEach((claim) => groups.set(`${claim.subject}:${claim.predicate}`, [...(groups.get(`${claim.subject}:${claim.predicate}`) ?? []), claim]));
+  return [...groups.entries()].filter(([, values]) => new Set(values.map((item) => valueKey(item.normalizedValue))).size > 1).map(([key, values]): InvestigationConflict => { const evidenceIds = [...new Set(values.flatMap((item) => item.sourceEvidenceIds))].sort(); const independenceGroups = [...new Set(evidence.filter((item) => evidenceIds.includes(item.id)).map((item) => item.independenceGroup))].sort(); return {id: `conflict:${stableHash(key)}`, conflictType: "incompatible_values", claimIds: values.map((item) => item.id).sort(), evidenceIds, independenceGroups, severity: independenceGroups.length > 1 ? "high" : "medium", explanation: independenceGroups.length > 1 ? "Fuentes independientes sostienen valores incompatibles; 5F conserva ambas posiciones." : "Valores incompatibles derivan de un origen común y no se cuentan como fuentes independientes.", resolvableByCurrentEvidence: false, missingEvidenceKinds: ["current_independent_primary_source"]}; }).sort((a, b) => a.id.localeCompare(b.id));
+}
+export function evaluateCandidates(evidence: EvidenceItem[]): CandidateAssessment[] {
+  const candidates = evidence.filter((item) => item.predicate === "candidate.value");
+  return candidates.map((item): CandidateAssessment => ({candidateId: item.subject, status: "insufficient_evidence", evidenceIds: [item.id], opposingEvidenceIds: [], matchedDimensions: ["candidate_present"], mismatchedDimensions: [], missingDimensions: ["independent_identity", "temporal_context"], dependencyGroups: [item.independenceGroup], confidence: 0.35, explanation: "El candidato existe, pero 5F no dispone de dimensiones independientes suficientes para elegirlo."})).sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+}
+export function buildFindings(claims: Claim[], conflicts: InvestigationConflict[], candidates: CandidateAssessment[]): InvestigationFinding[] {
+  const findings: InvestigationFinding[] = claims.map((claim) => ({id: `finding:${claim.id}`, findingType: "claim_assessment", subject: claim.subject, status: claim.assessment, claimIds: [claim.id], evidenceIds: [...claim.sourceEvidenceIds, ...claim.opposingEvidenceIds], confidence: claim.confidence, explanation: claim.explanation, limitations: claim.limitations, blocksResolution: claim.assessment === "contradicted" || claim.assessment === "insufficient_evidence", suggestedNextEvidenceKinds: claim.assessment === "contradicted" ? ["current_independent_primary_source"] : []}));
+  conflicts.forEach((conflict) => findings.push({id: `finding:${conflict.id}`, findingType: "source_conflict", subject: conflict.id, status: "contradicted", claimIds: conflict.claimIds, evidenceIds: conflict.evidenceIds, confidence: 0.9, explanation: conflict.explanation, limitations: [], blocksResolution: true, suggestedNextEvidenceKinds: conflict.missingEvidenceKinds}));
+  if (candidates.length > 1 && candidates.every((item) => item.status === "insufficient_evidence")) findings.push({id: "finding:entity-ambiguity", findingType: "candidate_assessment", subject: "candidate", status: "entity_ambiguity", claimIds: [], evidenceIds: candidates.flatMap((item) => item.evidenceIds), confidence: 0.8, explanation: "Hay varios candidatos y la evidencia no permite escoger un ganador.", limitations: [], blocksResolution: true, suggestedNextEvidenceKinds: ["independent_identity"]});
+  return findings.sort((a, b) => a.id.localeCompare(b.id));
+}
+export function evaluateCoverage(plan: DeepInvestigationPlan, evidence: EvidenceItem[]): InvestigationCoverage { const critical = plan.questions.filter((item) => item.critical); const covered = critical.filter((question) => evidence.some((item) => item.predicate === question.predicate || (question.kind === "candidate_comparison" && item.predicate === "candidate.value"))); return {criticalQuestions: critical.length, coveredCriticalQuestions: covered.length, ratio: critical.length ? covered.length / critical.length : 1, independentGroups: new Set(evidence.filter((item) => item.status === "active").map((item) => item.independenceGroup)).size}; }
+export function evaluateInvestigationSufficiency(input: {coverage: InvestigationCoverage; conflicts: InvestigationConflict[]; evidence: EvidenceItem[]; candidates: CandidateAssessment[]; failedProviders: string[]; policyBlocked: boolean}): InvestigationSufficiency {
+  let status: InvestigationSufficiency["status"] = "insufficient"; const reasons: string[] = [];
+  if (input.policyBlocked) { status = "policy_blocked"; reasons.push("Un proveedor crítico fue bloqueado por política."); }
+  else if (input.failedProviders.length) { status = "provider_failure"; reasons.push("Falló al menos un proveedor seleccionado."); }
+  else if (input.conflicts.some((item) => ["high", "critical"].includes(item.severity))) { status = "contradictory"; reasons.push("Existe un conflicto relevante no resuelto."); }
+  else if (input.evidence.length > 0 && input.evidence.every((item) => item.status === "stale")) { status = "stale"; reasons.push("Solo existe evidencia obsoleta."); }
+  else if (input.coverage.ratio === 1 && input.evidence.some((item) => ["historical_rejected", "rejected"].includes(String(item.normalizedValue))) && !input.evidence.some((item) => item.status === "active" && !["historical_rejected", "rejected"].includes(String(item.normalizedValue)))) { status = "sufficient_only_for_rejection"; reasons.push("La evidencia contextual disponible solo respalda rechazo, no una propuesta positiva."); }
+  else if (input.coverage.ratio === 1 && input.coverage.independentGroups >= 1 && !input.candidates.some((item) => item.status === "incompatible")) { status = "sufficient_for_proposal"; reasons.push("Las preguntas críticas están cubiertas; una fase posterior podría formular una propuesta."); }
+  else reasons.push("Faltan preguntas críticas, independencia o dimensiones de candidatos.");
+  return {status, reasons, policyVersion: "5f.1"};
+}

@@ -32,6 +32,7 @@ import type {
 import type {exportOutcomeLedger, getOutcomeById, getOutcomeEvents, getOutcomeRecords, getOutcomesForCase, reconcileOutcome, validateOutcomeStore} from "./review/outcomes";
 import type {exportDecisionMemory, getConfirmedMemories, getContestedMemoryClusters, getDecisionMemories, getDecisionMemory, getDecisionMemoryById, getDecisionMemoriesForCase, getDecisionMemoriesForOutcome, getDecisionMemoryCluster, getDecisionMemoryClusters, getInvalidMemories, getMemoriesForCase, getMemoryClusters, getMemoryEvents, getRejectedMemories, getReusableMemoryCandidates, importDecisionMemoriesFromOutcomes, importExistingOutcomesToMemory, reconcileAllMemories, reconcileDecisionMemory, reconcileMemory, validateDecisionMemoryStore} from "./review/memory";
 import type {buildDecisionRetrievalQuery, clearDecisionRetrievalHistory, exportDecisionRetrieval, getRetrievalResult as getDecisionRetrievalResult, getRetrievalResults as getDecisionRetrievalResults, getRetrievalResultsForCase as getDecisionRetrievalResultsForCase, getRetrievalResultsForIssue as getDecisionRetrievalResultsForIssue, reconcileDecisionRetrieval, retrieveRelevantDecisionMemories, validateDecisionRetrievalStore} from "./review/retrieval";
+import type {buildReviewInvestigationPlan, cancelReviewInvestigation, clearReviewInvestigationHistory, exportReviewInvestigations, getInvestigationClaims, getInvestigationConflicts, getInvestigationEvidence, getInvestigationFindings, getLatestReviewInvestigationForIssue, getReviewInvestigation, getReviewInvestigations, getReviewInvestigationsForCase, getReviewInvestigationsForIssue, investigateReviewIssue, reconcileReviewInvestigations, validateReviewInvestigationStore} from "./review/investigation/deep";
 
 declare global {
   interface Window {
@@ -129,6 +130,22 @@ declare global {
       reconcileDecisionRetrieval: typeof reconcileDecisionRetrieval;
       exportDecisionRetrieval: typeof exportDecisionRetrieval;
       clearDecisionRetrievalHistory: typeof clearDecisionRetrievalHistory;
+      buildReviewInvestigationPlan: typeof buildReviewInvestigationPlan;
+      investigateReviewIssue: typeof investigateReviewIssue;
+      cancelReviewInvestigation: typeof cancelReviewInvestigation;
+      getReviewInvestigations: typeof getReviewInvestigations;
+      getReviewInvestigation: typeof getReviewInvestigation;
+      getReviewInvestigationsForCase: typeof getReviewInvestigationsForCase;
+      getReviewInvestigationsForIssue: typeof getReviewInvestigationsForIssue;
+      getLatestReviewInvestigationForIssue: typeof getLatestReviewInvestigationForIssue;
+      getInvestigationEvidence: typeof getInvestigationEvidence;
+      getInvestigationClaims: typeof getInvestigationClaims;
+      getInvestigationConflicts: typeof getInvestigationConflicts;
+      getInvestigationFindings: typeof getInvestigationFindings;
+      validateReviewInvestigationStore: typeof validateReviewInvestigationStore;
+      reconcileReviewInvestigations: typeof reconcileReviewInvestigations;
+      exportReviewInvestigations: typeof exportReviewInvestigations;
+      clearReviewInvestigationHistory: typeof clearReviewInvestigationHistory;
     };
   }
 }
