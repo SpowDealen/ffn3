@@ -1,0 +1,8 @@
+import {appendMemoryEvent, getDecisionMemoryById} from "./memoryStore";
+const act = (id: string, type: "memory_noted" | "memory_invalidated" | "memory_deprecated" | "memory_obsolete" | "memory_restored", actorId: string, reason: string) => { if (!actorId.trim() || !reason.trim()) throw new Error("actor_and_reason_required"); return appendMemoryEvent(id, type, reason, {type: "human", id: actorId}, `${type}:${id}:${getDecisionMemoryById(id)?.eventIds.length ?? 0}`); };
+export const addDecisionMemoryNote = (id: string, actorId: string, note: string) => act(id, "memory_noted", actorId, note);
+export const invalidateDecisionMemory = (id: string, actorId: string, reason: string) => act(id, "memory_invalidated", actorId, reason);
+export const deprecateDecisionMemory = (id: string, actorId: string, reason: string) => act(id, "memory_deprecated", actorId, reason);
+export const markDecisionMemoryObsolete = (id: string, actorId: string, reason: string) => act(id, "memory_obsolete", actorId, reason);
+export const restoreDecisionMemory = (id: string, actorId: string, reason: string) => act(id, "memory_restored", actorId, reason);
+export function supersedeDecisionMemory(id: string, replacementMemoryId: string, actorId: string, reason: string) { if (!actorId.trim() || !reason.trim()) throw new Error("actor_and_reason_required"); if (!getDecisionMemoryById(replacementMemoryId)) throw new Error("replacement_memory_not_found"); if (id === replacementMemoryId) throw new Error("memory_cannot_supersede_itself"); return appendMemoryEvent(id, "memory_superseded", reason, {type: "human", id: actorId}, `memory-superseded:${id}:${replacementMemoryId}`, {replacementMemoryId}); }

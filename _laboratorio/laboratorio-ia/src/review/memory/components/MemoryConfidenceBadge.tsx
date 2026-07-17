@@ -1,0 +1,1 @@
+export default function MemoryConfidenceBadge({score, level}: {score: number; level: string}) { return <span className={`review-badge memory-confidence memory-confidence-${level}`}>{level} · {score}/100</span>; }

@@ -31,6 +31,7 @@ import {
   transitionReviewCase,
 } from "./review/store/reviewStore";
 import {exportOutcomeLedger, getOutcomeById, getOutcomeEvents, getOutcomeRecords, getOutcomesForCase, reconcileOutcome, validateOutcomeStore} from "./review/outcomes";
+import {exportDecisionMemory, getConfirmedMemories, getContestedMemoryClusters, getDecisionMemories, getDecisionMemory, getDecisionMemoryById, getDecisionMemoriesForCase, getDecisionMemoriesForOutcome, getDecisionMemoryCluster, getDecisionMemoryClusters, getInvalidMemories, getMemoriesForCase, getMemoryClusters, getMemoryEvents, getRejectedMemories, getReusableMemoryCandidates, importDecisionMemoriesFromOutcomes, importExistingOutcomesToMemory, reconcileAllMemories, reconcileDecisionMemory, reconcileMemory, validateDecisionMemoryStore} from "./review/memory";
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
   window.LAB_NOTIFICATIONS = {
@@ -97,6 +98,28 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     reconcileOutcome,
     validateOutcomeStore,
     exportOutcomeLedger,
+    getDecisionMemories,
+    getDecisionMemoryById,
+    getMemoriesForCase,
+    getMemoryEvents,
+    getMemoryClusters,
+    getConfirmedMemories,
+    getRejectedMemories,
+    getInvalidMemories,
+    getReusableMemoryCandidates,
+    getContestedMemoryClusters,
+    reconcileMemory,
+    reconcileAllMemories,
+    validateDecisionMemoryStore,
+    exportDecisionMemory,
+    importExistingOutcomesToMemory,
+    getDecisionMemory,
+    getDecisionMemoriesForCase,
+    getDecisionMemoriesForOutcome,
+    getDecisionMemoryClusters,
+    getDecisionMemoryCluster,
+    reconcileDecisionMemory,
+    importDecisionMemoriesFromOutcomes,
   };
 }
 

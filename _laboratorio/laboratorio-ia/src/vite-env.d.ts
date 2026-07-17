@@ -30,6 +30,7 @@ import type {
   transitionReviewCase,
 } from "./review/store/reviewStore";
 import type {exportOutcomeLedger, getOutcomeById, getOutcomeEvents, getOutcomeRecords, getOutcomesForCase, reconcileOutcome, validateOutcomeStore} from "./review/outcomes";
+import type {exportDecisionMemory, getConfirmedMemories, getContestedMemoryClusters, getDecisionMemories, getDecisionMemory, getDecisionMemoryById, getDecisionMemoriesForCase, getDecisionMemoriesForOutcome, getDecisionMemoryCluster, getDecisionMemoryClusters, getInvalidMemories, getMemoriesForCase, getMemoryClusters, getMemoryEvents, getRejectedMemories, getReusableMemoryCandidates, importDecisionMemoriesFromOutcomes, importExistingOutcomesToMemory, reconcileAllMemories, reconcileDecisionMemory, reconcileMemory, validateDecisionMemoryStore} from "./review/memory";
 
 declare global {
   interface Window {
@@ -95,6 +96,28 @@ declare global {
       reconcileOutcome: typeof reconcileOutcome;
       validateOutcomeStore: typeof validateOutcomeStore;
       exportOutcomeLedger: typeof exportOutcomeLedger;
+      getDecisionMemories: typeof getDecisionMemories;
+      getDecisionMemoryById: typeof getDecisionMemoryById;
+      getMemoriesForCase: typeof getMemoriesForCase;
+      getMemoryEvents: typeof getMemoryEvents;
+      getMemoryClusters: typeof getMemoryClusters;
+      getConfirmedMemories: typeof getConfirmedMemories;
+      getRejectedMemories: typeof getRejectedMemories;
+      getInvalidMemories: typeof getInvalidMemories;
+      getReusableMemoryCandidates: typeof getReusableMemoryCandidates;
+      getContestedMemoryClusters: typeof getContestedMemoryClusters;
+      reconcileMemory: typeof reconcileMemory;
+      reconcileAllMemories: typeof reconcileAllMemories;
+      validateDecisionMemoryStore: typeof validateDecisionMemoryStore;
+      exportDecisionMemory: typeof exportDecisionMemory;
+      importExistingOutcomesToMemory: typeof importExistingOutcomesToMemory;
+      getDecisionMemory: typeof getDecisionMemory;
+      getDecisionMemoriesForCase: typeof getDecisionMemoriesForCase;
+      getDecisionMemoriesForOutcome: typeof getDecisionMemoriesForOutcome;
+      getDecisionMemoryClusters: typeof getDecisionMemoryClusters;
+      getDecisionMemoryCluster: typeof getDecisionMemoryCluster;
+      reconcileDecisionMemory: typeof reconcileDecisionMemory;
+      importDecisionMemoriesFromOutcomes: typeof importDecisionMemoriesFromOutcomes;
     };
   }
 }

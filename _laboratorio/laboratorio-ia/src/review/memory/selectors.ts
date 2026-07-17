@@ -1,0 +1,14 @@
+import {getDecisionMemories, getMemoryClusters} from "./memoryStore";
+export const getConfirmedMemories = () => getDecisionMemories().filter((item) => item.editorialDecision === "confirmed");
+export const getRejectedMemories = () => getDecisionMemories().filter((item) => item.editorialDecision === "rejected");
+export const getInvalidMemories = () => getDecisionMemories().filter((item) => !["confirmed", "rejected"].includes(item.status));
+export const getReusableMemoryCandidates = () => { const contested = new Set(getMemoryClusters().filter((item) => item.status === "contested").map((item) => item.fingerprint)); return getConfirmedMemories().filter((item) => item.status === "confirmed" && item.compatibility.status === "compatible" && item.reusePolicy !== "never" && !contested.has(item.clusterFingerprint)); };
+export const getContestedMemoryClusters = () => getMemoryClusters().filter((item) => item.status === "contested");
+export const getInvalidatedMemories = () => getDecisionMemories().filter((item) => item.status === "invalidated");
+export const getDeprecatedMemories = () => getDecisionMemories().filter((item) => item.status === "deprecated");
+export const getObsoleteMemories = () => getDecisionMemories().filter((item) => item.status === "obsolete");
+export const getSupersededMemories = () => getDecisionMemories().filter((item) => item.status === "superseded");
+export const getReusableCandidates = getReusableMemoryCandidates;
+export const getBlockedReuseCandidates = () => getDecisionMemories().filter((item) => !getReusableMemoryCandidates().some((candidate) => candidate.id === item.id));
+export const getContestedClusters = getContestedMemoryClusters;
+export const getHighConfidenceClusters = () => getMemoryClusters().filter((item) => item.confidence.level === "high");

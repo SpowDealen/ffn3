@@ -1,5 +1,6 @@
 import {appendOutcomeEvent, getOutcomeById, getOutcomeEvents} from "./outcomeStore";
 import type {OutcomeReconciliationResult} from "./types";
+import {safelyObserveOutcomeForMemory} from "../memory/createMemoryFromOutcome";
 export function reconcileOutcome(outcomeId: string, now = () => new Date().toISOString()): OutcomeReconciliationResult {
   const record = getOutcomeById(outcomeId); if (!record) throw new Error("outcome_not_found");
   const events = getOutcomeEvents(outcomeId); const findings: string[] = [];
@@ -14,5 +15,5 @@ export function reconcileOutcome(outcomeId: string, now = () => new Date().toISO
 }
 export function supersedeOutcome(outcomeId: string, supersededBy: string, input: {actorId: string; reason: string; now?: () => string}) {
   const record = getOutcomeById(outcomeId); if (!record) throw new Error("outcome_not_found"); if (!getOutcomeById(supersededBy)) throw new Error("replacement_outcome_not_found"); if (!input.actorId.trim() || !input.reason.trim()) throw new Error("supersession_requires_actor_and_reason");
-  return appendOutcomeEvent({outcomeId, caseId: record.caseId, type: "outcome_superseded", stage: "decision", status: "superseded", source: "human_confirmation", correlationKey: record.correlationKey, idempotencyKey: `supersede:${outcomeId}:${supersededBy}`, occurredAt: input.now?.(), actor: {type: "human", id: input.actorId}, operation: "supersede_decision", payload: {reason: input.reason}, references: [{type: "outcome", id: supersededBy}]});
+  const result = appendOutcomeEvent({outcomeId, caseId: record.caseId, type: "outcome_superseded", stage: "decision", status: "superseded", source: "human_confirmation", correlationKey: record.correlationKey, idempotencyKey: `supersede:${outcomeId}:${supersededBy}`, occurredAt: input.now?.(), actor: {type: "human", id: input.actorId}, operation: "supersede_decision", payload: {reason: input.reason}, references: [{type: "outcome", id: supersededBy}]}); safelyObserveOutcomeForMemory(result.record); return result;
 }

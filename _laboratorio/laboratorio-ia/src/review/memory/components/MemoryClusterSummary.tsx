@@ -1,0 +1,3 @@
+import type {DecisionMemoryCluster} from "../types";
+import MemoryConfidenceBadge from "./MemoryConfidenceBadge";
+export default function MemoryClusterSummary({cluster}: {cluster?: DecisionMemoryCluster}) { if (!cluster) return null; return <div className="memory-cluster-summary"><strong>Patrón {cluster.status}</strong><span>{cluster.occurrenceCount} memorias · {cluster.caseIds.length} casos · {cluster.sourceIds.length} fuentes</span><MemoryConfidenceBadge {...cluster.confidence} />{cluster.status === "contested" ? <span className="review-readonly-message">Patrón controvertido: reutilización bloqueada.</span> : null}</div>; }
