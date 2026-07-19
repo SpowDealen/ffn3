@@ -1,0 +1,3 @@
+const DANGEROUS = new Set(["__proto__", "prototype", "constructor"]);
+const PATH = /^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*|\[(?:0|[1-9][0-9]*)\])*$/;
+export function validateUniversalPath(value: unknown): {valid: boolean; error?: string} { if (typeof value !== "string" || !value.trim()) return {valid:false,error:"universal_path_required"}; if (!PATH.test(value)) return {valid:false,error:"universal_path_syntax_invalid"}; const segments=value.replace(/\[[0-9]+\]/g,"").split("."); if(segments.some((segment)=>DANGEROUS.has(segment))) return {valid:false,error:"universal_path_dangerous_segment"}; return {valid:true}; }

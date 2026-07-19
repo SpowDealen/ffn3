@@ -19,7 +19,23 @@ async function run(caseId: string, executor: ExternalNewsResumeExecutor, options
   if (!reviewCase) return result(caseId, "case_not_found", "El caso no existe.");
   if (reviewCase.context.producer !== "external_news") return result(caseId, "unsupported_producer", "El productor del caso no está soportado.");
   if (reviewCase.resumeExecution?.status === "succeeded" || reviewCase.resumeExecution?.draftId || reviewCase.resumeExecution?.documentId || reviewCase.status === "resumed") return result(caseId, "already_resumed", "El caso ya guardó un borrador y no puede ejecutarse otra vez.", {draftId: reviewCase.resumeExecution?.draftId, documentId: reviewCase.resumeExecution?.documentId});
-  if (reviewCase.status === "resuming") return result(caseId, "already_resuming", "El caso ya se está reanudando.");
+  if (reviewCase.status === "resuming") {
+    const message = "Se detectó una ejecución huérfana tras recarga. El caso quedó en resume_failed y puede reintentarse de forma segura.";
+    const execution = reviewCase.resumeExecution;
+    if (execution?.status === "resuming") {
+      try {
+        failReviewResumeExecution(caseId, {
+          ...execution,
+          status: "failed",
+          failedAt: options.now?.() ?? new Date().toISOString(),
+          error: {code: "unknown_error", message},
+        });
+      } catch (error) {
+        return result(caseId, "transition_failed", error instanceof Error ? error.message : "No se pudo recuperar la ejecución huérfana.");
+      }
+    }
+    return result(caseId, "transition_failed", message);
+  }
   if (!new Set(["open", "in_review", "stale", "resume_failed", "resolved"]).has(reviewCase.status)) return result(caseId, "invalid_state", `El estado ${reviewCase.status} no permite reanudación.`);
   const preview = buildExternalNewsResumePreview(reviewCase, {now: options.now});
   const fingerprint = createExternalNewsPreviewFingerprint(reviewCase, preview);
