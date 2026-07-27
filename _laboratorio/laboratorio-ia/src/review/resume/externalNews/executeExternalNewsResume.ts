@@ -37,8 +37,8 @@ async function run(caseId: string, executor: ExternalNewsResumeExecutor, options
     return result(caseId, "transition_failed", message);
   }
   if (!new Set(["open", "in_review", "stale", "resume_failed", "resolved"]).has(reviewCase.status)) return result(caseId, "invalid_state", `El estado ${reviewCase.status} no permite reanudación.`);
-  const preview = buildExternalNewsResumePreview(reviewCase, {now: options.now});
-  const fingerprint = createExternalNewsPreviewFingerprint(reviewCase, preview);
+  const preview = options.preparedPreview ?? buildExternalNewsResumePreview(reviewCase, {now: options.now});
+  const fingerprint = options.preparedPreviewFingerprint ?? createExternalNewsPreviewFingerprint(reviewCase, preview);
   if (options.expectedCaseVersion !== undefined && options.expectedCaseVersion !== reviewCase.version) { await notify(executor, {type: "stale", caseId, message: "La versión cambió."}); return result(caseId, "stale_preview", "La versión del caso cambió. Regenera la preview.", {previewFingerprint: fingerprint, caseVersion: reviewCase.version}); }
   if (options.expectedPreviewFingerprint !== undefined && options.expectedPreviewFingerprint !== fingerprint) { await notify(executor, {type: "stale", caseId, message: "La preview cambió."}); return result(caseId, "stale_preview", "La preview quedó obsoleta. Regénérala antes de ejecutar.", {previewFingerprint: fingerprint, caseVersion: reviewCase.version}); }
   if (!preview.canResume || preview.status !== "ready") return result(caseId, "preview_not_ready", preview.reasons.join(" ") || "La preview no está lista.", {previewFingerprint: fingerprint, caseVersion: reviewCase.version});
