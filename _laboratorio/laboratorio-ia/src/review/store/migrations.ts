@@ -5,17 +5,20 @@ import {
 } from "../constants";
 import type {ReviewCase} from "../types";
 import {isSerializableReviewValue} from "../cases/validateResolution";
+import {validateGlobalResolutionCheckpoint} from "../globalResolution/checkpoint/checkpoint";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isVersionOneReviewCase(value: unknown): value is ReviewCase {
+function migrateVersionOneReviewCase(value: unknown): ReviewCase | undefined {
   if (!isRecord(value) || value.schemaVersion !== REVIEW_CASE_SCHEMA_VERSION) {
-    return false;
+    return undefined;
   }
 
-  return (
+  const candidate = {...value};
+  if ("globalResolution" in candidate && !validateGlobalResolutionCheckpoint(candidate.globalResolution).ok) delete candidate.globalResolution;
+  const valid =
     typeof value.id === "string" &&
     typeof value.dedupeKey === "string" &&
     REVIEW_MODULES.includes(value.module as ReviewCase["module"]) &&
@@ -31,11 +34,11 @@ function isVersionOneReviewCase(value: unknown): value is ReviewCase {
     typeof value.updatedAt === "string" &&
     Number.isInteger(value.version) &&
     Number.isInteger(value.resumeAttempts) &&
-    isSerializableReviewValue(value)
-  );
+    isSerializableReviewValue(candidate);
+  return valid ? candidate as unknown as ReviewCase : undefined;
 }
 
 export function migrateReviewCases(value: unknown): ReviewCase[] {
   if (!Array.isArray(value)) return [];
-  return value.filter(isVersionOneReviewCase);
+  return value.map(migrateVersionOneReviewCase).filter((reviewCase): reviewCase is ReviewCase => Boolean(reviewCase));
 }

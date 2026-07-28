@@ -98,6 +98,20 @@ export function applyReviewCaseUpdate(
   return withVersion(reviewCase, input, now);
 }
 
+export function applyReviewCaseCheckpointUpdate(
+  reviewCase: ReviewCase,
+  globalResolution: ReviewCase["globalResolution"],
+  now = new Date(),
+): ReviewCase {
+  const updated: ReviewCase = {
+    ...reviewCase,
+    globalResolution,
+    updatedAt: now.toISOString(),
+  };
+  assertSerializableReviewValue(updated);
+  return updated;
+}
+
 export function applyReviewResolution(
   reviewCase: ReviewCase,
   resolution: ReviewResolution,

@@ -15,7 +15,7 @@ export default function ExternalNewsResumePreviewPanel({reviewCase}: {reviewCase
   const [execution, setExecution] = useState<ExecuteExternalNewsResumeResult | null>(null);
   const [executing, setExecuting] = useState(false);
   useEffect(() => subscribeReviewResumeExecutors(() => setExecutor(getReviewResumeExecutor("external_news"))), []);
-  if (reviewCase.context.producer !== "external_news") return null;
+  if (reviewCase.context.producer !== "external_news" || reviewCase.globalResolution) return null;
   const toggle = (key: string): void => setOpen((current) => ({...current, [key]: !current[key]}));
   const disclosure = (key: string, label: string, content: ReactElement): ReactElement => {
     const id = `resume-preview-${reviewCase.id}-${key}`;

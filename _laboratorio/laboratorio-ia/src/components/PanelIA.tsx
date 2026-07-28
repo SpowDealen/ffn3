@@ -55,6 +55,7 @@ import {registerSchemaRequirementCapabilities} from "../review/schemaRequirement
 import {registerEditorialSchemaRequirements} from "../integrations/editorialSchemaRequirements";
 import type {ExternalNewsResumeExecutor} from "../review/resume/externalNews";
 import type {ReviewJsonObject} from "../review/types";
+import {registerExternalNewsGlobalResolutionRuntime} from "../review/globalResolution";
 
 
 type ExternalEditorialAnalysisResponse =
@@ -2045,6 +2046,10 @@ export default function PanelIA(): ReactElement {
   }), []);
 
   useEffect(() => registerReviewResumeExecutor("external_news", externalNewsResumeExecutor), [externalNewsResumeExecutor]);
+  useEffect(() => registerExternalNewsGlobalResolutionRuntime({
+    fighter: {entityCreationExecutor: editorialEntityCreationExecutor},
+    resume: {executor: externalNewsResumeExecutor},
+  }), [externalNewsResumeExecutor]);
   useEffect(() => registerReviewEditorialAgentCapabilities(), []);
   useEffect(() => registerPreparedEntityCapabilities(), []);
   useEffect(() => registerSchemaRequirementCapabilities(), []);

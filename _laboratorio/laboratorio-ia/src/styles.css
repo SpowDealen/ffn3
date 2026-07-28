@@ -315,6 +315,32 @@ textarea {
 .resume-preview-reasons { margin: 0; padding-left: 22px; overflow-wrap: anywhere; }
 .resume-diff { display: grid; gap: 10px; min-width: 0; }
 .resume-execution-feedback { display: grid; gap: 5px; overflow-wrap: anywhere; }
+.global-resolution-controls { min-width: 0; }
+.global-resolution-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 8px; margin: 0; }
+.global-resolution-summary > div { display: grid; gap: 4px; min-width: 0; padding: 9px; border: 1px solid var(--panel-border); border-radius: 10px; background: rgba(255,255,255,.025); }
+.global-resolution-summary dt { color: var(--panel-text-muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.global-resolution-summary dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.global-resolution-operations { display: grid; gap: 10px; min-width: 0; }
+.global-resolution-operation { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--panel-border); border-radius: 12px; background: rgba(255,255,255,.025); overflow-wrap: anywhere; }
+.global-resolution-operation header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.global-resolution-operation header > div { display: grid; gap: 3px; }
+.global-resolution-operation small { color: var(--panel-text-muted); }
+.global-resolution-operation p { margin: 0; color: var(--panel-text-soft); font-size: 13px; }
+.global-resolution-operation .review-button { justify-self: start; }
+.global-resolution-preview { display: grid; gap: 7px; padding: 12px; border: 1px solid rgba(16,185,129,.38); border-radius: 12px; background: var(--panel-ok-bg); }
+.global-resolution-preview > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.global-resolution-preview p { margin: 0; color: var(--panel-text-soft); }
+.global-resolution-reasons { margin: 0; padding-left: 22px; color: var(--panel-text-soft); overflow-wrap: anywhere; }
+.global-resolution-alert,
+.global-resolution-error { margin: 0; padding: 10px; border: 1px solid rgba(239,68,68,.45); border-radius: 10px; background: var(--panel-error-bg); color: #fecaca; overflow-wrap: anywhere; }
+.global-resolution-status-stale,
+.global-resolution-status-invalid { border-color: rgba(239,68,68,.55); color: #fecaca; }
+.global-resolution-status-absent { border-color: rgba(245,158,11,.55); color: #fde68a; }
+@media (max-width: 560px) {
+  .global-resolution-summary { grid-template-columns: 1fr; }
+  .global-resolution-operation header { display: grid; }
+  .global-resolution-operation .review-button { width: 100%; }
+}
 .investigation-panel, .investigation-results { display: grid; gap: 10px; min-width: 0; }
 .investigation-results details { border: 1px solid #d8dee8; border-radius: 8px; padding: 10px; overflow-wrap: anywhere; }
 .investigation-results summary { cursor: pointer; font-weight: 700; }
@@ -417,6 +443,15 @@ textarea {
 .retrieval-card pre { max-width: 100%; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 .retrieval-explanation ul, .retrieval-result ul { margin: 7px 0 0; padding-left: 21px; }
 .review-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.global-resolution-reconciliations { display: grid; gap: 12px; margin: 13px 0; }
+.global-resolution-reconciliation { padding: 14px; border: 1px solid rgba(239,68,68,.45); border-radius: 12px; background: rgba(239,68,68,.07); }
+.global-resolution-reconciliation > header { display: flex; gap: 10px; justify-content: space-between; }
+.global-resolution-reconciliation header div { min-width: 0; }
+.global-resolution-reconciliation header small,
+.global-resolution-evidence-list span { display: block; overflow-wrap: anywhere; }
+.global-resolution-evidence { margin-top: 13px; }
+.global-resolution-evidence-list { display: grid; gap: 7px; list-style: none; margin: 10px 0; padding: 0; }
+.global-resolution-evidence-list li { display: flex; flex-direction: column; gap: 3px; padding: 9px; border-radius: 8px; background: rgba(255,255,255,.04); }
 
 @media (max-width: 560px) {
   .laboratory-app-shell { padding: 0 12px 24px; }
@@ -430,4 +465,6 @@ textarea {
   .memory-record > header { display: grid; }
   .retrieval-issue > header, .retrieval-card > header { display: grid; }
   .retrieval-issue > header .review-button { width: 100%; }
+  .global-resolution-reconciliation > header { display: grid; }
+  .global-resolution-reconciliation .review-button { width: 100%; }
 }

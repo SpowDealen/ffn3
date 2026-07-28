@@ -1,6 +1,6 @@
 import type {ContentFormState, ContentTypeId} from "../../types";
 import {isSerializableReviewValue} from "../cases/validateResolution";
-import {diffExternalNewsPayload, getExternalNewsResumeSnapshot, mapResumePayloadToContentFormState, validateExternalNewsResumePayload, type ExternalNewsResolutionApplicationResult, type ExternalNewsResumeValidation} from "../resume/externalNews";
+import {getExternalNewsResumeSnapshot, mapResumePayloadToContentFormState, validateExternalNewsResumePayload, type ExternalNewsResolutionApplicationResult, type ExternalNewsResumeValidation} from "../resume/externalNews";
 import type {ResolutionGraph} from "../resolutionGraph";
 import type {ReviewCase, ReviewJsonObject, ReviewJsonValue} from "../types";
 import {computeUniversalFingerprint, type UniversalPlanExecution} from "../universal";
@@ -62,7 +62,7 @@ function projectedGraph(plan: GlobalResolutionPlan, reference: ResolvedEditorial
   return {...plan.graph, nodes, state: ready ? "ready" : plan.graph.state, updatedAt: now};
 }
 
-export function prepareExternalNewsResume(input: {reviewCase: ReviewCase; plan: GlobalResolutionPlan; replacement: ReplaceProjectedReferenceResult; references: ResolvedEditorialReference[]; expectedCaseVersion: number; expectedPlanFingerprint: string; expectedSnapshotFingerprint?: string; now?: () => string}): PreparedExternalNewsResume {
+export function prepareExternalNewsResume(input: {reviewCase: ReviewCase; plan: GlobalResolutionPlan; replacement: ReplaceProjectedReferenceResult; references: ResolvedEditorialReference[]; expectedCaseVersion: number; expectedPlanFingerprint: string; expectedSnapshotFingerprint?: string; expectedReplacementInputFingerprint?: string; now?: () => string}): PreparedExternalNewsResume {
   const generatedAt = input.now?.() ?? new Date().toISOString(); const blockers: FighterReferenceBlocker[] = [];
   if (input.reviewCase.version !== input.expectedCaseVersion || input.plan.caseVersion !== input.reviewCase.version || input.plan.caseId !== input.reviewCase.id) blockers.push(blocker("stale_case", "El caso o su versión cambiaron."));
   if (input.plan.fingerprint !== input.expectedPlanFingerprint || !validateGlobalResolutionPlan(input.plan).valid) blockers.push(blocker("stale_plan", "El plan ya no coincide con su fingerprint."));
@@ -71,7 +71,7 @@ export function prepareExternalNewsResume(input: {reviewCase: ReviewCase; plan: 
   if (!snapshotResult.complete || !snapshotResult.snapshot) blockers.push(blocker("payload_invalid", `Snapshot incompleto: ${snapshotResult.missingFields.join(", ")}.`));
   if (input.expectedSnapshotFingerprint && input.expectedSnapshotFingerprint !== snapshotFingerprint) blockers.push(blocker("stale_snapshot", "El snapshot cambió desde la preparación anterior."));
   if (!input.replacement.ok) blockers.push(input.replacement.blocker);
-  if (input.replacement.ok && snapshotResult.snapshot && input.replacement.inputFingerprint !== payloadFingerprint(snapshotResult.snapshot.payload)) blockers.push(blocker("stale_payload", "La sustitución no partió del payload reconstruido desde el snapshot vigente."));
+  if (input.replacement.ok && snapshotResult.snapshot && input.replacement.inputFingerprint !== (input.expectedReplacementInputFingerprint ?? payloadFingerprint(snapshotResult.snapshot.payload))) blockers.push(blocker("stale_payload", "La sustitución no partió del payload reconstruido desde el snapshot vigente."));
   const payload = input.replacement.ok ? input.replacement.payload : snapshotResult.snapshot?.payload ?? {};
   if (hasProjected(payload)) blockers.push(blocker("residual_projected_reference", "El payload conserva referencias provisionales."));
   if (!input.references.length || input.references.some((reference) => !reference.validated || !Array.isArray(payload.luchadoresRelacionados) || !payload.luchadoresRelacionados.includes(reference.documentId))) blockers.push(blocker("incompatible_reference", "Las referencias validadas no están aplicadas al payload."));

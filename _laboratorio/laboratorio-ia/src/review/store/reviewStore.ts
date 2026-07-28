@@ -12,6 +12,7 @@ import {buildReviewCase} from "../cases/createReviewCase";
 import {findActiveReviewCaseByDedupeKey} from "../cases/deduplicateReviewCase";
 import {
   applyReviewCaseTransition,
+  applyReviewCaseCheckpointUpdate,
   applyReviewResolution,
   applyReviewCaseUpdate,
   removeReviewResolutionValue,
@@ -22,6 +23,9 @@ import {
 } from "./localStorageRepository";
 import {migrateReviewCases} from "./migrations";
 import {observeResolutionOutcome} from "../outcomes";
+import {fingerprintGlobalResolutionCase, fingerprintGlobalResolutionSnapshot} from "../globalResolution/checkpoint/fingerprints";
+import {retargetGlobalResolutionCheckpoint, validateGlobalResolutionCheckpoint} from "../globalResolution/checkpoint/checkpoint";
+import type {GlobalResolutionCheckpoint} from "../globalResolution/checkpoint/types";
 
 const listeners = new Set<() => void>();
 const BROADCAST_CHANNEL_NAME = "ffn3.review-cases";
@@ -147,9 +151,53 @@ export function updateReviewCase(
   id: string,
   input: UpdateReviewCaseInput,
 ): ReviewCase | undefined {
+  if ("globalResolution" in input) throw new Error("Usa las operaciones dedicadas para actualizar el checkpoint global.");
   return replaceById(id, (reviewCase) =>
     applyReviewCaseUpdate(reviewCase, input),
   );
+}
+
+function persistGlobalResolutionCheckpoint(reviewCase: ReviewCase, checkpoint: GlobalResolutionCheckpoint, now: string): ReviewCase {
+  if (checkpoint.caseId !== reviewCase.id || checkpoint.plan.caseId !== reviewCase.id || checkpoint.graph.caseId !== reviewCase.id) throw new Error("El checkpoint pertenece a otro ReviewCase.");
+  if (checkpoint.caseVersion !== checkpoint.plan.caseVersion || checkpoint.caseVersion !== checkpoint.graph.caseVersion || checkpoint.caseVersion > reviewCase.version) throw new Error("La versión semántica del checkpoint no es coherente.");
+  if (checkpoint.caseFingerprint !== fingerprintGlobalResolutionCase(reviewCase) || checkpoint.snapshotFingerprint !== fingerprintGlobalResolutionSnapshot(reviewCase)) throw new Error("El checkpoint quedó obsoleto respecto al ReviewCase actual.");
+  const retargeted = retargetGlobalResolutionCheckpoint(checkpoint, reviewCase, now);
+  const checked = validateGlobalResolutionCheckpoint(retargeted);
+  if (!checked.ok) throw new Error(`Checkpoint global inválido: ${checked.reasons.join(",")}`);
+  return applyReviewCaseCheckpointUpdate(reviewCase, checked.value, new Date(now));
+}
+
+export function setGlobalResolutionCheckpoint(id: string, expectedVersion: number, checkpoint: GlobalResolutionCheckpoint, now = new Date()): ReviewCase | undefined {
+  return replaceById(id, (reviewCase) => {
+    if (reviewCase.version !== expectedVersion) throw new Error("La versión del caso cambió antes de guardar el checkpoint global.");
+    if (checkpoint.caseId !== reviewCase.id) throw new Error("El checkpoint pertenece a otro ReviewCase.");
+    const checked = validateGlobalResolutionCheckpoint(checkpoint);
+    if (!checked.ok) throw new Error(`Checkpoint global inválido: ${checked.reasons.join(",")}`);
+    if (reviewCase.globalResolution) {
+      if (reviewCase.globalResolution.checkpointFingerprint === checked.value.checkpointFingerprint) return reviewCase;
+      throw new Error("El checkpoint global cambió antes de guardar.");
+    }
+    return persistGlobalResolutionCheckpoint(reviewCase, checked.value, now.toISOString());
+  });
+}
+
+export function updateGlobalResolutionCheckpoint(id: string, expectedVersion: number, updater: (checkpoint: GlobalResolutionCheckpoint | undefined) => GlobalResolutionCheckpoint | undefined, now = new Date(), expectedCheckpointFingerprint?: string): ReviewCase | undefined {
+  return replaceById(id, (reviewCase) => {
+    if (reviewCase.version !== expectedVersion) throw new Error("La versión del caso cambió antes de actualizar el checkpoint global.");
+    if (expectedCheckpointFingerprint !== undefined && reviewCase.globalResolution?.checkpointFingerprint !== expectedCheckpointFingerprint) throw new Error("El checkpoint global cambió antes de actualizar.");
+    const current = reviewCase.globalResolution ? structuredClone(reviewCase.globalResolution) : undefined;
+    const next = updater(current);
+    if (!next) return reviewCase.globalResolution ? applyReviewCaseCheckpointUpdate(reviewCase, undefined, now) : reviewCase;
+    return persistGlobalResolutionCheckpoint(reviewCase, next, now.toISOString());
+  });
+}
+
+export function clearGlobalResolutionCheckpoint(id: string, expectedVersion: number, now = new Date(), expectedCheckpointFingerprint?: string): ReviewCase | undefined {
+  return replaceById(id, (reviewCase) => {
+    if (reviewCase.version !== expectedVersion) throw new Error("La versión del caso cambió antes de limpiar el checkpoint global.");
+    if (expectedCheckpointFingerprint !== undefined && reviewCase.globalResolution?.checkpointFingerprint !== expectedCheckpointFingerprint) throw new Error("El checkpoint global cambió antes de limpiar.");
+    return reviewCase.globalResolution ? applyReviewCaseCheckpointUpdate(reviewCase, undefined, now) : reviewCase;
+  });
 }
 
 export function transitionReviewCase(

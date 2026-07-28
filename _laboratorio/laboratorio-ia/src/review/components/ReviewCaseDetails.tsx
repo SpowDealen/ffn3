@@ -19,6 +19,7 @@ import DecisionOutcomePanel from "../outcomes/components/DecisionOutcomePanel";
 import DecisionMemoryPanel from "../memory/components/DecisionMemoryPanel";
 import RelevantMemoryPanel from "../retrieval/components/RelevantMemoryPanel";
 import InvestigationPanel from "../investigation/deep/InvestigationPanel";
+import GlobalResolutionControls from "./GlobalResolutionControls";
 
 type ReviewCaseDetailsProps = {
   reviewCase: ReviewCase;
@@ -219,6 +220,7 @@ export default function ReviewCaseDetails({
       <AutonomousInvestigationPanel caseId={reviewCase.id} editable={canEdit} investigable={reviewCase.issues.some((issue) => ["missing_entity", "missing_reference", "ambiguous_reference", "contradictory_data", "low_confidence", "recoverable_error"].includes(issue.kind) && (!reviewCase.resolutions.some((resolution) => resolution.issueId === issue.id) || reviewCase.resolutions.some((resolution) => resolution.issueId === issue.id && resolution.type === "retry")))} />
       <PreparedEntityMaterializationPanel reviewCase={reviewCase} />
       <PreparedEntitySchemaRequirementsPanel reviewCase={reviewCase} />
+      <GlobalResolutionControls reviewCase={reviewCase} />
       <ExternalNewsResumePreviewPanel reviewCase={reviewCase} />
       <DecisionOutcomePanel reviewCase={reviewCase} />
       <DecisionMemoryPanel reviewCase={reviewCase} />

@@ -1,3 +1,5 @@
+import type {GlobalResolutionCheckpoint} from "./globalResolution/checkpoint/types";
+
 export type ReviewCaseStatus =
   | "open"
   | "in_review"
@@ -171,6 +173,7 @@ export type ReviewCase = {
   dismissReason?: string;
   resumeExecution?: ReviewResumeExecution;
   entityMaterialization?: ReviewEntityMaterialization;
+  globalResolution?: GlobalResolutionCheckpoint;
 };
 
 export type ReviewEntityMaterialization = {status: "never" | "running" | "succeeded" | "failed" | "reconciliation_required"; attemptCount: number; startedAt?: string; completedAt?: string; failedAt?: string; issueResults: Array<{issueId: string; identityKey?: string; entityType: string; entityId?: string; status: string; error?: {code: string; message: string}}>};
