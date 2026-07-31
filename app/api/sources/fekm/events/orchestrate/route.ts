@@ -223,12 +223,22 @@ export async function POST(request: Request): Promise<NextResponse> {
       const participantItems = asArray(participantsResolvedAfter.items).map(asRecord)
       const participantsToCreate = participantItems
         .filter((item) => asRecord(item.resolution).readyToCreate === true)
-        .map((item) => asRecord(item.source))
+        .map((item) => {
+          const resolution = asRecord(item.resolution)
+          return {
+            source: asRecord(item.source),
+            resolutionContext: {
+              disciplineId: asRecord(resolution.discipline)._id,
+              organizationId: asRecord(resolution.organization)._id,
+              categoryId: asRecord(resolution.category)._id,
+            },
+          }
+        })
 
       participantsCreated = await postJson(
         origin,
         "/api/sources/fekm/participants/create",
-        {confirm: true, participants: participantsToCreate},
+        {confirm: true, sourceReference: `fekm:${String(event.id ?? event.name ?? "participants")}`, participants: participantsToCreate},
       )
     }
 
@@ -275,6 +285,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           participantsReadyAfter: numberFrom(participantsAfterSummary, "readyToCreate"),
           unresolvedCategoriesAfter: numberFrom(participantsAfterSummary, "unresolvedCategories"),
           participantsCreated: numberFrom(participantsCreateSummary, "created"),
+          participantsPlanned: numberFrom(participantsCreateSummary, "planned"),
           participantsUpdated: numberFrom(participantsCreateSummary, "updated"),
           participantsSkipped: numberFrom(participantsCreateSummary, "skipped"),
           participantsFailed: numberFrom(participantsCreateSummary, "failed"),

@@ -6,6 +6,7 @@ import {expectedGlobalResolutionPlanIdempotencyKey, fingerprintGlobalResolutionP
 import {resolveGlobalResolutionPlanningPolicy} from "./planningPolicies";
 import type {BuildGlobalResolutionPlanResult, GlobalResolutionBlocker, GlobalResolutionPlan, GlobalResolutionPlanningInput, PlanningContext} from "./types";
 import {validateGlobalResolutionPlan} from "./validateGlobalResolutionPlan";
+import {ensureFighterIdentityGuardOperations, FIGHTER_IDENTITY_GUARD_CAPABILITY} from "./identityGuard";
 
 const text = (value: unknown): string => typeof value === "string" ? value.trim() : "";
 const basicBlocker = (code: GlobalResolutionBlocker["code"], message: string): GlobalResolutionBlocker => ({code, message, severity: "blocking", scope: "structure", evidence: [], explanation: message, requiredAction: "Corregir la entrada y volver a construir el plan."});
@@ -23,6 +24,7 @@ function contextFrom(input: GlobalResolutionPlanningInput): PlanningContext {
     dependencyHints: input.dependencyHints ?? [],
     producer: text(input.producer) || contextProducer,
     originalOperation: text(input.originalOperation) || contextOperation,
+    completionMode: input.completionMode ?? "resume_producer",
     finalEntityType: input.finalEntityType,
     policy: resolveGlobalResolutionPlanningPolicy(input.policy),
     entityRegistry: input.entityRegistry ?? entityOperationRegistry,
@@ -34,7 +36,17 @@ export function buildGlobalResolutionPlan(input: GlobalResolutionPlanningInput):
   if (!input.reviewCase || !isSerializableReviewValue(input.reviewCase) || !text(input.reviewCase.id) || !Number.isInteger(input.reviewCase.version) || input.reviewCase.version < 1) return {ok: false, issues: [basicBlocker("invalid_planning_input", "El ReviewCase de entrada no es serializable o no tiene identidad válida.")]};
   const context = contextFrom(input);
   const first = deriveEntityOperations(context);
-  const derived = appendFinalValidationAndResume(context, first);
+  const rawDerived = appendFinalValidationAndResume(context, first);
+  const guardedOperations = ensureFighterIdentityGuardOperations(rawDerived.operations, context.producer || "missing-producer");
+  const guardBlockers = guardedOperations
+    .filter((operation) => operation.requiredCapability === FIGHTER_IDENTITY_GUARD_CAPABILITY && !context.policy.availableCapabilities.includes(FIGHTER_IDENTITY_GUARD_CAPABILITY))
+    .map((operation): GlobalResolutionBlocker => ({
+      code: "missing_required_capability", severity: "blocking", scope: "execution", operationId: operation.id,
+      entityType: "luchador", message: "La resolución de identidad obligatoria no está disponible.",
+      evidence: operation.evidence, explanation: "create:luchador requiere resolve_identity:fighter.",
+      requiredAction: "Habilitar la capability de resolución de identidad y volver a evaluar el plan.",
+    }));
+  const derived = {...rawDerived, operations: guardedOperations, blockers: [...rawDerived.blockers, ...guardBlockers]};
   let graph;
   try {
     graph = buildResolutionGraphFromOperations({caseId: context.reviewCase.id, caseVersion: context.reviewCase.version, producer: context.producer || "missing-producer", originalOperation: context.originalOperation || "missing-operation", operations: derived.operations, policy: context.policy, metadata: {policyVersion: "au2-b2"}, now: input.now});

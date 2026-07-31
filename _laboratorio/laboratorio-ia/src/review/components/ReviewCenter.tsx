@@ -17,6 +17,7 @@ import {
 import type {ReviewCaseStatus, ReviewModule, ReviewPriority} from "../types";
 import ReviewCaseDetails from "./ReviewCaseDetails";
 import ReviewCaseList from "./ReviewCaseList";
+import ReconciliationScanControls from "../entityReconciliation/components/ReconciliationScanControls";
 
 type StatusFilter = "all" | ReviewCaseStatus;
 type PriorityFilter = "all" | ReviewPriority;
@@ -110,6 +111,8 @@ export default function ReviewCenter(): ReactElement {
           <p>Inspecciona casos persistidos y sus decisiones pendientes. Las noticias externas listas pueden reanudarse manualmente con confirmación explícita.</p>
         </div>
       </header>
+
+      <ReconciliationScanControls />
 
       <div className="review-metrics" aria-label="Resumen de casos">
         <div><strong>{metrics.open}</strong><span>Abiertos</span></div>

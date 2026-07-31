@@ -65,7 +65,10 @@ function testPilot(): void {
   assert.equal(plan.executable, false);
   assert.equal(plan.status, "blocked");
   assert.equal(validateGlobalResolutionPlan(plan).valid, true);
-  assert.deepEqual(plan.operations.map((operation) => operation.kind).sort(), ["create_entity", "find_entity", "replace_reference", "validate_entity", "validate_entity", "validate_entity"].sort());
+  assert.deepEqual(plan.operations.map((operation) => operation.kind).sort(), ["create_entity", "find_entity", "find_entity", "replace_reference", "validate_entity", "validate_entity", "validate_entity"].sort());
+  const create = plan.operations.find((operation) => operation.kind === "create_entity" && operation.entityType === "luchador");
+  const identityGuard = plan.operations.find((operation) => operation.requiredCapability === "resolve_identity:fighter");
+  assert.ok(create && identityGuard && create.dependencyIds.includes(identityGuard.id));
   const ordered = topologicalSortResolutionGraph(plan.graph);
   assert.equal(ordered.valid, true);
   const resume = plan.graph.nodes.find((node) => node.isResumeNode);

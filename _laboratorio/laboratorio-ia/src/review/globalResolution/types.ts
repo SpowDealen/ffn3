@@ -94,6 +94,7 @@ export type GlobalResolutionPlanningInput = {
   dependencyHints?: readonly EntityOperationDependencyHint[];
   producer?: string;
   originalOperation?: string;
+  completionMode?: "resume_producer" | "entity_resolution";
   finalEntityType?: ContentTypeId;
   policy?: Partial<GlobalResolutionPlanningPolicy>;
   entityRegistry?: EntityOperationRegistry;
@@ -164,6 +165,7 @@ export type PlanningContext = {
   dependencyHints: readonly EntityOperationDependencyHint[];
   producer: string;
   originalOperation: string;
+  completionMode: "resume_producer" | "entity_resolution";
   finalEntityType?: ContentTypeId;
   policy: GlobalResolutionPlanningPolicy;
   entityRegistry: EntityOperationRegistry;

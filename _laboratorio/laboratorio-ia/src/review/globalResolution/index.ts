@@ -16,3 +16,6 @@ export * from "./externalNewsApplication";
 export * from "./controlsModel";
 export * from "./checkpoint";
 export * from "./reconciliation";
+export * from "./producers";
+export * from "./inspection";
+export * from "./identityGuard";

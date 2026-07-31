@@ -121,7 +121,7 @@ function derivePreparedFighter(builder: OperationBuilder, issue: ReviewIssue, pr
   if (!action) return;
   const minimum = candidates.length ? builder.context.policy.minimumReuseConfidence : builder.context.policy.minimumCreateConfidence;
   if (action.confidence < minimum) builder.blockers.push(blocker("insufficient_confidence", `La confianza ${action.confidence.toFixed(2)} no alcanza el mínimo ${minimum.toFixed(2)} para ${action.kind}.`, {severity: "blocking", scope: "structure", issueId: issue.id, operationId: action.id, entityType, evidence: allEvidence, requiredAction: "Aportar evidencia adicional o elevar la decisión editorial de forma explícita."}));
-  appendOperation(builder, {kind: "replace_reference", entityType, issueId: issue.id, target: {fieldPath: issue.fieldPath, identityKey: prepared.identityKey ?? String(prepared.draft.identityKey)}, payload: {issueId: issue.id, referenceOperationId: action.id}, evidence: allEvidence, dependencyIds: [action.id], explanation: "Sustituir la referencia afectada por el luchador resuelto.", requireAdapterForStructure: true});
+  if (builder.context.completionMode === "resume_producer") appendOperation(builder, {kind: "replace_reference", entityType, issueId: issue.id, target: {fieldPath: issue.fieldPath, identityKey: prepared.identityKey ?? String(prepared.draft.identityKey)}, payload: {issueId: issue.id, referenceOperationId: action.id}, evidence: allEvidence, dependencyIds: [action.id], explanation: "Sustituir la referencia afectada por el luchador resuelto.", requireAdapterForStructure: true});
 }
 
 function deriveResolution(builder: OperationBuilder, resolution: ReviewResolution): void {
@@ -226,6 +226,7 @@ export function deriveEntityOperations(context: PlanningContext): DerivedEntityO
 }
 
 export function appendFinalValidationAndResume(context: PlanningContext, derived: DerivedEntityOperationsResult): DerivedEntityOperationsResult {
+  if (context.completionMode === "entity_resolution") return derived;
   const builder: OperationBuilder = {operations: [...derived.operations], blockers: [...derived.blockers], warnings: [...derived.warnings], context};
   const structuralBlocked = () => builder.blockers.some((item) => item.scope === "structure" && item.severity === "blocking");
   if (!context.finalEntityType) builder.blockers.push(blocker("missing_final_validation", "No se indicó la entidad final que debe validarse antes de reanudar.", {severity: "blocking", scope: "structure", evidence: [], requiredAction: "Indicar finalEntityType de forma explícita."}));

@@ -14,6 +14,7 @@ export const REVIEW_MODULES: readonly ReviewModule[] = [
   "one.events",
   "external.news",
   "editorial.builder",
+  "entity.reconciliation",
   "sanity",
 ];
 

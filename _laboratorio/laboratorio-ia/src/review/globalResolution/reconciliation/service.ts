@@ -7,14 +7,20 @@ import {buildCurrentGlobalResolutionCatalog} from "../checkpoint/catalog";
 import {applyCheckpointReconciliation} from "../checkpoint/lifecycle";
 import {deserializeGlobalResolutionPlan, deserializeResolutionGraph} from "../checkpoint/serialization";
 import type {GlobalResolutionCheckpoint, GlobalResolutionCheckpointHistoryEntry} from "../checkpoint/types";
+import {inspectionEvidenceToReconciliationEvidence} from "../inspection/adapter";
+import {buildGlobalResolutionInspectionRequest} from "../inspection/request";
+import {normalizeGlobalResolutionInspectionEvidence} from "../inspection/normalize";
+import {fingerprintGlobalResolutionInspectionOperation} from "../inspection/service";
+import {checkpointProjectionForExternalNewsReconciliation, createExternalNewsReconciliationContractRegistry} from "./contracts/externalNews";
+import {assessUniversalReconciliation, type UniversalReconciliationContextBinding, type UniversalReconciliationContractRegistry} from "./engine";
 import type {
-  GlobalResolutionEffectInspector,
   GlobalResolutionReconciliationApplyResult,
   GlobalResolutionReconciliationAssessment,
   GlobalResolutionReconciliationCase,
   GlobalResolutionReconciliationEvidence,
   GlobalResolutionReconciliationReason,
 } from "./types";
+import type {GlobalResolutionEffectInspector, GlobalResolutionInspectionEvidence} from "../inspection/types";
 
 const nowDefault = () => new Date().toISOString();
 const fp = (value: unknown) => computeUniversalFingerprint(value as ReviewJsonValue);
@@ -55,7 +61,7 @@ function reasonOf(reviewCase: ReviewCase, checkpoint: GlobalResolutionCheckpoint
   if (/conflict/i.test(raw)) return "domain_succeeded_checkpoint_conflict";
   if (/timeout/i.test(raw)) return "executor_timeout";
   if (/idempot/i.test(raw)) return "idempotency_conflict";
-  if (/missing/i.test(raw) && operation?.capability === "resume:external_news") return "resume_result_missing";
+  if (/missing/i.test(raw) && checkpoint.resume?.operationId === operationId) return "resume_result_missing";
   if (operation?.documentId) return "existing_effect_detected";
   if (/verif|postcondition/i.test(raw)) return "postcondition_unverified";
   return "executor_uncertain";
@@ -65,7 +71,8 @@ function localEvidence(reviewCase: ReviewCase, checkpoint: GlobalResolutionCheck
   const values: GlobalResolutionReconciliationEvidence[] = [];
   const operation = checkpoint.execution?.operations.filter((item) => item.operationId === operationId).at(-1);
   const planOperation = operationOf(checkpoint, operationId);
-  const capability = planOperation ? capabilityForOperation(planOperation) ?? planOperation.requiredCapability ?? "" : operation?.capability ?? "";
+  const isResume = checkpoint.resume?.operationId === operationId;
+  const isCreate = planOperation?.kind === "create_entity";
   values.push(evidence({type: "review_case_status", source: "review_case", operationId, observedAt: reviewCase.updatedAt, summary: `Estado del caso: ${reviewCase.status}`, confidence: reviewCase.status === "resumed" ? "strong" : "insufficient", outcome: reviewCase.status}));
   if (operation) {
     values.push(evidence({type: "executor_outcome", source: "checkpoint", operationId, observedAt: operation.completedAt, summary: `Executor: ${operation.status}${operation.outcome ? ` · ${operation.outcome}` : ""}`, confidence: operation.status === "succeeded" ? "confirmed" : operation.documentId ? "strong" : "insufficient", outcome: operation.outcome ?? operation.status, documentId: operation.documentId, idempotencyKey: operation.idempotencyKey}));
@@ -83,7 +90,7 @@ function localEvidence(reviewCase: ReviewCase, checkpoint: GlobalResolutionCheck
     values.push(evidence({type: "payload_fingerprint", source: "checkpoint", operationId, observedAt: resume.preparedAt, summary: "Payload preparado vinculado a la preview", confidence: "strong", fingerprint: resume.payloadFingerprint}));
   }
   const resumeExecution = reviewCase.resumeExecution;
-  if (capability === "resume:external_news" && resumeExecution) {
+  if (isResume && resumeExecution) {
     const documentId = resumeExecution.draftId ?? resumeExecution.documentId;
     values.push(evidence({type: "resume_result", source: "review_case", operationId, observedAt: resumeExecution.completedAt ?? resumeExecution.failedAt ?? reviewCase.updatedAt, summary: `Resultado de reanudación: ${resumeExecution.status}`, confidence: resumeExecution.status === "succeeded" && documentId ? "confirmed" : "insufficient", outcome: resumeExecution.status, documentId, fingerprint: resumeExecution.previewFingerprint}));
     if (documentId) values.push(evidence({type: "stored_document_id", source: "review_case", operationId, observedAt: resumeExecution.completedAt ?? reviewCase.updatedAt, summary: `Documento persistido: ${compact(documentId)}`, confidence: resumeExecution.status === "succeeded" ? "confirmed" : "strong", documentId}));
@@ -93,7 +100,7 @@ function localEvidence(reviewCase: ReviewCase, checkpoint: GlobalResolutionCheck
     const reference = checkpoint.referenceResolution;
     values.push(evidence({type: "resolved_reference", source: "checkpoint", operationId, observedAt: reference.resolvedAt, summary: `Referencia real: ${compact(reference.documentId)}`, confidence: "confirmed", documentId: reference.documentId, identityKey: reference.identityKey, outcome: reference.outcome, fingerprint: reference.payloadFingerprint}));
   }
-  if (capability === "create:luchador") {
+  if (isCreate) {
     const expectedIdentity = typeof planOperation?.target?.identityKey === "string" ? planOperation.target.identityKey : undefined;
     for (const item of reviewCase.entityMaterialization?.issueResults ?? []) {
       if (expectedIdentity && item.identityKey !== expectedIdentity) continue;
@@ -113,9 +120,9 @@ function localEvidence(reviewCase: ReviewCase, checkpoint: GlobalResolutionCheck
     }
   }
   for (const outcome of getOutcomesForCase(reviewCase.id)) {
-    const outcomeDocumentId = capability === "resume:external_news" ? outcome.documentReference : capability === "create:luchador" ? outcome.materializationReference : undefined;
+    const outcomeDocumentId = isResume ? outcome.documentReference : isCreate ? outcome.materializationReference : undefined;
     values.push(evidence({type: "review_case_outcome", source: "outcome_store", operationId, observedAt: outcome.updatedAt, summary: `Outcome: ${outcome.currentStatus} · operativo ${outcome.operationalStatus}`, confidence: outcomeDocumentId ? "strong" : "insufficient", documentId: outcomeDocumentId, outcome: outcome.currentStatus}));
-    const allowedEvents = capability === "resume:external_news" ? ["resume_succeeded", "draft_created"] : capability === "create:luchador" ? ["materialization_succeeded"] : [];
+    const allowedEvents = isResume ? ["resume_succeeded", "draft_created"] : isCreate ? ["materialization_succeeded"] : [];
     for (const event of getOutcomeEvents(outcome.id).filter((item) => allowedEvents.includes(item.type))) {
       const reference = event.references.find((item) => ["draft", "document", "entity"].includes(item.type));
       values.push(evidence({type: event.type === "materialization_succeeded" ? "executor_outcome" : "resume_result", source: "outcome_store", operationId, observedAt: event.occurredAt, summary: `${event.type}: ${event.status}`, confidence: reference ? "strong" : "insufficient", documentId: reference?.id, outcome: event.status, idempotencyKey: event.idempotencyKey}));
@@ -129,6 +136,8 @@ export async function collectReconciliationEvidence(input: {
   operationId: string;
   inspector?: GlobalResolutionEffectInspector;
   includeExternalInspection?: boolean;
+  inspectionEvidence?: readonly GlobalResolutionInspectionEvidence[];
+  inspectionEvidenceAdapter?: (evidence: GlobalResolutionInspectionEvidence) => readonly GlobalResolutionReconciliationEvidence[];
   signal?: AbortSignal;
   now?: () => string;
 }): Promise<GlobalResolutionReconciliationCase> {
@@ -139,20 +148,42 @@ export async function collectReconciliationEvidence(input: {
   const capability = capabilityForOperation(planOperation) ?? planOperation.requiredCapability ?? "capability:unknown";
   const observedAt = (input.now ?? nowDefault)();
   let values = localEvidence(input.reviewCase, checkpoint, input.operationId, observedAt);
+  const adaptInspectionEvidence = input.inspectionEvidenceAdapter ?? inspectionEvidenceToReconciliationEvidence;
+  for (const inspected of input.inspectionEvidence ?? []) {
+    if (inspected.operationId === input.operationId && inspected.checkpointFingerprint === checkpoint.checkpointFingerprint) {
+      values = [...values, ...adaptInspectionEvidence(inspected)];
+    }
+  }
   if (input.includeExternalInspection && input.inspector) {
     try {
-      values = [...values, ...await input.inspector.inspect({caseId: input.reviewCase.id, operationId: input.operationId, capability, idempotencyKey: checkpoint.execution?.operations.filter((item) => item.operationId === input.operationId).at(-1)?.idempotencyKey, signal: input.signal})];
+      const built = buildGlobalResolutionInspectionRequest({reviewCase: input.reviewCase, operationId: input.operationId, inspectorId: input.inspector.id, requestedAt: observedAt, requireCompleteSubject: false});
+      if (!built.ok) throw new Error(`inspection_request_${built.code}`);
+      const request = built.request;
+      const compatibility = input.inspector.supports(request);
+      if (!compatibility.supported) throw new Error(`inspection_unsupported:${compatibility.reason}`);
+      const inspected = await input.inspector.inspect(request, {signal: input.signal, now: input.now ?? nowDefault});
+      const normalizedInspection = normalizeGlobalResolutionInspectionEvidence({request, inspector: input.inspector, evidence: inspected, inspectedAt: inspected.inspectedAt});
+      values = [...values, ...adaptInspectionEvidence(normalizedInspection)];
     } catch {
       values.push(evidence({type: "external_inspection", source: "external_inspector", operationId: input.operationId, observedAt, summary: "El inspector externo no pudo aportar evidencia", confidence: "insufficient", finding: "unknown"}));
     }
   }
   const normalized = normalize(values, input.operationId);
+  const contextRequest = buildGlobalResolutionInspectionRequest({
+    reviewCase: input.reviewCase,
+    operationId: input.operationId,
+    inspectorId: "",
+    requestedAt: observedAt,
+    requireCompleteSubject: false,
+  });
   return {
     caseId: input.reviewCase.id,
     caseVersion: input.reviewCase.version,
     checkpointFingerprint: checkpoint.checkpointFingerprint,
     operationId: input.operationId,
     capability,
+    operationFingerprint: contextRequest.ok ? contextRequest.request.operationFingerprint : fingerprintGlobalResolutionInspectionOperation(planOperation),
+    payloadFingerprint: contextRequest.ok ? contextRequest.request.subject.expectedPayloadFingerprint : undefined,
     reason: reasonOf(input.reviewCase, checkpoint, input.operationId),
     evidence: normalized,
     confidence: normalized.some((item) => item.confidence === "confirmed") ? "confirmed" : normalized.some((item) => item.confidence === "strong") ? "strong" : "insufficient",
@@ -160,75 +191,83 @@ export async function collectReconciliationEvidence(input: {
   };
 }
 
-type AssessmentWithoutFingerprint = GlobalResolutionReconciliationAssessment extends infer Assessment
-  ? Assessment extends GlobalResolutionReconciliationAssessment ? Omit<Assessment, "assessmentFingerprint"> : never
-  : never;
-
-function assessmentFingerprint(value: AssessmentWithoutFingerprint): string {
-  return fp({
-    caseId: value.reconciliationCase.caseId,
-    caseVersion: value.reconciliationCase.caseVersion,
-    checkpointFingerprint: value.reconciliationCase.checkpointFingerprint,
-    operationId: value.reconciliationCase.operationId,
-    status: value.status,
-    evidence: value.evidence.map((item) => item.id),
-    outcome: "outcome" in value ? value.outcome : undefined,
-  } as unknown as ReviewJsonValue);
+export function buildUniversalReconciliationContext(
+  reconciliationCase: GlobalResolutionReconciliationCase,
+  checkpoint: GlobalResolutionCheckpoint,
+  overrides: Partial<UniversalReconciliationContextBinding> = {},
+): UniversalReconciliationContextBinding {
+  const operation = operationOf(checkpoint, reconciliationCase.operationId);
+  return {
+    producerId: checkpoint.producer,
+    producerVersion: checkpoint.producerManifest?.producerVersion,
+    manifestVersion: checkpoint.producerManifest?.manifestVersion,
+    manifestFingerprint: checkpoint.producerManifest?.manifestFingerprint,
+    caseVersion: reconciliationCase.caseVersion,
+    checkpointVersion: checkpoint.storedAtCaseVersion,
+    checkpointFingerprint: checkpoint.checkpointFingerprint,
+    operationId: reconciliationCase.operationId,
+    operationFingerprint: reconciliationCase.operationFingerprint ?? (operation ? fingerprintGlobalResolutionInspectionOperation(operation) : "sha256-v1:operationmissing"),
+    payloadFingerprint: reconciliationCase.payloadFingerprint
+      ?? (checkpoint.resume?.operationId === reconciliationCase.operationId
+        ? checkpoint.resume.payloadFingerprint
+        : checkpoint.referenceResolution?.operationId === reconciliationCase.operationId
+          ? checkpoint.referenceResolution.payloadFingerprint
+          : undefined),
+    capabilityId: reconciliationCase.capability,
+    capabilityVersion: checkpoint.producerManifest?.capabilityVersions.find((entry) => entry.capabilityId === reconciliationCase.capability)?.capabilityVersion,
+    ...overrides,
+  };
 }
 
-export function assessReconciliation(reconciliationCase: GlobalResolutionReconciliationCase, checkpoint: GlobalResolutionCheckpoint): GlobalResolutionReconciliationAssessment {
-  const node = checkpoint.graph.nodes.find((item) => item.operationId === reconciliationCase.operationId);
-  const externalConfirmed = reconciliationCase.evidence.filter((item) => item.type === "external_inspection" && item.finding === "effect_confirmed" && item.confidence === "confirmed");
-  const externalAbsent = reconciliationCase.evidence.filter((item) => item.type === "external_inspection" && item.finding === "effect_not_found" && item.confidence === "confirmed");
-  const conflicting = externalConfirmed.length > 0 && externalAbsent.length > 0;
-  const documentEvidence = reconciliationCase.evidence.filter((item) => item.documentId && ["confirmed", "strong"].includes(item.confidence));
-  const documentIds = [...new Set(documentEvidence.map((item) => item.documentId!))];
-  const already = node?.state === "succeeded" && (checkpoint.phase === "completed" || reconciliationCase.capability !== "resume:external_news");
-  let partial: AssessmentWithoutFingerprint;
-
-  if (already) {
-    partial = {...base("already_reconciled", reconciliationCase, []), outcome: checkpoint.execution?.operations.filter((item) => item.operationId === reconciliationCase.operationId).at(-1) ? {
-      outcome: checkpoint.execution!.operations.filter((item) => item.operationId === reconciliationCase.operationId).at(-1)!.outcome ?? "succeeded",
-      documentId: checkpoint.execution!.operations.filter((item) => item.operationId === reconciliationCase.operationId).at(-1)!.documentId,
-    } : undefined, repairAllowed: false, retryAllowed: false, notification: "Reconciliación completada"};
-  } else if (conflicting || documentIds.length > 1) {
-    partial = {...base("conflicting_evidence", reconciliationCase, ["Las fuentes no identifican un único resultado real."]), repairAllowed: false, retryAllowed: false, notification: "Evidencia contradictoria"};
-  } else if (reconciliationCase.capability === "resume:external_news") {
-    const resume = checkpoint.resume;
-    const result = reconciliationCase.evidence.find((item) => item.type === "resume_result" && item.source === "review_case" && item.outcome === "succeeded" && item.documentId);
-    const matchingPreview = Boolean(result?.fingerprint && resume?.previewFingerprint === result.fingerprint);
-    if ((result && matchingPreview && documentIds.length === 1) || externalConfirmed.length && documentIds.length === 1) {
-      const outcome = {outcome: "resumed", documentId: documentIds[0], payloadFingerprint: resume?.payloadFingerprint, idempotencyKey: checkpoint.execution?.operations.filter((item) => item.operationId === reconciliationCase.operationId).at(-1)?.idempotencyKey ?? operationOf(checkpoint, reconciliationCase.operationId)?.idempotencyKey};
-      reconciliationCase.proposedOutcome = outcome;
-      partial = {...base("confirmed_succeeded", reconciliationCase, []), outcome, repairAllowed: true, retryAllowed: false, notification: "Reconciliación completada"};
-    } else if (externalAbsent.length && !documentIds.length) {
-      partial = {...base("confirmed_not_applied", reconciliationCase, []), repairAllowed: false, retryAllowed: true, notification: "Operación habilitada para nuevo intento"};
-    } else {
-      partial = {...base("insufficient_evidence", reconciliationCase, ["Faltan un resultado de resume exitoso, un draft ID y una preview equivalente, o una inspección externa concluyente."]), repairAllowed: false, retryAllowed: false, notification: "Reconciliación pendiente por falta de evidencia"};
-    }
-  } else {
-    const executor = reconciliationCase.evidence.find((item) => item.type === "executor_outcome" && ["created", "reused_existing"].includes(item.outcome ?? "") && item.documentId);
-    const reference = reconciliationCase.evidence.find((item) => item.type === "resolved_reference" && item.documentId && item.identityKey);
-    if ((executor || reference || externalConfirmed.length) && documentIds.length === 1) {
-      const source = reference ?? executor ?? externalConfirmed[0];
-      const outcome = {outcome: source?.outcome === "reused_existing" ? "reused_existing" : "created", documentId: documentIds[0], identityKey: source?.identityKey, payloadFingerprint: source?.fingerprint, idempotencyKey: source?.idempotencyKey ?? operationOf(checkpoint, reconciliationCase.operationId)?.idempotencyKey};
-      if (outcome.identityKey && outcome.payloadFingerprint) {
-        reconciliationCase.proposedOutcome = outcome;
-        partial = {...base("confirmed_succeeded", reconciliationCase, []), outcome, repairAllowed: true, retryAllowed: false, notification: "Reconciliación completada"};
-      } else {
-        partial = {...base("insufficient_evidence", reconciliationCase, ["Faltan identity key o fingerprint de payload para demostrar la equivalencia del luchador."]), repairAllowed: false, retryAllowed: false, notification: "Reconciliación pendiente por falta de evidencia"};
-      }
-    } else if (externalAbsent.length && !documentIds.length) {
-      partial = {...base("confirmed_not_applied", reconciliationCase, []), repairAllowed: false, retryAllowed: true, notification: "Operación habilitada para nuevo intento"};
-    } else {
-      partial = {...base("insufficient_evidence", reconciliationCase, ["No existe evidencia local fuerte ni postinspección que confirme el luchador real."]), repairAllowed: false, retryAllowed: false, notification: "Reconciliación pendiente por falta de evidencia"};
-    }
-  }
-  return {...partial, assessmentFingerprint: assessmentFingerprint(partial)} as GlobalResolutionReconciliationAssessment;
-}
-
-function base<Status extends GlobalResolutionReconciliationAssessment["status"]>(status: Status, reconciliationCase: GlobalResolutionReconciliationCase, missingEvidence: string[]) {
-  return {status, reconciliationCase, evidence: reconciliationCase.evidence, missingEvidence};
+export function assessReconciliation(
+  reconciliationCase: GlobalResolutionReconciliationCase,
+  checkpoint: GlobalResolutionCheckpoint,
+  options: {
+    registry?: UniversalReconciliationContractRegistry;
+    expectedContext?: UniversalReconciliationContextBinding;
+    currentContext?: UniversalReconciliationContextBinding;
+    inspectorId?: string;
+    inspectedAt?: string;
+    technicalFailure?: {code: string};
+    unsupported?: {code: string};
+  } = {},
+): GlobalResolutionReconciliationAssessment {
+  const universal = assessUniversalReconciliation({
+    reconciliationCase,
+    checkpoint,
+    inspectorId: options.inspectorId,
+    inspectedAt: options.inspectedAt,
+    expectedContext: options.expectedContext,
+    currentContext: options.currentContext ?? buildUniversalReconciliationContext(reconciliationCase, checkpoint),
+    technicalFailure: options.technicalFailure,
+    unsupported: options.unsupported,
+  }, options.registry ?? createExternalNewsReconciliationContractRegistry());
+  const actionable = universal.allowedActions;
+  const notification = universal.status === "confirmed_succeeded" || universal.status === "already_reconciled"
+    ? "Reconciliación completada"
+    : universal.status === "confirmed_not_applied"
+      ? "Operación habilitada para nuevo intento"
+      : universal.status === "conflicting_evidence"
+        ? "Evidencia contradictoria"
+        : universal.status === "technical_failure" || universal.status === "unsupported"
+          ? "Inspección no disponible"
+          : universal.status === "stale_context"
+            ? "Contexto obsoleto"
+            : "Reconciliación pendiente por falta de evidencia";
+  const outcome = universal.outcome ? {
+    ...universal.outcome,
+    idempotencyKey: universal.outcome.idempotencyKey ?? operationOf(checkpoint, reconciliationCase.operationId)?.idempotencyKey,
+  } : undefined;
+  return {
+    ...universal,
+    reconciliationCase: outcome ? {...reconciliationCase, proposedOutcome: outcome} : reconciliationCase,
+    evidence: [...reconciliationCase.evidence],
+    missingEvidence: universal.blockingReasons.map((item) => item.message),
+    notification,
+    repairAllowed: actionable.includes("repair_checkpoint"),
+    retryAllowed: actionable.includes("enable_retry"),
+    ...(outcome ? {outcome} : {}),
+  } as GlobalResolutionReconciliationAssessment;
 }
 
 const active = new Set<string>();
@@ -240,10 +279,12 @@ export async function applyConfirmedReconciliation(input: {
   expectedAssessmentFingerprint: string;
   inspector?: GlobalResolutionEffectInspector;
   includeExternalInspection?: boolean;
+  inspectionEvidence?: readonly GlobalResolutionInspectionEvidence[];
   signal?: AbortSignal;
   now?: () => string;
 }): Promise<GlobalResolutionReconciliationApplyResult> {
-  if (!["confirmed_succeeded", "confirmed_not_applied"].includes(input.assessment.status)) return {status: "not_allowed", reason: "reconciliation_assessment_not_actionable"};
+  const requestedAction = input.assessment.allowedActions?.find((action) => action === "repair_checkpoint" || action === "enable_retry");
+  if (!requestedAction) return {status: "not_allowed", reason: "reconciliation_assessment_not_actionable"};
   if (input.assessment.assessmentFingerprint !== input.expectedAssessmentFingerprint) return {status: "conflict", reason: "reconciliation_assessment_changed"};
   const key = `${input.assessment.reconciliationCase.caseId}:${input.assessment.reconciliationCase.operationId}`;
   if (active.has(key)) return {status: "conflict", reason: "reconciliation_already_in_progress"};
@@ -253,8 +294,11 @@ export async function applyConfirmedReconciliation(input: {
     const checkpoint = reviewCase?.globalResolution;
     if (!reviewCase || !checkpoint) return {status: "conflict", reason: "reconciliation_state_missing"};
     const storedNode = checkpoint.graph.nodes.find((item) => item.operationId === input.assessment.reconciliationCase.operationId);
-    if (storedNode?.state === "succeeded" && (checkpoint.phase === "completed" || input.assessment.reconciliationCase.capability !== "resume:external_news")) {
-      return {status: "already_reconciled", checkpointFingerprint: checkpoint.checkpointFingerprint, notification: "Reconciliación completada"};
+    if (storedNode?.state === "succeeded") {
+      const currentCase = await collectReconciliationEvidence({reviewCase, operationId: input.assessment.reconciliationCase.operationId, now: input.now});
+      if (assessReconciliation(currentCase, checkpoint).status === "already_reconciled") {
+        return {status: "already_reconciled", checkpointFingerprint: checkpoint.checkpointFingerprint, notification: "Reconciliación completada"};
+      }
     }
     if (reviewCase.version !== input.expectedCaseVersion || checkpoint.checkpointFingerprint !== input.expectedCheckpointFingerprint) return {status: "conflict", reason: "reconciliation_state_changed"};
     const freshCase = await collectReconciliationEvidence({
@@ -262,11 +306,16 @@ export async function applyConfirmedReconciliation(input: {
       operationId: input.assessment.reconciliationCase.operationId,
       inspector: input.inspector,
       includeExternalInspection: input.includeExternalInspection,
+      inspectionEvidence: input.inspectionEvidence,
       signal: input.signal,
       now: input.now,
     });
-    const freshAssessment = assessReconciliation(freshCase, checkpoint);
-    if (freshAssessment.assessmentFingerprint !== input.expectedAssessmentFingerprint || freshAssessment.status !== input.assessment.status) return {status: "conflict", reason: "reconciliation_evidence_changed"};
+    const freshAssessment = assessReconciliation(freshCase, checkpoint, {
+      inspectorId: input.assessment.inspectorId,
+      inspectedAt: input.assessment.inspectedAt,
+      expectedContext: buildUniversalReconciliationContext(input.assessment.reconciliationCase, checkpoint),
+    });
+    if (freshAssessment.assessmentFingerprint !== input.expectedAssessmentFingerprint || !freshAssessment.allowedActions?.includes(requestedAction)) return {status: "conflict", reason: "reconciliation_evidence_changed"};
     if (freshAssessment.status === "already_reconciled") return {status: "already_reconciled", checkpointFingerprint: checkpoint.checkpointFingerprint, notification: "Reconciliación completada"};
     if (freshAssessment.status !== "confirmed_succeeded" && freshAssessment.status !== "confirmed_not_applied") return {status: "conflict", reason: "reconciliation_assessment_no_longer_actionable"};
     const graph = deserializeResolutionGraph(checkpoint.graph, checkpoint.plan, checkpoint.createdAt);
@@ -288,6 +337,14 @@ export async function applyConfirmedReconciliation(input: {
       identityKey: outcome?.identityKey,
       operationOutcome: outcome?.outcome,
       payloadFingerprint: outcome?.payloadFingerprint,
+      projection: checkpointProjectionForExternalNewsReconciliation(freshCase.capability),
+      provenance: {
+        inspectorId: freshAssessment.inspectorId,
+        evidenceFingerprint: freshAssessment.evidenceFingerprint,
+        assessmentFingerprint: freshAssessment.assessmentFingerprint,
+        appliedAction: requestedAction,
+        reasonCodes: freshAssessment.reasons?.map((reason) => reason.code) ?? [],
+      },
       now: input.now,
     });
     const stored = updateGlobalResolutionCheckpoint(reviewCase.id, reviewCase.version, () => evolved, new Date((input.now ?? nowDefault)()), checkpoint.checkpointFingerprint);

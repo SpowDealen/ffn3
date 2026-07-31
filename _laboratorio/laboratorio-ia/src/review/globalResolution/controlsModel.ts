@@ -4,6 +4,12 @@ import type {ReviewCase, ReviewJsonObject, ReviewJsonValue} from "../types";
 import {capabilityForOperation} from "./capabilities";
 import type {ExternalNewsApplicationRecovery, ExternalNewsPlanningInput} from "./externalNewsApplication";
 import type {GlobalResolutionSimulationContext} from "./simulateGlobalResolutionPlan";
+import {
+  buildGlobalResolutionInspectionRequest,
+  type GlobalResolutionInspectionEvidence,
+  type GlobalResolutionObservation,
+} from "./inspection";
+import type {GlobalResolutionReconciliationAssessment, GlobalResolutionReconciliationEvidence} from "./reconciliation";
 
 export const GLOBAL_RESOLUTION_CAPABILITY_LABELS: Readonly<Record<string, string>> = Object.freeze({
   "create:luchador": "Crear o reutilizar luchador",
@@ -12,6 +18,7 @@ export const GLOBAL_RESOLUTION_CAPABILITY_LABELS: Readonly<Record<string, string
   "resume:external_news": "Guardar borrador y reanudar",
   "validate:luchador_prepared": "Comprobar datos del luchador",
   "find:luchador": "Buscar luchador existente",
+  "resolve_identity:fighter": "Resolver identidad del luchador",
   "reuse:luchador": "Reutilizar luchador existente",
 });
 
@@ -84,11 +91,121 @@ export type GlobalResolutionControlsView = {
   operations: GlobalResolutionOperationView[];
 };
 
+export type GlobalResolutionInspectionUiState =
+  | {status: "idle"}
+  | {status: "confirming"; operationId: string}
+  | {status: "inspecting"; operationId: string}
+  | {status: "succeeded"; operationId: string; evidence: GlobalResolutionInspectionEvidence; assessment: GlobalResolutionReconciliationAssessment}
+  | {status: "failed"; operationId: string; code: string; message: string; retryable: boolean; assessment?: GlobalResolutionReconciliationAssessment};
+
+export type GlobalResolutionInspectionObservationView = {
+  kind: GlobalResolutionObservation["kind"];
+  label: string;
+  detail?: string;
+  fullValue?: string;
+};
+
+export type GlobalResolutionInspectionControlView = {
+  visible: boolean;
+  capability: string;
+  capabilityLabel: string;
+  state: GlobalResolutionInspectionUiState["status"];
+  canConfirm: boolean;
+  canCancel: boolean;
+  canRetry: boolean;
+  canRepair: boolean;
+  canEnableRetry: boolean;
+  assessmentLabel?: string;
+  observations: GlobalResolutionInspectionObservationView[];
+  blockers: string[];
+  responsive: {wrapLongValues: true; stackActionsBelow: 560};
+};
+
+export const GLOBAL_RESOLUTION_ASSESSMENT_LABELS: Readonly<Record<GlobalResolutionReconciliationAssessment["status"], string>> = Object.freeze({
+  confirmed_succeeded: "Efecto confirmado",
+  confirmed_not_applied: "Efecto no aplicado",
+  conflicting_evidence: "Evidencias contradictorias",
+  insufficient_evidence: "Evidencia insuficiente",
+  already_reconciled: "Operación ya reconciliada",
+  technical_failure: "Fallo técnico",
+  unsupported: "Inspección no compatible",
+  stale_context: "Contexto obsoleto",
+});
+export const GLOBAL_RESOLUTION_RECONCILIATION_ACTION_LABELS = Object.freeze({
+  repair_checkpoint: "Reparar checkpoint",
+  enable_retry: "Habilitar nuevo intento",
+  inspect_again: "Volver a comprobar",
+  none: "",
+} as const);
+
 const object = (value: unknown): value is ReviewJsonObject => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const short = (value?: string): string => value ? value.length > 18 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value : "—";
 
 export function abbreviateGlobalResolutionValue(value?: string): string {
   return short(value);
+}
+
+export function summarizeGlobalResolutionInspectionObservation(observation: GlobalResolutionObservation): GlobalResolutionInspectionObservationView {
+  if (observation.kind === "entity_exists") return {kind: observation.kind, label: observation.entityType === "luchador" ? "Sanity confirma que existe el luchador" : "Sanity confirma que existe la noticia", detail: short(observation.entityId), fullValue: observation.entityId};
+  if (observation.kind === "entity_missing") return {kind: observation.kind, label: observation.entityType === "luchador" ? "Sanity no encontró el luchador esperado" : "Sanity no encontró la noticia esperada", detail: observation.expectedId ? short(observation.expectedId) : undefined, fullValue: observation.expectedId};
+  if (observation.kind === "reference_exists") return {kind: observation.kind, label: "La noticia contiene la referencia al luchador", detail: short(observation.targetId), fullValue: observation.targetId};
+  if (observation.kind === "reference_missing") return {kind: observation.kind, label: "La noticia no contiene la referencia esperada", detail: short(observation.targetId), fullValue: observation.targetId};
+  if (observation.kind === "payload_matches") return {kind: observation.kind, label: "El contenido coincide con el fingerprint preparado"};
+  if (observation.kind === "payload_differs") return {kind: observation.kind, label: "El documento existe, pero su contenido no coincide completamente"};
+  if (observation.kind === "multiple_candidates") return {kind: observation.kind, label: "Se encontraron varias entidades compatibles", detail: `${observation.candidateIds.length} candidatas`};
+  return {kind: observation.kind, label: "No fue posible comprobar Sanity en este momento"};
+}
+
+export function splitGlobalResolutionReconciliationEvidence(evidence: readonly GlobalResolutionReconciliationEvidence[]): {
+  local: GlobalResolutionReconciliationEvidence[];
+  sanity: GlobalResolutionReconciliationEvidence[];
+} {
+  return {
+    local: evidence.filter((item) => item.source !== "external_inspector"),
+    sanity: evidence.filter((item) => item.source === "external_inspector"),
+  };
+}
+
+export function buildGlobalResolutionInspectionControlView(input: {
+  reviewCase: ReviewCase;
+  controls: GlobalResolutionControlsView;
+  operationId: string;
+  state: GlobalResolutionInspectionUiState;
+}): GlobalResolutionInspectionControlView {
+  const operation = input.reviewCase.globalResolution?.plan.operations.find((candidate) => candidate.id === input.operationId);
+  const node = input.reviewCase.globalResolution?.graph.nodes.find((candidate) => candidate.operationId === input.operationId);
+  const capability = operation ? capabilityForOperation(operation) ?? operation.requiredCapability ?? "" : "";
+  const criticalResume = input.reviewCase.status === "resumed"
+    && input.reviewCase.globalResolution?.phase !== "completed"
+    && input.reviewCase.globalResolution?.resume?.operationId === input.operationId;
+  const blockers: string[] = [];
+  if (input.reviewCase.globalResolution?.producer !== input.reviewCase.context.producer) blockers.push("El productor del checkpoint no coincide con el caso.");
+  if (input.controls.recoveryStatus !== "valid") blockers.push("El checkpoint no está vigente.");
+  if (node?.state !== "reconciliation_required" && !criticalResume) blockers.push("La operación no está en reconciliación.");
+  const request = buildGlobalResolutionInspectionRequest({
+    reviewCase: input.reviewCase,
+    operationId: input.operationId,
+    requestedAt: input.reviewCase.updatedAt,
+  });
+  if (!request.ok) blockers.push(request.code === "subject_incomplete" ? "Faltan IDs de dominio para construir una inspección cerrada." : "No se puede construir la solicitud de inspección.");
+  const current = "operationId" in input.state && input.state.operationId === input.operationId ? input.state : {status: "idle"} as const;
+  const assessment = current.status === "succeeded" || current.status === "failed" ? current.assessment : undefined;
+  const allowedActions = assessment?.allowedActions ?? [];
+  return {
+    visible: blockers.length === 0,
+    capability,
+    capabilityLabel: GLOBAL_RESOLUTION_CAPABILITY_LABELS[capability] ?? "Operación universal",
+    state: current.status,
+    canConfirm: blockers.length === 0 && ["idle", "confirming", "succeeded", "failed"].includes(current.status),
+    canCancel: current.status === "confirming" || current.status === "inspecting",
+    canRetry: current.status === "failed" && (allowedActions.includes("inspect_again") || current.retryable),
+    canRepair: allowedActions.includes("repair_checkpoint") || assessment?.repairAllowed === true,
+    canEnableRetry: allowedActions.includes("enable_retry") || assessment?.retryAllowed === true,
+    assessmentLabel: assessment ? GLOBAL_RESOLUTION_ASSESSMENT_LABELS[assessment.status] : undefined,
+    observations: current.status === "succeeded" ? current.evidence.observations.map(summarizeGlobalResolutionInspectionObservation) : [],
+    blockers,
+    responsive: {wrapLongValues: true, stackActionsBelow: 560},
+  };
 }
 
 function evidenceFor(reviewCase: ReviewCase, issueId: string, draft: ReviewJsonObject) {
@@ -122,14 +239,15 @@ export function buildExternalNewsControlPlanningInput(reviewCase: ReviewCase): E
 
 export function buildExternalNewsControlSimulationContext(reviewCase: ReviewCase): GlobalResolutionSimulationContext {
   const snapshot = getExternalNewsResumeSnapshot(reviewCase.context);
-  if (!snapshot.complete || !snapshot.snapshot) throw new Error(`Snapshot incompleto: ${snapshot.missingFields.join(", ")}.`);
+  const producer = typeof reviewCase.context.producer === "string" ? reviewCase.context.producer : "";
+  if (producer === "external_news" && (!snapshot.complete || !snapshot.snapshot)) throw new Error(`Snapshot incompleto: ${snapshot.missingFields.join(", ")}.`);
   const planning = buildExternalNewsControlPlanningInput(reviewCase);
   return {
     reviewCase,
     preparedEntities: planning.preparedEntities.filter((item) => item.entityType === "fighter").map((item) => ({issueId: item.issueId, entityType: "fighter", draft: structuredClone(item.draft)})),
     fighterCandidates: [],
-    newsPayload: structuredClone(snapshot.snapshot.payload),
-    producerContracts: [{producer: "external_news", supportsSimulation: true, allowsProjectedReferences: true}],
+    newsPayload: snapshot.snapshot ? structuredClone(snapshot.snapshot.payload) : undefined,
+    producerContracts: [{producer, supportsSimulation: true, allowsProjectedReferences: producer === "external_news"}],
   };
 }
 
@@ -142,7 +260,7 @@ function recoveryLabel(status: GlobalResolutionControlsView["recoveryStatus"]): 
 
 export function buildGlobalResolutionControlsView(reviewCase: ReviewCase, integrated?: ExternalNewsApplicationRecovery): GlobalResolutionControlsView {
   const producer = typeof reviewCase.context.producer === "string" ? reviewCase.context.producer : "";
-  const compatible = producer === "external_news";
+  const compatible = ["external_news", "ufc_events", "one_events", "bkfc_events", "fekm_participants"].includes(producer);
   const recoveryStatus = integrated?.checkpointStatus ?? (reviewCase.globalResolution ? "invalid" : "absent");
   const valid = integrated?.recovery.status === "valid" ? integrated.recovery : undefined;
   const checkpoint = valid?.checkpoint;
@@ -171,7 +289,7 @@ export function buildGlobalResolutionControlsView(reviewCase: ReviewCase, integr
       documentId: execution?.documentId ?? reference?.documentId,
       identity: reference?.identityKey ?? (typeof node.operation.target?.identityKey === "string" ? node.operation.target.identityKey : undefined),
       support,
-      canExecute: node.state === "ready" && support === "executable" && !node.isResumeNode && checkpoint?.phase !== "reconciliation_required",
+      canExecute: node.state === "ready" && (support === "executable" || capability === "resolve_identity:fighter") && !node.isResumeNode && checkpoint?.phase !== "reconciliation_required",
       isPureValidation: capability === "validate:noticia",
       isResume: node.isResumeNode,
     };

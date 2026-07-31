@@ -56,6 +56,7 @@ import {registerEditorialSchemaRequirements} from "../integrations/editorialSche
 import type {ExternalNewsResumeExecutor} from "../review/resume/externalNews";
 import type {ReviewJsonObject} from "../review/types";
 import {registerExternalNewsGlobalResolutionRuntime} from "../review/globalResolution";
+import {registerFighterResolutionProposals, type FighterResolutionIntakeResponse} from "../review/fighterResolutionIntake";
 
 
 type ExternalEditorialAnalysisResponse =
@@ -665,6 +666,29 @@ type UfcBulkActionResponse =
       };
     };
 
+type FighterProducerResolutionContext = {
+  discipline: {found: boolean; sanityId?: string};
+  organization: {found: boolean; sanityId?: string};
+  missingFighters: Array<{sourceName: string; normalizedName: string}>;
+};
+
+function fighterResolutionRequestBody(event: {id?: string; sourceUrl?: string; canonicalUrl?: string}, resolution: FighterProducerResolutionContext) {
+  return {
+    confirm: true,
+    event,
+    resolutionContext: {disciplineId: resolution.discipline.sanityId, organizationId: resolution.organization.sanityId},
+    fighters: resolution.missingFighters.map((fighter) => ({name: fighter.sourceName, aliases: fighter.normalizedName !== fighter.sourceName ? [fighter.normalizedName] : []})),
+  };
+}
+
+function registerPlannedFighterResolutions(payload: FighterResolutionIntakeResponse): number {
+  const proposals = payload.items.flatMap((item) => item.proposal ? [item.proposal] : []);
+  const registrations = registerFighterResolutionProposals(proposals);
+  const blocked = registrations.find((item) => item.status === "blocked");
+  if (blocked) throw new Error(`No se pudo registrar la resolución fighter: ${blocked.reasonCode ?? "blocked"}.`);
+  return registrations.length;
+}
+
 type UfcOfficialEventsApiResponse =
   | {
       ok: true;
@@ -896,10 +920,12 @@ type FekmEventOrchestration =
         participantsReadyAfter: number;
         unresolvedCategoriesAfter: number;
         participantsCreated: number;
+        participantsPlanned: number;
         participantsUpdated: number;
         participantsSkipped: number;
         participantsFailed: number;
       };
+      participantsResult?: FighterResolutionIntakeResponse | null;
       warnings: string[];
     }
   | { ok: false; source?: "fekm"; error?: string };
@@ -6831,6 +6857,9 @@ export default function PanelIA(): ReactElement {
         message: "",
       });
 
+      if (!ufcEventResolution?.ok) throw new Error("Analiza primero la cartelera para obtener disciplina, organización e identidades faltantes.");
+      const currentResolution = ufcEventResolution;
+
       const response = await fetch(
         `${API_BASE_URL}/api/sources/ufc/events/create-fighters`,
         {
@@ -6839,51 +6868,27 @@ export default function PanelIA(): ReactElement {
             "Content-Type": "application/json",
             Accept: "application/json",
           },
-          body: JSON.stringify({
-            confirm: true,
-            event: selectedOfficialEvent,
-          }),
+          body: JSON.stringify(fighterResolutionRequestBody(selectedOfficialEvent, currentResolution)),
         }
       );
 
-      const payload = (await response.json()) as UfcBulkActionResponse;
+      const payload = (await response.json()) as FighterResolutionIntakeResponse;
 
       if (!response.ok || !payload.ok) {
         throw new Error(
-          !payload.ok && payload.error
+          payload.error
             ? payload.error
             : "No se pudieron crear los luchadores faltantes."
         );
       }
 
-      await reloadReferenceEntities();
-      await resolveSelectedUfcEvent(selectedOfficialEvent);
+      const registered = registerPlannedFighterResolutions(payload);
 
       setUfcAutomationStatus({
-        type: payload.summary.failed > 0 ? "error" : "success",
-        message: `${payload.summary.created} luchadores creados, ${payload.summary.skipped} omitidos y ${payload.summary.failed} fallidos.`,
+        type: "success",
+        message: `${registered} solicitudes planificadas. Resolver identidad del luchador en el Centro de revisión.`,
       });
-
-      notifyEntityBatchProcessed({
-        source: "UFC",
-        entity: "fighter",
-        created: payload.summary.created,
-        skipped: payload.summary.skipped,
-        failed: payload.summary.failed,
-        location: {
-          label: "Laboratorio → UFC → Eventos",
-          url: window.location.href,
-        },
-      });
-
-      if (payload.summary.failed > 0) {
-        failProcess(
-          processId,
-          `${payload.summary.failed} luchadores fallidos`,
-        );
-      } else {
-        completeProcess(processId);
-      }
+      completeProcess(processId);
     } catch (error) {
       const message =
         error instanceof Error
@@ -6910,9 +6915,8 @@ export default function PanelIA(): ReactElement {
       setIsCreatingUfcFighters(false);
     }
   }, [
-    reloadReferenceEntities,
-    resolveSelectedUfcEvent,
     selectedOfficialEvent,
+    ufcEventResolution,
   ]);
 
   const createUfcFights = useCallback(async (): Promise<void> => {
@@ -7171,7 +7175,7 @@ export default function PanelIA(): ReactElement {
 
       let completed = 0;
       let failed = 0;
-      let createdFighters = 0;
+      const createdFighters = 0;
       let createdFights = 0;
 
       try {
@@ -7217,32 +7221,25 @@ export default function PanelIA(): ReactElement {
                     "Content-Type": "application/json",
                     Accept: "application/json",
                   },
-                  body: JSON.stringify({
-                    confirm: true,
-                    event,
-                  }),
+                  body: JSON.stringify(fighterResolutionRequestBody(event, resolution)),
                 }
               );
 
               const fightersPayload =
-                (await fightersResponse.json()) as UfcBulkActionResponse;
+                (await fightersResponse.json()) as FighterResolutionIntakeResponse;
 
               if (!fightersResponse.ok || !fightersPayload.ok) {
                 throw new Error(
-                  !fightersPayload.ok && fightersPayload.error
+                  fightersPayload.error
                     ? fightersPayload.error
                     : "No se pudieron crear los luchadores faltantes."
                 );
               }
 
-              if (fightersPayload.summary.failed > 0) {
-                throw new Error(
-                  `${fightersPayload.summary.failed} luchadores fallaron durante la creación.`
-                );
-              }
-
-              createdFighters += fightersPayload.summary.created;
-              resolution = await requestUfcEventResolution(event);
+              const registered = registerPlannedFighterResolutions(fightersPayload);
+              updateUfcBatchPreparationItem(event.id, {status: "completado", message: `${registered} identidades pendientes en el Centro de revisión.`});
+              completed += 1;
+              continue;
             }
 
             if (resolution.counts.missingFighters > 0) {
@@ -7492,47 +7489,24 @@ export default function PanelIA(): ReactElement {
               "Content-Type": "application/json",
               Accept: "application/json",
             },
-            body: JSON.stringify({
-              confirm: true,
-              event: selectedOfficialEvent,
-            }),
+            body: JSON.stringify(fighterResolutionRequestBody(selectedOfficialEvent, resolution)),
           }
         );
 
         const fightersPayload =
-          (await fightersResponse.json()) as UfcBulkActionResponse;
+          (await fightersResponse.json()) as FighterResolutionIntakeResponse;
 
         if (!fightersResponse.ok || !fightersPayload.ok) {
           throw new Error(
-            !fightersPayload.ok && fightersPayload.error
+            fightersPayload.error
               ? fightersPayload.error
               : "No se pudieron crear los luchadores faltantes."
           );
         }
-
-        if (fightersPayload.summary.failed > 0) {
-          throw new Error(
-            `Se crearon ${fightersPayload.summary.created} luchadores, pero ${fightersPayload.summary.failed} fallaron. Revisa el resultado antes de continuar.`
-          );
-        }
-
-        await reloadReferenceEntities();
-
-        updateProcess(processId, {
-          current: 3,
-          total: 4,
-          detail: "Actualizando relaciones de luchadores",
-        });
-
-        setUfcAutomationStatus({
-          type: "success",
-          message:
-            "Paso 3 de 4: actualizando relaciones después de crear luchadores...",
-        });
-
-        resolution = await requestUfcEventResolution(
-          selectedOfficialEvent
-        );
+        const registered = registerPlannedFighterResolutions(fightersPayload);
+        setUfcAutomationStatus({type: "success", message: `${registered} solicitudes planificadas. La automatización se detuvo hasta resolver identidad en /revision.`});
+        completeProcess(processId);
+        return;
 
         setUfcEventResolution(resolution);
       }
@@ -7877,9 +7851,10 @@ export default function PanelIA(): ReactElement {
         | "create-categories"
         | "create-fighters"
         | "create-fights",
-      targetEvent?: BkfcOfficialEventItem
-    ): Promise<UfcBulkActionResponse | Record<string, unknown>> => {
-      const body = {
+      targetEvent?: BkfcOfficialEventItem,
+      fighterResolution?: FighterProducerResolutionContext
+    ): Promise<UfcBulkActionResponse | FighterResolutionIntakeResponse | Record<string, unknown>> => {
+      const body = path === "create-fighters" && targetEvent && fighterResolution ? fighterResolutionRequestBody(targetEvent, fighterResolution) : {
         confirm: true,
         event: targetEvent,
       };
@@ -7898,6 +7873,7 @@ export default function PanelIA(): ReactElement {
 
       const payload = (await response.json()) as
         | UfcBulkActionResponse
+        | FighterResolutionIntakeResponse
         | Record<string, unknown>;
 
       if (!response.ok || !("ok" in payload) || payload.ok !== true) {
@@ -8037,10 +8013,12 @@ export default function PanelIA(): ReactElement {
         detail: selectedBkfcEvent.name,
       });
 
+      const resolution = await requestBkfcEventResolution(selectedBkfcEvent);
       const payload = (await runBkfcBulkAction(
         "create-fighters",
-        selectedBkfcEvent
-      )) as UfcBulkActionResponse;
+        selectedBkfcEvent,
+        resolution
+      )) as FighterResolutionIntakeResponse;
 
       if (!payload.summary) {
         throw new Error(
@@ -8048,42 +8026,12 @@ export default function PanelIA(): ReactElement {
         );
       }
 
-      const summary = payload.summary;
-
-      await reloadReferenceEntities();
-
-      const resolution =
-        await requestBkfcEventResolution(selectedBkfcEvent);
-
-      setBkfcEventResolution(resolution);
+      const registered = registerPlannedFighterResolutions(payload);
       setBkfcSourceStatus({
-        type:
-          summary.failed > 0
-            ? "error"
-            : "success",
-        message: `${summary.created} luchadores creados, ${summary.skipped} omitidos y ${summary.failed} fallidos.`,
+        type: "success",
+        message: `${registered} solicitudes planificadas. Resolver identidad del luchador en el Centro de revisión.`,
       });
-
-      notifyEntityBatchProcessed({
-        source: "BKFC",
-        entity: "fighter",
-        created: summary.created,
-        skipped: summary.skipped,
-        failed: summary.failed,
-        location: {
-          label: "Laboratorio → BKFC → Eventos",
-          url: window.location.href,
-        },
-      });
-
-      if (summary.failed > 0) {
-        failProcess(
-          processId,
-          `${summary.failed} luchadores fallidos`,
-        );
-      } else {
-        completeProcess(processId);
-      }
+      completeProcess(processId);
     } catch (error) {
       const message =
         error instanceof Error
@@ -8110,7 +8058,6 @@ export default function PanelIA(): ReactElement {
       setIsCreatingBkfcFighters(false);
     }
   }, [
-    reloadReferenceEntities,
     requestBkfcEventResolution,
     runBkfcBulkAction,
     selectedBkfcEvent,
@@ -8290,17 +8237,15 @@ export default function PanelIA(): ReactElement {
           message: `Paso 3 de 4: creando ${resolution.counts.missingFighters} luchadores faltantes...`,
         });
 
-        await runBkfcBulkAction(
+        const intake = await runBkfcBulkAction(
           "create-fighters",
-          selectedBkfcEvent
-        );
-
-        await reloadReferenceEntities();
-
-        resolution =
-          await requestBkfcEventResolution(selectedBkfcEvent);
-
-        setBkfcEventResolution(resolution);
+          selectedBkfcEvent,
+          resolution
+        ) as FighterResolutionIntakeResponse;
+        const registered = registerPlannedFighterResolutions(intake);
+        setBkfcSourceStatus({type: "success", message: `${registered} solicitudes planificadas. Flujo detenido hasta resolver identidad en /revision.`});
+        completeProcess(processId);
+        return;
       }
 
       if (resolution.counts.pendingFights > 0) {
@@ -8602,6 +8547,7 @@ export default function PanelIA(): ReactElement {
 
         setFekmEventOrchestration(payload);
         if (confirm) {
+          if (payload.participantsResult?.ok) registerPlannedFighterResolutions(payload.participantsResult);
           await reloadReferenceEntities();
           await resolveSelectedFekmEvent();
         }
@@ -8610,7 +8556,7 @@ export default function PanelIA(): ReactElement {
         setFekmEventStatus({
           type: "success",
           message: confirm
-            ? `Preparación FEKM completada: ${summary?.categoriesCreated ?? 0} categorías creadas y ${summary?.participantsCreated ?? 0} participantes creados.`
+            ? `Preparación FEKM: ${summary?.categoriesCreated ?? 0} categorías creadas y ${summary?.participantsPlanned ?? 0} identidades planificadas para resolver en /revision.`
             : `Documento asociado y lote analizados: ${summary?.extractedParticipants ?? 0} participantes detectados, ${summary?.participantsReadyBefore ?? 0} aptos inicialmente.`,
         });
       } catch (error) {
@@ -8857,9 +8803,10 @@ export default function PanelIA(): ReactElement {
         | "create-categories"
         | "create-fighters"
         | "create-fights",
-      targetEvent?: OneOfficialEventItem
-    ): Promise<UfcBulkActionResponse | Record<string, unknown>> => {
-      const body = {
+      targetEvent?: OneOfficialEventItem,
+      fighterResolution?: FighterProducerResolutionContext
+    ): Promise<UfcBulkActionResponse | FighterResolutionIntakeResponse | Record<string, unknown>> => {
+      const body = path === "create-fighters" && targetEvent && fighterResolution ? fighterResolutionRequestBody(targetEvent, fighterResolution) : {
         confirm: true,
         event: targetEvent,
       };
@@ -8878,6 +8825,7 @@ export default function PanelIA(): ReactElement {
 
       const payload = (await response.json()) as
         | UfcBulkActionResponse
+        | FighterResolutionIntakeResponse
         | Record<string, unknown>;
 
       if (!response.ok || !("ok" in payload) || payload.ok !== true) {
@@ -9120,10 +9068,12 @@ export default function PanelIA(): ReactElement {
         detail: selectedOneEvent.name,
       });
 
+      const resolution = await requestOneEventResolution(selectedOneEvent);
       const payload = (await runOneEventBulkAction(
         "create-fighters",
-        selectedOneEvent
-      )) as UfcBulkActionResponse;
+        selectedOneEvent,
+        resolution
+      )) as FighterResolutionIntakeResponse;
 
       if (!payload.summary) {
         throw new Error(
@@ -9131,40 +9081,12 @@ export default function PanelIA(): ReactElement {
         );
       }
 
-      const summary = payload.summary;
-
-      await reloadReferenceEntities();
-
-      const resolution =
-        await requestOneEventResolution(selectedOneEvent);
-
-      setOneEventResolution(resolution);
-
+      const registered = registerPlannedFighterResolutions(payload);
       setOneEventSourceStatus({
-        type: summary.failed > 0 ? "error" : "success",
-        message: `${summary.created} luchadores creados, ${summary.skipped} omitidos y ${summary.failed} fallidos.`,
+        type: "success",
+        message: `${registered} solicitudes planificadas. Resolver identidad del luchador en el Centro de revisión.`,
       });
-
-      notifyEntityBatchProcessed({
-        source: "ONE Championship",
-        entity: "fighter",
-        created: summary.created,
-        skipped: summary.skipped,
-        failed: summary.failed,
-        location: {
-          label: "Laboratorio → ONE Championship → Eventos",
-          url: window.location.href,
-        },
-      });
-
-      if (summary.failed > 0) {
-        failProcess(
-          processId,
-          `${summary.failed} luchadores fallidos`,
-        );
-      } else {
-        completeProcess(processId);
-      }
+      completeProcess(processId);
     } catch (error) {
       const message =
         error instanceof Error
@@ -9191,7 +9113,6 @@ export default function PanelIA(): ReactElement {
       setIsCreatingOneFighters(false);
     }
   }, [
-    reloadReferenceEntities,
     requestOneEventResolution,
     runOneEventBulkAction,
     selectedOneEvent,
@@ -9394,17 +9315,15 @@ export default function PanelIA(): ReactElement {
           message: `Paso 4 de 5: creando ${resolution.counts.missingFighters} luchadores faltantes...`,
         });
 
-        await runOneEventBulkAction(
+        const intake = await runOneEventBulkAction(
           "create-fighters",
-          selectedOneEvent
-        );
-
-        await reloadReferenceEntities();
-
-        resolution =
-          await requestOneEventResolution(selectedOneEvent);
-
-        setOneEventResolution(resolution);
+          selectedOneEvent,
+          resolution
+        ) as FighterResolutionIntakeResponse;
+        const registered = registerPlannedFighterResolutions(intake);
+        setOneEventSourceStatus({type: "success", message: `${registered} solicitudes planificadas. Flujo detenido hasta resolver identidad en /revision.`});
+        completeProcess(processId);
+        return;
       }
 
       if (resolution.counts.pendingFights > 0) {

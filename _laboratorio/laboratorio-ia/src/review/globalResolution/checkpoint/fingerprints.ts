@@ -87,6 +87,7 @@ export function fingerprintGlobalResolutionCheckpoint(checkpoint: Omit<GlobalRes
     caseVersion: checkpoint.caseVersion,
     storedAtCaseVersion: checkpoint.storedAtCaseVersion,
     producer: checkpoint.producer,
+    producerManifest: checkpoint.producerManifest,
     plan: checkpoint.plan,
     graph: checkpoint.graph,
     planFingerprint: checkpoint.planFingerprint,
@@ -97,6 +98,7 @@ export function fingerprintGlobalResolutionCheckpoint(checkpoint: Omit<GlobalRes
     simulation,
     execution,
     referenceResolution,
+    identityGuard: checkpoint.identityGuard ? {...checkpoint.identityGuard, authorizedAt: undefined, candidateIds: [...checkpoint.identityGuard.candidateIds].sort(), strategyIds: [...checkpoint.identityGuard.strategyIds].sort(), warningCodes: [...checkpoint.identityGuard.warningCodes].sort()} : undefined,
     resume,
     history: checkpoint.history.map(({occurredAt: _occurredAt, ...entry}) => entry),
   } as unknown as ReviewJsonValue);

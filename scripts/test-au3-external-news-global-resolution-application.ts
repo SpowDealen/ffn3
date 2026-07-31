@@ -22,6 +22,8 @@ import {
   updateGlobalResolutionCheckpoint,
 } from "../_laboratorio/laboratorio-ia/src/review/store/reviewStore";
 import type {ReviewCase, ReviewJsonObject} from "../_laboratorio/laboratorio-ia/src/review/types";
+import {CandidateDiscoveryRegistry, CandidateDiscoveryService, createSanityFighterCandidateDiscoveryAdapter} from "../_laboratorio/laboratorio-ia/src/review/entityIdentity";
+import {createInMemoryCandidateReader} from "../_laboratorio/laboratorio-ia/src/review/entityIdentity/discovery/devFixture";
 
 const timestamps = [
   "2026-07-28T14:00:00.000Z", "2026-07-28T14:01:00.000Z", "2026-07-28T14:02:00.000Z",
@@ -170,18 +172,29 @@ async function main(): Promise<void> {
     assert.equal(creates, 0);
     assert.equal(saves, 0);
     const afterSimulation = getReviewCase(afterInit.id)!;
-    const checkpoint = afterSimulation.globalResolution!;
+    let checkpoint = afterSimulation.globalResolution!;
     const createOperation = checkpoint.plan.operations.find((item) => item.kind === "create_entity")!;
-    assert.ok(simulated.recovery.nextReadyOperationIds.includes(createOperation.id));
+    const guardOperation = checkpoint.plan.operations.find((item) => item.requiredCapability === "resolve_identity:fighter")!;
+    assert.ok(simulated.recovery.nextReadyOperationIds.includes(guardOperation.id));
+    assert.equal(simulated.recovery.nextReadyOperationIds.includes(createOperation.id), false);
     assert.equal((await executeExternalNewsResolutionOperation({caseId: afterSimulation.id, expectedCaseVersion: afterSimulation.version, expectedCheckpointFingerprint: checkpoint.checkpointFingerprint, operationId: "unknown", simulationContext: simulationContext(afterSimulation), idempotencyContext: "au3:unknown", authorized: true, dependencies: {now: clock}})).status, "operation_unknown");
     assert.equal((await executeExternalNewsResolutionOperation({caseId: afterSimulation.id, expectedCaseVersion: afterSimulation.version + 1, expectedCheckpointFingerprint: checkpoint.checkpointFingerprint, operationId: createOperation.id, simulationContext: simulationContext(afterSimulation), idempotencyContext: "au3:wrong-version", authorized: true, dependencies: {now: clock}})).status, "checkpoint_conflict");
     assert.equal((await executeExternalNewsResolutionOperation({caseId: afterSimulation.id, expectedCaseVersion: afterSimulation.version, expectedCheckpointFingerprint: "sha256-v1:old", operationId: createOperation.id, simulationContext: simulationContext(afterSimulation), idempotencyContext: "au3:old-checkpoint", authorized: true, dependencies: {now: clock}})).status, "checkpoint_conflict");
 
-    const unauthorized = await executeExternalNewsResolutionOperation({caseId: afterSimulation.id, expectedCaseVersion: afterSimulation.version, expectedCheckpointFingerprint: checkpoint.checkpointFingerprint, operationId: createOperation.id, simulationContext: simulationContext(afterSimulation), idempotencyContext: "au3:create", dependencies: {now: clock}});
+    const candidateRegistry = new CandidateDiscoveryRegistry();
+    candidateRegistry.register(createSanityFighterCandidateDiscoveryAdapter(createInMemoryCandidateReader([])));
+    const candidateDiscoveryService = new CandidateDiscoveryService(candidateRegistry);
+    const guarded = await executeExternalNewsResolutionOperation({caseId: afterSimulation.id, expectedCaseVersion: afterSimulation.version, expectedCheckpointFingerprint: checkpoint.checkpointFingerprint, operationId: guardOperation.id, simulationContext: simulationContext(afterSimulation), idempotencyContext: "au3:guard", dependencies: {now: clock, candidateDiscoveryService}});
+    assert.equal(guarded.status, "succeeded");
+    const afterGuard = getReviewCase(afterSimulation.id)!;
+    checkpoint = afterGuard.globalResolution!;
+    assert.equal(checkpoint.identityGuard?.decision, "create_new");
+
+    const unauthorized = await executeExternalNewsResolutionOperation({caseId: afterGuard.id, expectedCaseVersion: afterGuard.version, expectedCheckpointFingerprint: checkpoint.checkpointFingerprint, operationId: createOperation.id, simulationContext: simulationContext(afterGuard), idempotencyContext: "au3:create", dependencies: {now: clock}});
     assert.equal(unauthorized.status, "authorization_required");
     assert.equal(creates, 0);
 
-    const createInput = {caseId: afterSimulation.id, expectedCaseVersion: afterSimulation.version, expectedCheckpointFingerprint: checkpoint.checkpointFingerprint, operationId: createOperation.id, simulationContext: simulationContext(afterSimulation), idempotencyContext: "au3:create", authorized: true, dependencies: {now: clock}};
+    const createInput = {caseId: afterGuard.id, expectedCaseVersion: afterGuard.version, expectedCheckpointFingerprint: checkpoint.checkpointFingerprint, operationId: createOperation.id, simulationContext: simulationContext(afterGuard), idempotencyContext: "au3:create", authorized: true, dependencies: {now: clock}};
     const firstCreate = executeExternalNewsResolutionOperation(createInput);
     const duplicateCreate = executeExternalNewsResolutionOperation(createInput);
     assert.equal(firstCreate, duplicateCreate);
@@ -237,6 +250,9 @@ async function main(): Promise<void> {
     assert.equal(criticalInitialized.status, "initialized");
     let criticalCurrent = getReviewCase(criticalCase.id)!;
     await simulateExternalNewsGlobalResolution({caseId: criticalCurrent.id, context: simulationContext(criticalCurrent), dependencies: {now: clock}});
+    criticalCurrent = getReviewCase(criticalCase.id)!;
+    const criticalGuard = criticalCurrent.globalResolution!.plan.operations.find((item) => item.requiredCapability === "resolve_identity:fighter")!;
+    await executeExternalNewsResolutionOperation({caseId: criticalCurrent.id, expectedCaseVersion: criticalCurrent.version, expectedCheckpointFingerprint: criticalCurrent.globalResolution!.checkpointFingerprint, operationId: criticalGuard.id, simulationContext: simulationContext(criticalCurrent), idempotencyContext: "critical:guard", dependencies: {now: clock, candidateDiscoveryService}});
     criticalCurrent = getReviewCase(criticalCase.id)!;
     const criticalCreate = criticalCurrent.globalResolution!.plan.operations.find((item) => item.kind === "create_entity")!;
     await executeExternalNewsResolutionOperation({caseId: criticalCurrent.id, expectedCaseVersion: criticalCurrent.version, expectedCheckpointFingerprint: criticalCurrent.globalResolution!.checkpointFingerprint, operationId: criticalCreate.id, simulationContext: simulationContext(criticalCurrent), idempotencyContext: "critical:create", authorized: true, dependencies: {now: clock}});

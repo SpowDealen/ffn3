@@ -1,4 +1,6 @@
 import type {ReviewJsonValue} from "../../types";
+import type {UniversalReconciliationAssessment} from "./engine/types";
+export type {GlobalResolutionEffectInspector} from "../inspection/types";
 
 export type GlobalResolutionReconciliationReason =
   | "domain_succeeded_checkpoint_failed"
@@ -46,6 +48,8 @@ export type GlobalResolutionReconciliationCase = {
   checkpointFingerprint?: string;
   operationId: string;
   capability: string;
+  operationFingerprint?: string;
+  payloadFingerprint?: string;
   reason: GlobalResolutionReconciliationReason;
   evidence: GlobalResolutionReconciliationEvidence[];
   proposedOutcome?: {outcome: string; documentId?: string; identityKey?: string; payloadFingerprint?: string; idempotencyKey?: string};
@@ -53,12 +57,12 @@ export type GlobalResolutionReconciliationCase = {
   createdAt: string;
 };
 
-type AssessmentBase = {
+type AssessmentBase = Partial<Omit<UniversalReconciliationAssessment, "status" | "outcome">> & {
   reconciliationCase: GlobalResolutionReconciliationCase;
   evidence: GlobalResolutionReconciliationEvidence[];
   assessmentFingerprint: string;
   missingEvidence: string[];
-  notification: "Reconciliación completada" | "Reconciliación pendiente por falta de evidencia" | "Evidencia contradictoria" | "Operación habilitada para nuevo intento";
+  notification: "Reconciliación completada" | "Reconciliación pendiente por falta de evidencia" | "Evidencia contradictoria" | "Operación habilitada para nuevo intento" | "Inspección no disponible" | "Contexto obsoleto";
 };
 
 export type GlobalResolutionReconciliationAssessment =
@@ -66,18 +70,8 @@ export type GlobalResolutionReconciliationAssessment =
   | (AssessmentBase & {status: "confirmed_not_applied"; repairAllowed: false; retryAllowed: true})
   | (AssessmentBase & {status: "conflicting_evidence"; repairAllowed: false; retryAllowed: false})
   | (AssessmentBase & {status: "insufficient_evidence"; repairAllowed: false; retryAllowed: false})
-  | (AssessmentBase & {status: "already_reconciled"; outcome?: GlobalResolutionReconciliationCase["proposedOutcome"]; repairAllowed: false; retryAllowed: false});
-
-export type GlobalResolutionEffectInspector = {
-  id: string;
-  inspect(input: {
-    caseId: string;
-    operationId: string;
-    capability: string;
-    idempotencyKey?: string;
-    signal?: AbortSignal;
-  }): Promise<GlobalResolutionReconciliationEvidence[]>;
-};
+  | (AssessmentBase & {status: "already_reconciled"; outcome?: GlobalResolutionReconciliationCase["proposedOutcome"]; repairAllowed: false; retryAllowed: false})
+  | (AssessmentBase & {status: "technical_failure" | "unsupported" | "stale_context"; repairAllowed: false; retryAllowed: false});
 
 export type GlobalResolutionReconciliationApplyResult =
   | {status: "applied"; checkpointFingerprint: string; notification: AssessmentBase["notification"]}

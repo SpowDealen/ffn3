@@ -5,6 +5,7 @@ import {
   buildUniversalExecutionPlan,
   computeUniversalFingerprint,
   executeUniversalExecutionPlan,
+  getReviewProducer,
   getRegisteredReviewExecutor,
   simulateUniversalExecutionPlan,
   type UniversalPlanExecution,
@@ -26,6 +27,7 @@ import {
   recoverCurrentGlobalResolution,
   summarizeGlobalResolutionSimulation,
   updateCheckpointAfterPureValidation,
+  updateCheckpointAfterFighterIdentityGuard,
   type GlobalResolutionCheckpoint,
   type GlobalResolutionCheckpointPersistence,
   type GlobalResolutionCurrentCatalog,
@@ -48,12 +50,20 @@ import {
 } from "./fighterReferenceResolution";
 import {simulateGlobalResolutionPlan, type GlobalResolutionSimulationContext, type GlobalResolutionSimulationResult} from "./simulateGlobalResolutionPlan";
 import type {GlobalResolutionPlanningEvidence, PreparedEntityPlanningInput} from "./types";
-import {buildExternalNewsUniversalReviewInput, externalNewsRuntimeManifests} from "./externalNewsRuntime";
+import {buildExternalNewsUniversalReviewInput} from "./externalNewsRuntime";
+import {createGlobalResolutionProducerRuntime, EXTERNAL_NEWS_PRODUCER_ID, externalNewsProducerManifest, FIGHTER_SOURCE_PRODUCER_IDS, fingerprintGlobalResolutionProducerManifest} from "./producers";
+import {
+  FIGHTER_IDENTITY_GUARD_CAPABILITY, resolveFighterIdentityGuard, validateFighterIdentityGuardAuthorization,
+} from "./identityGuard";
+import type {FighterIdentityGuardAuthorization} from "./identityGuard";
+import type {CandidateDiscoveryService} from "../entityIdentity/discovery";
 
 type Clock = () => string;
-type BaseDependencies = {
+export type BaseDependencies = {
   persistence?: GlobalResolutionCheckpointPersistence;
   catalog?: () => GlobalResolutionCurrentCatalog;
+  candidateDiscoveryService?: CandidateDiscoveryService;
+  candidateDiscoverySource?: string;
   now?: Clock;
 };
 
@@ -81,7 +91,7 @@ export type ExternalNewsSimulationApplicationResult =
   | {status: "absent" | "stale" | "invalid" | "blocked" | "reconciliation_required" | "already_resumed" | "producer_mismatch"; reasons: string[]; recovery: ExternalNewsApplicationRecovery};
 
 export type ExternalNewsOperationResult =
-  | {status: "succeeded" | "reused_existing" | "reconciliation_required" | "failed" | "blocked"; operationId: string; execution?: UniversalPlanExecution; replacement?: ReplaceProjectedReferenceResult; lifecycle?: GlobalResolutionLifecycleResult<UniversalPlanExecution | ReplaceProjectedReferenceResult>; recovery: ExternalNewsApplicationRecovery}
+  | {status: "succeeded" | "reused_existing" | "reconciliation_required" | "failed" | "blocked"; operationId: string; execution?: UniversalPlanExecution; replacement?: ReplaceProjectedReferenceResult; lifecycle?: GlobalResolutionLifecycleResult<UniversalPlanExecution | ReplaceProjectedReferenceResult | FighterIdentityGuardAuthorization>; recovery: ExternalNewsApplicationRecovery}
   | {status: "case_invalid" | "producer_mismatch" | "checkpoint_stale" | "checkpoint_invalid" | "checkpoint_conflict" | "checkpoint_failed" | "operation_unknown" | "operation_not_ready" | "dependency_missing" | "authorization_required" | "already_resumed"; operationId: string; reasons: string[]; recovery?: ExternalNewsApplicationRecovery};
 
 export type ExternalNewsResumePreparationResult =
@@ -111,8 +121,13 @@ export type ExternalNewsGlobalResumeResult =
 const activeOperations = new Map<string, Promise<ExternalNewsOperationResult>>();
 const activeResumes = new Map<string, Promise<ExternalNewsGlobalResumeResult>>();
 const nowDefault = () => new Date().toISOString();
+const supportedOperationProducer = (value: unknown): value is string => value === "external_news" || FIGHTER_SOURCE_PRODUCER_IDS.includes(value as never);
 const object = (value: unknown): value is ReviewJsonObject => Boolean(value) && typeof value === "object" && !Array.isArray(value);
-const catalogOf = (dependencies: BaseDependencies) => (dependencies.catalog ?? buildCurrentGlobalResolutionCatalog)();
+const defaultCatalog = () => {
+  const runtime = createGlobalResolutionProducerRuntime();
+  return buildCurrentGlobalResolutionCatalog({producerRegistry: runtime.producers});
+};
+const catalogOf = (dependencies: BaseDependencies) => (dependencies.catalog ?? defaultCatalog)();
 async function loadCase(caseId: string, dependencies: BaseDependencies): Promise<ReviewCase | undefined> {
   return dependencies.persistence?.get(caseId) ?? getReviewCase(caseId);
 }
@@ -174,7 +189,7 @@ export async function initializeExternalNewsGlobalResolution(input: {
     preparedEntities: input.planning.preparedEntities,
     evidence: input.planning.evidence,
     finalEntityType: input.planning.finalEntityType ?? "noticia",
-    policy: {availableCapabilities: externalNewsRuntimeManifests.map((manifest) => manifest.capability)},
+    policy: {availableCapabilities: createGlobalResolutionProducerRuntime().producers.planningContext(EXTERNAL_NEWS_PRODUCER_ID)?.availableCapabilities ?? []},
     now: dependencies.now,
   });
   if (!built.ok || !built.plan.structurallyValid) return {status: "planning_blocked", reasons: (built.ok ? built.plan.blockers : built.issues).map((item) => `${item.code}:${item.message}`)};
@@ -189,7 +204,7 @@ export async function initializeExternalNewsGlobalResolution(input: {
 }
 
 function rejectRecovery(reviewCase: ReviewCase, recovery: ExternalNewsApplicationRecovery): {status: "absent" | "stale" | "invalid" | "reconciliation_required" | "already_resumed" | "producer_mismatch"; reasons: string[]; recovery: ExternalNewsApplicationRecovery} | undefined {
-  if (reviewCase.context.producer !== "external_news") return {status: "producer_mismatch", reasons: ["producer_mismatch"], recovery};
+  if (!supportedOperationProducer(reviewCase.context.producer)) return {status: "producer_mismatch", reasons: ["producer_mismatch"], recovery};
   if (["resuming", "resumed"].includes(reviewCase.status) || reviewCase.resumeExecution?.status === "succeeded") return {status: "already_resumed", reasons: ["case_already_resumed"], recovery};
   if (recovery.recovery.status === "absent") return {status: "absent", reasons: ["checkpoint_absent"], recovery};
   if (recovery.recovery.status === "stale") return {status: "stale", reasons: recovery.recovery.reasons, recovery};
@@ -259,11 +274,11 @@ async function executeOperationInternal(input: {
   const dependencies = input.dependencies ?? {};
   let reviewCase = await loadCase(input.caseId, dependencies);
   if (!reviewCase) return operationError("case_invalid", input.operationId, ["review_case_missing"]);
-  if (reviewCase.context.producer !== "external_news") return operationError("producer_mismatch", input.operationId, ["producer_mismatch"]);
+  if (!supportedOperationProducer(reviewCase.context.producer)) return operationError("producer_mismatch", input.operationId, ["producer_mismatch"]);
   if (reviewCase.version !== input.expectedCaseVersion) return operationError("checkpoint_conflict", input.operationId, ["case_version_changed"]);
   if (["resuming", "resumed"].includes(reviewCase.status) || reviewCase.resumeExecution?.status === "succeeded") return operationError("already_resumed", input.operationId, ["case_already_resumed"]);
   const catalog = catalogOf(dependencies);
-  let recovery = recoveryView(reviewCase, catalog);
+  const recovery = recoveryView(reviewCase, catalog);
   if (recovery.recovery.status !== "valid") return operationError(recovery.recovery.status === "stale" ? "checkpoint_stale" : "checkpoint_invalid", input.operationId, recovery.reasons, recovery);
   const validRecovery = recovery.recovery;
   if (recovery.recovery.checkpoint.checkpointFingerprint !== input.expectedCheckpointFingerprint) return operationError("checkpoint_conflict", input.operationId, ["checkpoint_fingerprint_changed"], recovery);
@@ -273,6 +288,27 @@ async function executeOperationInternal(input: {
   if (node.isResumeNode) return operationError("authorization_required", input.operationId, ["use_authorize_and_resume"], recovery);
   if (node.state !== "ready") return operationError("operation_not_ready", input.operationId, [`operation_state:${node.state}`], recovery);
   const capability = capabilityForOperation(node.operation);
+  if (capability === FIGHTER_IDENTITY_GUARD_CAPABILITY) {
+    if (!dependencies.candidateDiscoveryService) return operationError("dependency_missing", input.operationId, ["identity_discovery_service_missing"], recovery);
+    try {
+      const resolved = await resolveFighterIdentityGuard({
+        plan: validRecovery.plan, guardOperationId: input.operationId,
+        service: dependencies.candidateDiscoveryService, source: dependencies.candidateDiscoverySource,
+        signal: input.signal, now: dependencies.now,
+      });
+      const checkpoint = updateCheckpointAfterFighterIdentityGuard({
+        reviewCase, plan: validRecovery.plan, catalog, checkpoint: validRecovery.checkpoint,
+        authorization: resolved.authorization, now: dependencies.now,
+      });
+      const lifecycle = persistGlobalResolutionLifecycleResult({domainResult: resolved.authorization, reviewCase, checkpoint, mode: "update", persistence: dependencies.persistence, now: dependencies.now});
+      const current = await loadCase(input.caseId, dependencies) ?? reviewCase;
+      const status = resolved.authorization.decision === "reuse_existing" ? "reused_existing"
+        : resolved.authorization.decision === "create_new" && lifecycle.checkpoint.status === "persisted" ? "succeeded" : "blocked";
+      return {status, operationId: input.operationId, lifecycle, recovery: recoveryView(current, catalog)} as ExternalNewsOperationResult;
+    } catch (error) {
+      return operationError("blocked", input.operationId, [error instanceof Error ? error.message : "identity_guard_failed"], recovery);
+    }
+  }
   if (capability === "validate:noticia") {
     const simulation = simulateGlobalResolutionPlan(recovery.recovery.plan, {...input.simulationContext, reviewCase});
     try {
@@ -285,6 +321,10 @@ async function executeOperationInternal(input: {
     }
   }
   if (!input.authorized) return operationError("authorization_required", input.operationId, ["explicit_operation_authorization_required"], recovery);
+  if (capability === "create:luchador") {
+    const guard = validateFighterIdentityGuardAuthorization(validRecovery.checkpoint.identityGuard, {plan: validRecovery.plan, creationOperationId: input.operationId});
+    if (!guard.valid) return operationError("operation_not_ready", input.operationId, [`identity_guard:${guard.reasonCode}`], recovery);
+  }
   const executorRequirement = recovery.recovery.checkpoint.plan.executorRequirements.find((candidate) => candidate.capability === capability);
   const registered = executorRequirement ? getRegisteredReviewExecutor(executorRequirement.executorId) : undefined;
   if (!executorRequirement || !registered || registered.manifest.version !== executorRequirement.version || registered.manifestFingerprint !== executorRequirement.manifestFingerprint) return operationError("dependency_missing", input.operationId, ["executor_missing_or_changed"], recovery);
@@ -299,7 +339,10 @@ async function executeOperationInternal(input: {
   let state: ReviewJsonValue;
   if (capability === "create:luchador") {
     const simulation = simulateGlobalResolutionPlan(validRecovery.plan, {...input.simulationContext, reviewCase});
-    const extracted = extractFighterCreationUniversalPlan({plan: validRecovery.plan, simulation, reviewInput: input.reviewInput ?? buildExternalNewsUniversalReviewInput(reviewCase), now: dependencies.now});
+    const producerReviewInput = reviewCase.context.producer === "external_news"
+      ? buildExternalNewsUniversalReviewInput(reviewCase)
+      : getReviewProducer(String(reviewCase.context.producer))?.buildReviewInput({reviewCase: structuredClone(reviewCase)} as unknown as ReviewJsonValue);
+    const extracted = extractFighterCreationUniversalPlan({plan: validRecovery.plan, simulation, reviewInput: input.reviewInput ?? producerReviewInput!, identityGuardAuthorization: validRecovery.checkpoint.identityGuard, now: dependencies.now});
     if (!extracted.ok || extracted.operationId !== input.operationId) return operationError("blocked", input.operationId, [extracted.ok ? "operation_id_changed" : extracted.reason], recovery);
     universalPlan = extracted.universalPlan;
     state = {caseId: reviewCase.id, operationId: input.operationId, idempotencyContext: input.idempotencyContext};
@@ -401,7 +444,7 @@ async function resumeInternal(input: {caseId: string; prepared: PreparedExternal
   let reviewCase = await loadCase(input.caseId, dependencies);
   if (!reviewCase) return {status: "case_invalid", reasons: ["review_case_missing"]};
   const catalog = catalogOf(dependencies);
-  let recovery = recoveryView(reviewCase, catalog);
+  const recovery = recoveryView(reviewCase, catalog);
   if (recovery.recovery.status !== "valid") return {status: recovery.recovery.status === "stale" ? "checkpoint_stale" : "checkpoint_invalid", reasons: recovery.reasons, recovery};
   const checkpoint = recovery.recovery.checkpoint;
   const now = (dependencies.now ?? nowDefault)();
@@ -443,7 +486,7 @@ export const externalNewsApplicationAudit = Object.freeze({
   persistedAuthorization: false,
   persistedEditorialPayload: false,
   realResumeImplementation: "executeExternalNewsResume",
-  runtimeManifestFingerprint: computeUniversalFingerprint(externalNewsRuntimeManifests as unknown as ReviewJsonValue),
+  runtimeManifestFingerprint: fingerprintGlobalResolutionProducerManifest(externalNewsProducerManifest),
   evidence: ["ReviewCase.context.payloadSnapshot", "ReviewCase.context.analysisSnapshot", "ReviewCase.resolutions", "ReviewCase.resumeExecution"],
   notificationHint: "Operación realizada, checkpoint no persistido",
   forbiddenTestEffects: ["sanity", "fetch", "telegram"],

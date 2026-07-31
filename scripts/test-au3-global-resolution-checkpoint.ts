@@ -293,8 +293,8 @@ function testRecovery(): void {
   const ready = recoverGlobalResolutionCheckpoint(readyCase, environment);
   assert.equal(ready.status, "valid");
   if (ready.status === "valid") {
-    assert.equal(ready.continuation.canExecute, true);
-    assert.equal(ready.continuation.requiresAuthorization, true);
+    assert.equal(ready.continuation.canExecute, false, "Un checkpoint sin prueba vigente del guard no puede ejecutar create:luchador.");
+    assert.equal(ready.continuation.requiresAuthorization, false);
   }
 
   const reconciliationGraph = graphWithState(executionPlan, "reconciliation_required");

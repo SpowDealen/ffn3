@@ -17,6 +17,7 @@ import {
   recordCheckpointAfterResumeExecution,
   recordCheckpointAfterResumePreparation,
   recordCheckpointAfterSimulation,
+  recordCheckpointAfterFighterIdentityGuard,
   recoverCurrentGlobalResolution,
   replaceProjectedFighterReference,
   simulateGlobalResolutionPlan,
@@ -25,6 +26,9 @@ import {
   updateCheckpointAfterResumeExecution,
   updateCheckpointAfterResumePreparation,
   updateCheckpointAfterSimulation,
+  updateCheckpointAfterFighterIdentityGuard,
+  fighterIdentityGuardForCreation,
+  resolveFighterIdentityGuard,
   validateGlobalResolutionCheckpoint,
   type ExternalNewsResumeAdapterResult,
   type GlobalResolutionCheckpoint,
@@ -33,6 +37,8 @@ import {
   type GlobalResolutionPlan,
   type PreparedEntityPlanningInput,
 } from "../_laboratorio/laboratorio-ia/src/review/globalResolution";
+import {CandidateDiscoveryRegistry, CandidateDiscoveryService, createSanityFighterCandidateDiscoveryAdapter} from "../_laboratorio/laboratorio-ia/src/review/entityIdentity";
+import {createInMemoryCandidateReader} from "../_laboratorio/laboratorio-ia/src/review/entityIdentity/discovery/devFixture";
 import type {OperationEvidence} from "../_laboratorio/laboratorio-ia/src/review/entityOperations";
 import {getExternalNewsResumeSnapshot} from "../_laboratorio/laboratorio-ia/src/review/resume/externalNews";
 import {getReviewCase, setReviewCaseRepositoryForTests} from "../_laboratorio/laboratorio-ia/src/review/store/reviewStore";
@@ -258,12 +264,24 @@ function resumeResult(checkpoint: GlobalResolutionCheckpoint, outcome: ExternalN
   };
 }
 
-function projectThroughPreparation(fixture: ReturnType<typeof buildFixture>, catalog: GlobalResolutionCurrentCatalog) {
+async function authorizeCreation(fixture: ReturnType<typeof buildFixture>, checkpoint: GlobalResolutionCheckpoint) {
+  const registry = new CandidateDiscoveryRegistry();
+  registry.register(createSanityFighterCandidateDiscoveryAdapter(createInMemoryCandidateReader([])));
+  const guard = fighterIdentityGuardForCreation(fixture.plan.operations, fixture.createOperationId);
+  assert.ok(guard);
+  const resolved = await resolveFighterIdentityGuard({plan: fixture.plan, guardOperationId: guard!.id, service: new CandidateDiscoveryService(registry), now: () => time.simulated});
+  assert.equal(resolved.authorization.decision, "create_new");
+  return resolved.authorization;
+}
+
+async function projectThroughPreparation(fixture: ReturnType<typeof buildFixture>, catalog: GlobalResolutionCurrentCatalog) {
   const planned = createCheckpointAfterPlanning({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, now: () => time.planned});
   const simulationResult = simulation(fixture);
   assert.equal(simulationResult.simulatable, true, JSON.stringify(simulationResult.nodeResults.map((result) => ({nodeId: result.nodeId, capability: result.capability, status: result.status, blockers: result.blockers.map((blocker) => blocker.code)}))));
   const simulated = updateCheckpointAfterSimulation({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: planned, simulation: simulationResult, now: () => time.simulated});
-  const started = markCheckpointExecutionStarted({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: simulated, operationId: fixture.createOperationId, idempotencyKey: `start:${fixture.createOperationId}`, startedAt: time.executionStarted});
+  const authorization = await authorizeCreation(fixture, simulated);
+  const authorized = updateCheckpointAfterFighterIdentityGuard({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: simulated, authorization, now: () => time.simulated});
+  const started = markCheckpointExecutionStarted({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: authorized, operationId: fixture.createOperationId, idempotencyKey: `start:${fixture.createOperationId}`, startedAt: time.executionStarted});
   const execution = creationExecution(fixture.createOperationId);
   const executed = updateCheckpointAfterExecution({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: started, execution, now: () => time.executed});
   const reference = resolvedReference(execution, fixture.createOperationId);
@@ -277,12 +295,12 @@ function projectThroughPreparation(fixture: ReturnType<typeof buildFixture>, cat
   const prepared = prepareExternalNewsResume({reviewCase: fixture.reviewCase, plan: fixture.plan, replacement, references: [reference], expectedCaseVersion: fixture.reviewCase.version, expectedPlanFingerprint: fixture.plan.fingerprint, now: () => time.prepared});
   assert.equal(prepared.ready, true, prepared.blockers.map((blocker) => blocker.message).join(" "));
   const ready = updateCheckpointAfterResumePreparation({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: referenced, prepared, now: () => time.prepared});
-  return {planned, simulated, started, execution, executed, reference, replacement, referenced, prepared, ready};
+  return {planned, simulated, authorized, started, execution, executed, reference, replacement, referenced, prepared, ready};
 }
 
-function testLifecycle(catalog: GlobalResolutionCurrentCatalog): void {
+async function testLifecycle(catalog: GlobalResolutionCurrentCatalog): Promise<void> {
   const fixture = buildFixture();
-  const flow = projectThroughPreparation(fixture, catalog);
+  const flow = await projectThroughPreparation(fixture, catalog);
   assert.equal(flow.planned.phase, "planned");
   assert.equal(flow.planned.history[0].kind, "planned");
   assert.equal(flow.simulated.phase, "simulated");
@@ -301,11 +319,11 @@ function testLifecycle(catalog: GlobalResolutionCurrentCatalog): void {
   assert.equal(markCheckpointExecutionStarted({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: flow.started, operationId: fixture.createOperationId, idempotencyKey: `start:${fixture.createOperationId}`, startedAt: time.executionStarted}).history.length, flow.started.history.length);
   assert.equal(flow.executed.execution?.operations[0].outcome, "created");
   assert.equal(updateCheckpointAfterExecution({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: flow.executed, execution: flow.execution}).history.length, flow.executed.history.length);
-  const reused = updateCheckpointAfterExecution({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: flow.simulated, execution: creationExecution(fixture.createOperationId, "reused_existing")});
+  const reused = updateCheckpointAfterExecution({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: flow.authorized, execution: creationExecution(fixture.createOperationId, "reused_existing")});
   assert.equal(reused.execution?.operations[0].outcome, "reused_existing");
-  const creationFailed = updateCheckpointAfterExecution({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: flow.simulated, execution: creationExecution(fixture.createOperationId, "created", "failed")});
+  const creationFailed = updateCheckpointAfterExecution({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: flow.authorized, execution: creationExecution(fixture.createOperationId, "created", "failed")});
   assert.equal(creationFailed.phase, "failed");
-  const creationUncertain = updateCheckpointAfterExecution({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: flow.simulated, execution: creationExecution(fixture.createOperationId, "created", "reconciliation_required")});
+  const creationUncertain = updateCheckpointAfterExecution({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: flow.authorized, execution: creationExecution(fixture.createOperationId, "created", "reconciliation_required")});
   assert.equal(creationUncertain.phase, "reconciliation_required");
   assert.equal(flow.referenced.referenceResolution?.documentId, "fighter:real");
   assert.equal(updateCheckpointAfterReferenceResolution({reviewCase: fixture.reviewCase, plan: fixture.plan, catalog, checkpoint: flow.referenced, reference: flow.reference, replacement: flow.replacement}).history.length, flow.referenced.history.length);
@@ -341,7 +359,7 @@ function testLifecycle(catalog: GlobalResolutionCurrentCatalog): void {
   assert.equal(validateGlobalResolutionCheckpoint(completed).ok, true);
 }
 
-function testPersistence(catalog: GlobalResolutionCurrentCatalog): void {
+async function testPersistence(catalog: GlobalResolutionCurrentCatalog): Promise<void> {
   const fixture = buildFixture();
   const repository = new MemoryRepository([fixture.reviewCase]);
   const restore = setReviewCaseRepositoryForTests(repository);
@@ -355,9 +373,13 @@ function testPersistence(catalog: GlobalResolutionCurrentCatalog): void {
     const simulated = recordCheckpointAfterSimulation({reviewCase: afterPlanning, plan: fixture.plan, catalog, checkpoint: afterPlanning.globalResolution!, simulation: simulatedResult, now: () => time.simulated});
     assert.equal(simulated.checkpoint.status, "persisted");
     const afterSimulation = getReviewCase(fixture.reviewCase.id)!;
-    const beforeDomainExecution = structuredClone(afterSimulation);
+    const authorization = await authorizeCreation(fixture, afterSimulation.globalResolution!);
+    const guarded = recordCheckpointAfterFighterIdentityGuard({reviewCase: afterSimulation, plan: fixture.plan, catalog, checkpoint: afterSimulation.globalResolution!, authorization, now: () => time.simulated});
+    assert.equal(guarded.checkpoint.status, "persisted");
+    const afterGuard = getReviewCase(fixture.reviewCase.id)!;
+    const beforeDomainExecution = structuredClone(afterGuard);
     const execution = creationExecution(fixture.createOperationId);
-    const executed = recordCheckpointAfterExecution({reviewCase: afterSimulation, plan: fixture.plan, catalog, checkpoint: afterSimulation.globalResolution!, execution, now: () => time.executed});
+    const executed = recordCheckpointAfterExecution({reviewCase: afterGuard, plan: fixture.plan, catalog, checkpoint: afterGuard.globalResolution!, execution, now: () => time.executed});
     assert.equal(executed.checkpoint.status, "persisted");
 
     const current = getReviewCase(fixture.reviewCase.id)!;
@@ -384,7 +406,7 @@ function testPersistence(catalog: GlobalResolutionCurrentCatalog): void {
   }
 }
 
-function testCatalogAndRecovery(catalog: GlobalResolutionCurrentCatalog): void {
+async function testCatalogAndRecovery(catalog: GlobalResolutionCurrentCatalog): Promise<void> {
   assert.equal(catalog.valid, true, catalog.errors.join(","));
   assert.equal(JSON.stringify(catalog).includes("canExecute"), false);
   assert.equal(JSON.stringify(catalog).includes("authorization"), false);
@@ -417,7 +439,7 @@ function testCatalogAndRecovery(catalog: GlobalResolutionCurrentCatalog): void {
   assert.equal(environmentBlocked.executionAllowed, false);
   assert.equal(environmentBlocked.reasons.some((reason) => reason.startsWith("producer_missing:")), true);
 
-  const flow = projectThroughPreparation(fixture, catalog);
+  const flow = await projectThroughPreparation(fixture, catalog);
   const readyRecovery = recoverCurrentGlobalResolution({...fixture.reviewCase, globalResolution: flow.ready}, catalog);
   assert.equal(readyRecovery.recovery.status, "valid");
   assert.equal(readyRecovery.requiresAuthorization, true);
@@ -450,12 +472,12 @@ function testHistoryAndSecurity(catalog: GlobalResolutionCurrentCatalog): void {
   assert.equal(catalog.capabilities.length, pilotCapabilityRegistry.list().length);
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const {catalog, cleanup} = registerCatalog();
   try {
-    testLifecycle(catalog);
-    testPersistence(catalog);
-    testCatalogAndRecovery(catalog);
+    await testLifecycle(catalog);
+    await testPersistence(catalog);
+    await testCatalogAndRecovery(catalog);
     testHistoryAndSecurity(catalog);
     console.log("AU3 global resolution lifecycle tests: OK");
   } finally {
@@ -463,4 +485,4 @@ function main(): void {
   }
 }
 
-main();
+main().catch((error) => { console.error(error); process.exitCode = 1; });

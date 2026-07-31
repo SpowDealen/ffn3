@@ -48,8 +48,10 @@ export type ReviewModule =
   | "bkfc.events"
   | "one.news"
   | "one.events"
+  | "fekm.participants"
   | "external.news"
   | "editorial.builder"
+  | "entity.reconciliation"
   | "sanity";
 
 export type ReviewPriority = "critical" | "high" | "normal" | "low";

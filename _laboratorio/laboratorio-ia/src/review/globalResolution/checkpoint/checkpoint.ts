@@ -8,6 +8,7 @@ import type {GlobalResolutionPlan} from "../types";
 import {fingerprintGlobalResolutionCase, fingerprintGlobalResolutionCheckpoint, fingerprintGlobalResolutionSnapshot} from "./fingerprints";
 import {deserializeGlobalResolutionPlan, deserializeResolutionGraph, serializeGlobalResolutionPlan, serializeResolutionGraph, validateSerializedGlobalResolutionPlan, validateSerializedResolutionGraph, type CheckpointParseResult} from "./serialization";
 import type {GlobalResolutionCheckpoint, GlobalResolutionCheckpointHistoryEntry, GlobalResolutionCheckpointPhase, SerializedExecutionOperationSummary, SerializedExecutionSummary, SerializedExecutorRequirement, SerializedReferenceResolutionSummary, SerializedResumeSummary, SerializedSimulationSummary} from "./types";
+import type {ProducerCheckpointBinding} from "../producers/types";
 
 const PHASES = new Set<GlobalResolutionCheckpointPhase>(["planned", "simulated", "partially_executed", "ready_to_resume", "completed", "blocked", "failed", "reconciliation_required"]);
 const text = (value: unknown): value is string => typeof value === "string" && Boolean(value.trim());
@@ -72,10 +73,12 @@ export function createGlobalResolutionCheckpoint(input: {
   graph?: import("../../resolutionGraph").ResolutionGraph;
   capabilities: readonly GlobalResolutionCapability[];
   executors?: readonly SerializedExecutorRequirement[];
+  producerManifest?: ProducerCheckpointBinding;
   phase: GlobalResolutionCheckpointPhase;
   simulation?: SerializedSimulationSummary;
   execution?: SerializedExecutionSummary;
   referenceResolution?: SerializedReferenceResolutionSummary;
+  identityGuard?: GlobalResolutionCheckpoint["identityGuard"];
   resume?: SerializedResumeSummary;
   history?: readonly GlobalResolutionCheckpointHistoryEntry[];
   now?: () => string;
@@ -91,6 +94,7 @@ export function createGlobalResolutionCheckpoint(input: {
     caseVersion: input.plan.caseVersion,
     storedAtCaseVersion: input.reviewCase.version,
     producer: input.plan.producer,
+    producerManifest: input.producerManifest ? clone(input.producerManifest) : undefined,
     plan,
     graph: serializedGraph,
     planFingerprint: input.plan.fingerprint,
@@ -101,6 +105,7 @@ export function createGlobalResolutionCheckpoint(input: {
     simulation: input.simulation ? clone(input.simulation) : undefined,
     execution: input.execution ? clone(input.execution) : undefined,
     referenceResolution: input.referenceResolution ? clone(input.referenceResolution) : undefined,
+    identityGuard: input.identityGuard ? clone(input.identityGuard) : undefined,
     resume: input.resume ? clone(input.resume) : undefined,
     history: clone([...(input.history ?? [])].slice(-50)),
   };
@@ -119,6 +124,7 @@ export function retargetGlobalResolutionCheckpoint(checkpoint: GlobalResolutionC
     caseVersion: checkpoint.caseVersion,
     storedAtCaseVersion: reviewCase.version,
     producer: checkpoint.producer,
+    producerManifest: checkpoint.producerManifest ? clone(checkpoint.producerManifest) : undefined,
     plan: clone(checkpoint.plan),
     graph: clone(checkpoint.graph),
     planFingerprint: checkpoint.planFingerprint,
@@ -129,6 +135,7 @@ export function retargetGlobalResolutionCheckpoint(checkpoint: GlobalResolutionC
     simulation: checkpoint.simulation ? clone(checkpoint.simulation) : undefined,
     execution: checkpoint.execution ? clone(checkpoint.execution) : undefined,
     referenceResolution: checkpoint.referenceResolution ? clone(checkpoint.referenceResolution) : undefined,
+    identityGuard: checkpoint.identityGuard ? clone(checkpoint.identityGuard) : undefined,
     resume: checkpoint.resume ? clone(checkpoint.resume) : undefined,
     history: clone(checkpoint.history.slice(-50)),
   };
@@ -143,10 +150,12 @@ export function evolveGlobalResolutionCheckpoint(input: {
   graph: import("../../resolutionGraph").ResolutionGraph;
   capabilities: readonly GlobalResolutionCapability[];
   executors?: readonly SerializedExecutorRequirement[];
+  producerManifest?: ProducerCheckpointBinding;
   phase: GlobalResolutionCheckpointPhase;
   simulation?: SerializedSimulationSummary;
   execution?: SerializedExecutionSummary;
   referenceResolution?: SerializedReferenceResolutionSummary;
+  identityGuard?: GlobalResolutionCheckpoint["identityGuard"];
   resume?: SerializedResumeSummary;
   history: readonly GlobalResolutionCheckpointHistoryEntry[];
   now?: () => string;
@@ -164,6 +173,7 @@ export function evolveGlobalResolutionCheckpoint(input: {
     caseVersion: input.checkpoint.caseVersion,
     storedAtCaseVersion: input.reviewCase.version,
     producer: input.checkpoint.producer,
+    producerManifest: input.producerManifest ? clone(input.producerManifest) : input.checkpoint.producerManifest ? clone(input.checkpoint.producerManifest) : undefined,
     plan,
     graph,
     planFingerprint: input.checkpoint.planFingerprint,
@@ -174,6 +184,7 @@ export function evolveGlobalResolutionCheckpoint(input: {
     simulation: input.simulation ? clone(input.simulation) : undefined,
     execution: input.execution ? clone(input.execution) : undefined,
     referenceResolution: input.referenceResolution ? clone(input.referenceResolution) : undefined,
+    identityGuard: input.identityGuard ? clone(input.identityGuard) : undefined,
     resume: input.resume ? clone(input.resume) : undefined,
     history: clone([...input.history].slice(-50)),
   };
@@ -188,6 +199,17 @@ export function validateGlobalResolutionCheckpoint(value: unknown): CheckpointPa
   const reasons: string[] = [];
   if (!object(value) || value.schemaVersion !== 1) return {ok: false, reasons: ["global_resolution_checkpoint_schema_invalid"]};
   if (!text(value.id) || !text(value.caseId) || !Number.isInteger(value.caseVersion) || !Number.isInteger(value.storedAtCaseVersion) || Number(value.storedAtCaseVersion) < Number(value.caseVersion) || !text(value.producer) || !fingerprint(value.planFingerprint) || !fingerprint(value.graphFingerprint) || !fingerprint(value.caseFingerprint) || !fingerprint(value.checkpointFingerprint) || value.snapshotFingerprint !== undefined && !fingerprint(value.snapshotFingerprint) || !text(value.createdAt) || !text(value.updatedAt) || !PHASES.has(value.phase as GlobalResolutionCheckpointPhase) || !Array.isArray(value.history)) reasons.push("global_resolution_checkpoint_header_invalid");
+  if (value.producerManifest !== undefined && (!object(value.producerManifest) || !text(value.producerManifest.producerId) || !text(value.producerManifest.producerVersion) || !text(value.producerManifest.manifestVersion) || !fingerprint(value.producerManifest.manifestFingerprint) || !Array.isArray(value.producerManifest.capabilityVersions) || !Array.isArray(value.producerManifest.adapterIds))) reasons.push("global_resolution_checkpoint_producer_manifest_invalid");
+  else if (object(value.producerManifest)) {
+    const capabilityVersions = value.producerManifest.capabilityVersions;
+    const adapterIds = value.producerManifest.adapterIds;
+    if (value.producerManifest.producerId !== value.producer
+      || !Array.isArray(capabilityVersions)
+      || capabilityVersions.some((entry) => !object(entry) || !text(entry.capabilityId) || !text(entry.capabilityVersion))
+      || !Array.isArray(adapterIds)
+      || adapterIds.some((entry) => !text(entry))
+      || new Set(adapterIds).size !== adapterIds.length) reasons.push("global_resolution_checkpoint_producer_manifest_binding_invalid");
+  }
   const plan = validateSerializedGlobalResolutionPlan(value.plan, undefined, typeof value.caseId === "string" ? value.caseId : undefined, typeof value.caseVersion === "number" ? value.caseVersion : undefined, typeof value.producer === "string" ? value.producer : undefined);
   if (!plan.ok) reasons.push(...plan.reasons);
   if (plan.ok) {
@@ -224,6 +246,20 @@ export function validateGlobalResolutionCheckpoint(value: unknown): CheckpointPa
   if (value.referenceResolution !== undefined) {
     const reference = value.referenceResolution;
     if (!object(reference) || !text(reference.operationId) || reference.replacementOperationId !== undefined && !text(reference.replacementOperationId) || !text(reference.entityType) || !text(reference.documentId) || String(reference.documentId).startsWith("projected:") || !text(reference.identityKey) || !["created", "reused_existing"].includes(String(reference.outcome)) || !fingerprint(reference.payloadFingerprint) || reference.snapshotFingerprint !== undefined && !fingerprint(reference.snapshotFingerprint) || !text(reference.resolvedAt)) reasons.push("global_resolution_checkpoint_reference_resolution_invalid");
+  }
+  if (value.identityGuard !== undefined) {
+    const guard = value.identityGuard;
+    if (!object(guard) || guard.authorizationVersion !== "1.0.0" || guard.capability !== "resolve_identity:fighter"
+      || !text(guard.guardOperationId) || !text(guard.creationOperationId) || !fingerprint(guard.planFingerprint)
+      || !text(guard.caseId) || !Number.isInteger(guard.caseVersion) || !text(guard.producer) || !text(guard.source)
+      || !["create_new", "reuse_existing", "ambiguous", "blocked"].includes(String(guard.decision))
+      || !text(guard.reasonCode) || !fingerprint(guard.identityFingerprint) || !fingerprint(guard.creationPayloadFingerprint) || !fingerprint(guard.requestFingerprint)
+      || !["complete", "partial", "truncated", "unavailable", "cancelled"].includes(String(guard.discoveryStatus))
+      || !fingerprint(guard.discoveryResultFingerprint) || !Array.isArray(guard.candidateIds)
+      || !Array.isArray(guard.strategyIds) || !Array.isArray(guard.warningCodes)
+      || !fingerprint(guard.contextFingerprint) || !text(guard.authorizedAt) || !text(guard.expiresAt) || Date.parse(String(guard.authorizedAt)) >= Date.parse(String(guard.expiresAt)) || !fingerprint(guard.authorizationFingerprint)
+      || guard.planFingerprint !== value.planFingerprint || guard.caseId !== value.caseId || guard.caseVersion !== value.caseVersion
+      || guard.producer !== value.producer) reasons.push("global_resolution_checkpoint_identity_guard_invalid");
   }
   if (value.resume !== undefined) {
     const resume = value.resume;

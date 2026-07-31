@@ -6,6 +6,7 @@ import type {ExternalNewsResumeAdapterResult} from "../externalNewsResumeExecuto
 import type {PreparedExternalNewsResume, ReplaceProjectedReferenceResult, ResolvedEditorialReference} from "../fighterReferenceResolution";
 import type {GlobalResolutionSimulationResult} from "../simulateGlobalResolutionPlan";
 import type {GlobalResolutionPlan} from "../types";
+import {validateFighterIdentityGuardAuthorization, validateFighterIdentityGuardEvidence, type FighterIdentityGuardAuthorization} from "../identityGuard";
 import {createGlobalResolutionCheckpoint, evolveGlobalResolutionCheckpoint, summarizeGlobalResolutionExecution, summarizeGlobalResolutionSimulation} from "./checkpoint";
 import type {GlobalResolutionCurrentCatalog} from "./catalog";
 import {deserializeResolutionGraph} from "./serialization";
@@ -26,6 +27,10 @@ type LifecycleBase = {
   catalog: GlobalResolutionCurrentCatalog;
   now?: () => string;
 };
+
+export type CheckpointReconciliationProjection =
+  | {kind: "resume"}
+  | {kind: "reference_resolution"; entityType: string};
 
 const clone = <T>(value: T): T => structuredClone(value);
 const nowDefault = () => new Date().toISOString();
@@ -48,6 +53,10 @@ function capabilities(catalog: GlobalResolutionCurrentCatalog): GlobalResolution
 
 function executors(catalog: GlobalResolutionCurrentCatalog) {
   return catalog.executors.map(({capability, executorId, version, manifestFingerprint}) => ({capability, executorId, version, manifestFingerprint}));
+}
+
+function producerManifest(catalog: GlobalResolutionCurrentCatalog, producerId: string) {
+  return catalog.producers.find((producer) => producer.producer === producerId)?.manifest;
 }
 
 function event(kind: GlobalResolutionCheckpointHistoryKind, status: string, occurredAt: string, identity: string, operationId?: string): GlobalResolutionCheckpointHistoryEntry {
@@ -93,6 +102,7 @@ function graphState(graph: ResolutionGraph, preferred?: ResolutionGraph["state"]
   if (graph.nodes.some((node) => node.state === "blocked")) return "blocked";
   const resume = graph.nodes.find((node) => node.isResumeNode);
   if (resume?.state === "succeeded" && graph.nodes.every((node) => !node.requiredForCompletion || successful(node))) return "succeeded";
+  if (!resume && graph.nodes.length > 0 && graph.nodes.every((node) => !node.requiredForCompletion || successful(node))) return "succeeded";
   if (graph.nodes.some((node) => node.state === "executing")) return "executing";
   if (preferred === "simulated") return "simulated";
   if (graph.nodes.some((node) => node.state === "ready")) return "ready";
@@ -110,6 +120,7 @@ function phaseFor(graph: ResolutionGraph, fallback: GlobalResolutionCheckpointPh
   if (graph.state === "blocked") return "blocked";
   const resume = graph.nodes.find((node) => node.isResumeNode);
   if (resume?.state === "succeeded" && graph.state === "succeeded") return "completed";
+  if (!resume && graph.state === "succeeded") return "completed";
   if (resume?.state === "ready") return "ready_to_resume";
   if (graph.nodes.some((node) => successful(node))) return "partially_executed";
   return fallback;
@@ -123,6 +134,7 @@ function evolve(input: LifecycleBase & {
   simulation?: GlobalResolutionCheckpoint["simulation"];
   execution?: GlobalResolutionCheckpoint["execution"];
   referenceResolution?: SerializedReferenceResolutionSummary;
+  identityGuard?: GlobalResolutionCheckpoint["identityGuard"];
   resume?: SerializedResumeSummary;
 }): GlobalResolutionCheckpoint {
   assertCatalog(input.catalog, input.plan.producer);
@@ -133,10 +145,12 @@ function evolve(input: LifecycleBase & {
     graph: input.graph,
     capabilities: capabilities(input.catalog),
     executors: executors(input.catalog),
+    producerManifest: input.checkpoint.producerManifest,
     phase: input.phase,
     simulation: input.simulation,
     execution: input.execution,
     referenceResolution: input.referenceResolution,
+    identityGuard: input.identityGuard ?? input.checkpoint.identityGuard,
     resume: input.resume,
     history: input.history,
     now: input.now,
@@ -151,6 +165,7 @@ export function createCheckpointAfterPlanning(input: LifecycleBase): GlobalResol
     plan: input.plan,
     capabilities: capabilities(input.catalog),
     executors: executors(input.catalog),
+    producerManifest: producerManifest(input.catalog, input.plan.producer),
     phase: "planned",
     history: [event("planned", "planned", occurredAt, input.plan.fingerprint)],
     now: () => occurredAt,
@@ -180,7 +195,7 @@ function projectSimulationGraph(checkpoint: GlobalResolutionCheckpoint, simulati
         const dependency = graph.nodes.find((candidate) => candidate.id === dependencyId);
         return Boolean(dependency && successful(dependency));
       });
-      if (capability && support.get(capability) !== "executable" && dependenciesSucceeded) {
+      if (capability && capability !== "resolve_identity:fighter" && support.get(capability) !== "executable" && dependenciesSucceeded) {
         node.state = "succeeded";
         node.result = {output: {outcome: result.decision ?? "simulated"}};
         progressed = true;
@@ -218,6 +233,10 @@ export function markCheckpointExecutionStarted(input: LifecycleBase & {
   const graph = graphFrom(input.checkpoint);
   const node = graph.nodes.find((candidate) => candidate.operation.id === input.operationId);
   if (!node || node.state !== "ready" || Boolean(input.resume) !== node.isResumeNode) throw new Error("global_resolution_execution_start_not_ready");
+  if (node.operation.kind === "create_entity" && node.operation.entityType === "luchador") {
+    const guard = validateFighterIdentityGuardAuthorization(input.checkpoint.identityGuard, {plan: input.plan, creationOperationId: node.operation.id});
+    if (!guard.valid) throw new Error(`fighter_identity_guard_required:${guard.reasonCode}`);
+  }
   node.state = "executing";
   const projected = withState(graph, undefined, input.startedAt);
   const history = appendGlobalResolutionCheckpointHistory(input.checkpoint.history, historyEntry);
@@ -268,6 +287,21 @@ export function updateCheckpointAfterExecution(input: LifecycleBase & {
   execution: UniversalPlanExecution;
   operationIdsByEffectIndex?: Readonly<Record<number, string>>;
 }): GlobalResolutionCheckpoint {
+  for (const result of input.execution.results) {
+    const output = result.output && typeof result.output === "object" && !Array.isArray(result.output) ? result.output : undefined;
+    const reportedOperationId = output && typeof output.operationId === "string" ? output.operationId : undefined;
+    const operationIds = [...new Set([
+      ...(reportedOperationId ? [reportedOperationId] : []),
+      ...result.effectIndexes.map((index) => input.operationIdsByEffectIndex?.[index]).filter((value): value is string => Boolean(value)),
+    ])];
+    for (const operationId of operationIds) {
+      const operation = input.plan.operations.find((candidate) => candidate.id === operationId);
+      if (operation?.kind === "create_entity" && operation.entityType === "luchador") {
+        const guard = validateFighterIdentityGuardAuthorization(input.checkpoint.identityGuard, {plan: input.plan, creationOperationId: operationId});
+        if (!guard.valid) throw new Error(`fighter_identity_guard_required:${guard.reasonCode}`);
+      }
+    }
+  }
   const existingKeys = new Set(input.checkpoint.execution?.operations.map((operation) => operation.idempotencyKey) ?? []);
   const repeated = input.execution.results.length > 0 && input.execution.results.every((result) => existingKeys.has(result.idempotencyKey));
   if (repeated) return clone(input.checkpoint);
@@ -345,6 +379,40 @@ export function updateCheckpointAfterPureValidation(input: LifecycleBase & {
   return evolve({...input, graph: projected, phase, simulation: input.checkpoint.simulation, execution: input.checkpoint.execution, referenceResolution: input.checkpoint.referenceResolution, resume: input.checkpoint.resume, history});
 }
 
+export function updateCheckpointAfterFighterIdentityGuard(input: LifecycleBase & {
+  checkpoint: GlobalResolutionCheckpoint;
+  authorization: FighterIdentityGuardAuthorization;
+}): GlobalResolutionCheckpoint {
+  const authorization = input.authorization;
+  const checked = validateFighterIdentityGuardEvidence(authorization, {plan: input.plan, creationOperationId: authorization.creationOperationId});
+  if (!checked.valid) throw new Error(`fighter_identity_guard_invalid:${checked.reasonCode}`);
+  if (input.checkpoint.identityGuard?.authorizationFingerprint === authorization.authorizationFingerprint) return clone(input.checkpoint);
+  const graph = graphFrom(input.checkpoint);
+  const guard = graph.nodes.find((node) => node.operation.id === authorization.guardOperationId);
+  const create = graph.nodes.find((node) => node.operation.id === authorization.creationOperationId);
+  if (!guard || !create || !create.dependencyIds.includes(guard.id) || !["ready", "pending"].includes(guard.state)) throw new Error("fighter_identity_guard_graph_invalid");
+  const occurredAt = authorization.authorizedAt;
+  if (authorization.decision === "create_new") {
+    if (authorization.discoveryStatus !== "complete") throw new Error("fighter_identity_guard_discovery_incomplete");
+    guard.state = "succeeded";
+    guard.result = {output: {outcome: "create_new", authorizationFingerprint: authorization.authorizationFingerprint}};
+  } else if (authorization.decision === "reuse_existing" && authorization.resolvedEntityId) {
+    guard.state = "succeeded";
+    guard.result = {references: [{type: "luchador", id: authorization.resolvedEntityId}], output: {outcome: "reuse_existing", authorizationFingerprint: authorization.authorizationFingerprint}};
+    create.state = "succeeded";
+    create.result = {references: [{type: "luchador", id: authorization.resolvedEntityId}], output: {outcome: "reused_existing"}};
+  } else {
+    guard.state = "blocked";
+    guard.error = {code: authorization.reasonCode, message: "La identidad del luchador no permite crear.", retryable: authorization.reasonCode !== "existing_identity"};
+    create.state = "blocked";
+    create.error = {code: authorization.reasonCode, message: "Creación bloqueada por el guard de identidad.", retryable: authorization.reasonCode !== "existing_identity"};
+  }
+  const projected = withState(graph, undefined, occurredAt);
+  const phase = phaseFor(projected, authorization.decision === "create_new" ? "partially_executed" : "blocked");
+  const history = appendGlobalResolutionCheckpointHistory(input.checkpoint.history, event("checkpoint_updated", authorization.reasonCode, occurredAt, authorization.authorizationFingerprint, guard.operation.id));
+  return evolve({...input, graph: projected, phase, simulation: input.checkpoint.simulation, execution: input.checkpoint.execution, referenceResolution: input.checkpoint.referenceResolution, identityGuard: authorization, resume: input.checkpoint.resume, history});
+}
+
 function resumeSummary(prepared: PreparedExternalNewsResume): SerializedResumeSummary {
   const operationId = prepared.projectedGraph.nodes.find((node) => node.isResumeNode)?.operation.id ?? prepared.operation;
   return {
@@ -374,11 +442,11 @@ export function updateCheckpointAfterResumePreparation(input: LifecycleBase & {
   return evolve({...input, graph, phase, simulation: input.checkpoint.simulation, execution: input.checkpoint.execution, referenceResolution: input.checkpoint.referenceResolution, resume, history});
 }
 
-function resumeOperation(result: ExternalNewsResumeAdapterResult, operationId: string, attempt: number): SerializedExecutionOperationSummary {
+function resumeOperation(result: ExternalNewsResumeAdapterResult, operationId: string, capability: string, attempt: number): SerializedExecutionOperationSummary {
   const status = result.outcome === "resumed" || result.outcome === "already_resumed" ? "succeeded" : result.outcome === "blocked" ? "blocked" : result.outcome === "reconciliation_required" ? "reconciliation_required" : "failed";
   return {
     operationId,
-    capability: "resume:external_news",
+    capability,
     status,
     attempt,
     idempotencyKey: result.idempotencyKey,
@@ -405,7 +473,7 @@ export function updateCheckpointAfterResumeExecution(input: LifecycleBase & {
   const resumeNode = input.result.projectedGraph.nodes.find((node) => node.isResumeNode);
   if (!resumeNode) throw new Error("global_resolution_resume_node_missing");
   const attempt = Math.max(0, ...(input.checkpoint.execution?.operations.map((operation) => operation.attempt) ?? [])) + 1;
-  const operation = resumeOperation(input.result, resumeNode.operation.id, attempt);
+  const operation = resumeOperation(input.result, resumeNode.operation.id, capabilityForOperation(resumeNode.operation) ?? resumeNode.operation.requiredCapability ?? "capability:unknown", attempt);
   const semantic = {planFingerprint: input.plan.fingerprint, simulationFingerprint: input.checkpoint.execution?.simulationFingerprint ?? input.checkpoint.simulation?.resultFingerprint ?? input.plan.fingerprint, status: executionStatus([operation], operation.status === "succeeded" ? "succeeded" : operation.status), operations: [{...operation, startedAt: undefined, completedAt: undefined}]};
   const current: SerializedExecutionSummary = {
     planFingerprint: semantic.planFingerprint,
@@ -459,12 +527,21 @@ export function applyCheckpointReconciliation(input: LifecycleBase & {
   identityKey?: string;
   operationOutcome?: string;
   payloadFingerprint?: string;
+  projection?: CheckpointReconciliationProjection;
+  provenance?: {
+    inspectorId?: string;
+    evidenceFingerprint?: string;
+    assessmentFingerprint: string;
+    appliedAction: "repair_checkpoint" | "enable_retry";
+    reasonCodes: readonly string[];
+  };
 }): GlobalResolutionCheckpoint {
   const occurredAt = (input.now ?? nowDefault)();
   const graph = graphFrom(input.checkpoint);
   const node = graph.nodes.find((candidate) => candidate.operation.id === input.operationId);
   if (!node) throw new Error("global_resolution_reconciliation_operation_missing");
   if (input.outcome === "confirmed_succeeded" && node.state === "succeeded") return clone(input.checkpoint);
+  if (input.outcome === "confirmed_not_applied" && node.state === "ready") return clone(input.checkpoint);
   if (!["reconciliation_required", "executing", "failed"].includes(node.state)) throw new Error("global_resolution_reconciliation_state_changed");
 
   const historyKind: GlobalResolutionCheckpointHistoryKind = input.outcome === "confirmed_succeeded"
@@ -474,6 +551,15 @@ export function applyCheckpointReconciliation(input: LifecycleBase & {
   history = appendGlobalResolutionCheckpointHistory(history, event("reconciliation_evidence_collected", "evidence_collected", occurredAt, `${input.assessmentFingerprint}:evidence`, input.operationId));
   history = appendGlobalResolutionCheckpointHistory(history, event(historyKind, input.outcome, occurredAt, input.assessmentFingerprint, input.operationId));
   history = appendGlobalResolutionCheckpointHistory(history, event("reconciliation_applied", input.outcome, occurredAt, `${input.assessmentFingerprint}:applied`, input.operationId));
+  if (input.provenance) history = history.map((entry) => ["reconciliation_evidence_collected", "reconciliation_applied"].includes(entry.kind) && entry.operationId === input.operationId ? {
+    ...entry,
+    inspectorId: input.provenance?.inspectorId,
+    capability: input.capability,
+    evidenceFingerprint: input.provenance?.evidenceFingerprint,
+    assessmentFingerprint: input.provenance?.assessmentFingerprint,
+    appliedAction: input.provenance?.appliedAction,
+    reasonCodes: unique(input.provenance?.reasonCodes ?? []),
+  } : entry);
 
   const execution = input.checkpoint.execution ? clone(input.checkpoint.execution) : undefined;
   const resume = input.checkpoint.resume ? clone(input.checkpoint.resume) : undefined;
@@ -511,17 +597,17 @@ export function applyCheckpointReconciliation(input: LifecycleBase & {
         });
       }
     }
-    if (input.capability === "resume:external_news" && resume) {
+    if (input.projection?.kind === "resume" && resume) {
       resume.outcome = input.operationOutcome === "already_resumed" ? "already_resumed" : "resumed";
       resume.draftId = input.documentId;
       resume.documentId = input.documentId;
       resume.postValidationPassed = true;
       resume.completedAt = occurredAt;
     }
-    if (input.capability === "create:luchador" && input.identityKey && input.payloadFingerprint) {
+    if (input.projection?.kind === "reference_resolution" && input.identityKey && input.payloadFingerprint) {
       referenceResolution = {
         operationId: input.operationId,
-        entityType: "luchador",
+        entityType: input.projection.entityType,
         documentId: input.documentId,
         identityKey: input.identityKey,
         outcome: input.operationOutcome === "reused_existing" ? "reused_existing" : "created",
@@ -543,7 +629,7 @@ export function applyCheckpointReconciliation(input: LifecycleBase & {
         summary.completedAt = occurredAt;
       }
     }
-    if (input.capability === "resume:external_news" && resume) {
+    if (input.projection?.kind === "resume" && resume) {
       resume.outcome = undefined;
       resume.draftId = undefined;
       resume.documentId = undefined;

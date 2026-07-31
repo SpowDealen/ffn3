@@ -22,6 +22,7 @@ export async function previewPreparedEntityMaterialization(caseId: string, now =
     const validation = validatePreparedEntity(item);
     if (!validation.valid || !validation.entity) { items.push({issueId: item.issueId, entityType: item.entityType, name: typeof item.draft.name === "string" ? item.draft.name : undefined, identityKey: typeof item.draft.identityKey === "string" ? item.draft.identityKey : undefined, status: "invalid", omittedFields: [], evidence: [], errors: validation.errors, risks: []}); continue; }
     const entity = validation.entity;
+    if (entity.entityType === "fighter") { items.push(toPreview(entity, "invalid", undefined, ["identity_guard_required"], ["La creación de luchadores solo se ejecuta mediante resolve_identity:fighter y create:luchador."])); continue; }
     if (!executor) { items.push(toPreview(entity, "invalid", undefined, ["El executor de creación no está disponible."], ["No se puede repetir la búsqueda final de duplicados."])); continue; }
     try {
       const duplicate = await executor.checkDuplicate({entityType: entity.entityType, name: entity.name, aliases: entity.aliases, slug: slug(entity.name), identityKey: entity.identityKey, disciplineId: entity.disciplineId});
@@ -53,6 +54,7 @@ async function run(caseId: string, options: {confirmed: boolean; expectedVersion
     const validation = validatePreparedEntity(item);
     if (!validation.valid || !validation.entity) { items.push({issueId: item.issueId, entityType: item.entityType, status: "failed", error: {code: "prepared_entity_invalid", message: validation.errors.join(" ")}}); continue; }
     const entity = validation.entity;
+    if (entity.entityType === "fighter") { items.push({issueId: item.issueId, entityType: item.entityType, identityKey: entity.identityKey, status: "failed", error: {code: "identity_guard_required", message: "La ruta de materialización heredada no puede crear fighters; usa resolve_identity:fighter."}}); continue; }
     try {
       const duplicate = await executor.checkDuplicate({entityType: entity.entityType, name: entity.name, aliases: entity.aliases, slug: slug(entity.name), identityKey: entity.identityKey, disciplineId: entity.disciplineId});
       if (duplicate.status === "ambiguous") { items.push({issueId: item.issueId, entityType: item.entityType, identityKey: entity.identityKey, status: "failed", error: {code: "ambiguous_duplicate", message: "Existen varios duplicados plausibles."}}); continue; }

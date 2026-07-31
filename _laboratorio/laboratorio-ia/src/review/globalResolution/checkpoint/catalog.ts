@@ -4,6 +4,7 @@ import {computeUniversalFingerprint} from "../../universal";
 import type {ReviewJsonValue} from "../../types";
 import {pilotCapabilityRegistry, type GlobalResolutionCapability} from "../capabilities";
 import type {GlobalResolutionRecoveryEnvironment, SerializedCapabilityRequirement, SerializedExecutorRequirement} from "./types";
+import type {GlobalResolutionProducerRegistry, ProducerCheckpointBinding} from "../producers";
 
 export type SerializedCurrentCapability = SerializedCapabilityRequirement & {
   operationKinds: EntityOperation["kind"][];
@@ -21,6 +22,7 @@ export type SerializedCurrentProducer = {
   version: number;
   supportedEntityTypes: string[];
   supportedOperations: string[];
+  manifest?: ProducerCheckpointBinding;
 };
 
 export type GlobalResolutionCurrentCatalog = {
@@ -59,12 +61,13 @@ function executorEntry(executor: RegisteredReviewExecutor): SerializedCurrentExe
   };
 }
 
-function producerEntry(producer: ReviewProducerRegistration): SerializedCurrentProducer {
+function producerEntry(producer: ReviewProducerRegistration, producerRegistry?: GlobalResolutionProducerRegistry): SerializedCurrentProducer {
   return {
     producer: producer.producerId,
     version: producer.version,
     supportedEntityTypes: [...producer.supportedEntityTypes],
     supportedOperations: [...producer.supportedOperations],
+    manifest: producerRegistry?.checkpointBinding(producer.producerId),
   };
 }
 
@@ -72,10 +75,11 @@ export function buildCurrentGlobalResolutionCatalog(input: {
   capabilities?: readonly GlobalResolutionCapability[];
   executors?: readonly RegisteredReviewExecutor[];
   producers?: readonly ReviewProducerRegistration[];
+  producerRegistry?: GlobalResolutionProducerRegistry;
 } = {}): GlobalResolutionCurrentCatalog {
   const capabilities = [...(input.capabilities ?? pilotCapabilityRegistry.list())].map(capabilityEntry).sort((left, right) => left.id.localeCompare(right.id));
   const executors = [...(input.executors ?? listRegisteredReviewExecutors())].map(executorEntry).sort((left, right) => `${left.capability}:${left.executorId}`.localeCompare(`${right.capability}:${right.executorId}`));
-  const producers = [...(input.producers ?? listReviewProducers())].map(producerEntry).sort((left, right) => left.producer.localeCompare(right.producer));
+  const producers = [...(input.producers ?? listReviewProducers())].map((producer) => producerEntry(producer, input.producerRegistry)).sort((left, right) => left.producer.localeCompare(right.producer));
   const errors: string[] = [];
   const capabilityIds = new Set<string>();
   for (const capability of capabilities) {
@@ -109,6 +113,7 @@ export function buildCurrentGlobalResolutionCatalog(input: {
   const recoveryEnvironment = {
     capabilities: capabilities.map(({id, support}) => ({id, support})),
     executors: executors.map(({capability, executorId, version, manifestFingerprint}) => ({capability, executorId, version, manifestFingerprint})),
+    producers: producers.flatMap(({manifest}) => manifest ? [manifest] : []),
   };
   return {
     ...semantic,

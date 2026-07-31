@@ -2,7 +2,7 @@ import {isSerializableReviewValue} from "../cases/validateResolution";
 import type {ReviewJsonObject} from "../types";
 import type {PreparedEntityDraft, ValidatedPreparedEntity} from "./types";
 
-const ALLOWED = new Set(["entityType", "name", "aliases", "disciplineId", "organizationIds", "sourceEvidence", "identityKey", "unknownFields"]);
+const ALLOWED = new Set(["entityType", "name", "aliases", "externalIdentifiers", "disciplineId", "organizationIds", "sourceEvidence", "identityKey", "unknownFields"]);
 const INTERNAL = new Set(["entityType", "sourceEvidence", "identityKey", "unknownFields"]);
 const SENSITIVE = /(token|secret|authorization|cookie|password|api[_-]?key|headers?)/i;
 const DANGEROUS = new Set(["__proto__", "prototype", "constructor"]);

@@ -5,6 +5,7 @@ import {fingerprintGlobalResolutionCase, fingerprintGlobalResolutionSnapshot} fr
 import {deserializeGlobalResolutionPlan, deserializeResolutionGraph} from "./serialization";
 import {validateGlobalResolutionCheckpoint} from "./checkpoint";
 import type {GlobalResolutionCheckpoint, GlobalResolutionContinuation, GlobalResolutionRecoveryEnvironment, GlobalResolutionRecoveryResult, SerializedCapabilityRequirement} from "./types";
+import {validateFighterIdentityGuardAuthorization} from "../identityGuard";
 
 const unique = (values: readonly string[]) => [...new Set(values)].sort();
 
@@ -30,6 +31,11 @@ function environmentStaleReasons(checkpoint: GlobalResolutionCheckpoint, environ
     if (!current) reasons.push(`executor_missing:${required.executorId}`);
     else if (current.version !== required.version || current.manifestFingerprint !== required.manifestFingerprint) reasons.push(`executor_changed:${required.executorId}`);
   }
+  if (checkpoint.producerManifest) {
+    const current = environment.producers?.find((producer) => producer.producerId === checkpoint.producerManifest?.producerId && producer.producerVersion === checkpoint.producerManifest?.producerVersion);
+    if (!current) reasons.push(`producer_manifest_missing:${checkpoint.producerManifest.producerId}`);
+    else if (current.manifestVersion !== checkpoint.producerManifest.manifestVersion || current.manifestFingerprint !== checkpoint.producerManifest.manifestFingerprint) reasons.push(`producer_manifest_changed:${checkpoint.producerManifest.producerId}`);
+  }
   return reasons;
 }
 
@@ -39,7 +45,12 @@ function deriveContinuation(checkpoint: GlobalResolutionCheckpoint, graph: impor
   const reconciliationOperationIds = unique(graph.nodes.filter((node) => node.state === "reconciliation_required").map((node) => node.operation.id));
   const completedOperationIds = unique(graph.nodes.filter((node) => ["succeeded", "skipped", "compensated"].includes(node.state)).map((node) => node.operation.id));
   const blockedOperationIds = unique(graph.nodes.filter((node) => ["blocked", "failed"].includes(node.state)).map((node) => node.operation.id));
-  const nextReadyOperationIds = unique(graph.nodes.filter((node) => deriveResolutionNodeReadiness(graph, node).ready).map((node) => node.operation.id));
+  const nextReadyOperationIds = unique(graph.nodes.filter((node) => {
+    if (!deriveResolutionNodeReadiness(graph, node).ready) return false;
+    if (node.operation.kind !== "create_entity" || node.operation.entityType !== "luchador") return true;
+    const plan = deserializeGlobalResolutionPlan(checkpoint.plan, graph, checkpoint.createdAt);
+    return plan.ok && validateFighterIdentityGuardAuthorization(checkpoint.identityGuard, {plan: plan.value, creationOperationId: node.operation.id}).valid;
+  }).map((node) => node.operation.id));
   const nextOperations = graph.nodes.filter((node) => nextReadyOperationIds.includes(node.operation.id));
   const activeExecutionPhase = ["planned", "simulated", "partially_executed", "ready_to_resume"].includes(checkpoint.phase);
   const canSimulate = reconciliationOperationIds.length === 0 && checkpoint.phase !== "completed" && checkpoint.plan.structurallyValid && checkpoint.plan.capabilityRequirements.every(({id}) => {

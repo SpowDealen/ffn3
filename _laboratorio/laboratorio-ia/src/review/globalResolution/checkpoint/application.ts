@@ -4,6 +4,7 @@ import type {GlobalResolutionPlan} from "../types";
 import type {ExternalNewsResumeAdapterResult} from "../externalNewsResumeExecutor";
 import type {PreparedExternalNewsResume, ReplaceProjectedReferenceResult, ResolvedEditorialReference} from "../fighterReferenceResolution";
 import type {GlobalResolutionSimulationResult} from "../simulateGlobalResolutionPlan";
+import type {FighterIdentityGuardAuthorization} from "../identityGuard";
 import type {UniversalPlanExecution} from "../../universal";
 import {fingerprintGlobalResolutionCase} from "./fingerprints";
 import {recoverGlobalResolutionCheckpoint} from "./recovery";
@@ -15,6 +16,7 @@ import {
   updateCheckpointAfterResumeExecution,
   updateCheckpointAfterResumePreparation,
   updateCheckpointAfterSimulation,
+  updateCheckpointAfterFighterIdentityGuard,
 } from "./lifecycle";
 import type {GlobalResolutionCheckpoint, GlobalResolutionRecoveryResult} from "./types";
 
@@ -110,6 +112,14 @@ export function recordCheckpointAfterSimulation(input: IntegrationBase & {
 }): GlobalResolutionLifecycleResult<GlobalResolutionSimulationResult> {
   const checkpoint = updateCheckpointAfterSimulation(input);
   return persistGlobalResolutionLifecycleResult({...input, domainResult: input.simulation, checkpoint, mode: "update"});
+}
+
+export function recordCheckpointAfterFighterIdentityGuard(input: IntegrationBase & {
+  checkpoint: GlobalResolutionCheckpoint;
+  authorization: FighterIdentityGuardAuthorization;
+}): GlobalResolutionLifecycleResult<FighterIdentityGuardAuthorization> {
+  const checkpoint = updateCheckpointAfterFighterIdentityGuard(input);
+  return persistGlobalResolutionLifecycleResult({...input, domainResult: input.authorization, checkpoint, mode: "update"});
 }
 
 export function recordCheckpointAfterExecution(input: IntegrationBase & {

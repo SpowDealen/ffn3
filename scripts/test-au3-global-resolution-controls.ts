@@ -111,8 +111,10 @@ async function main(): Promise<void> {
     assert.equal(view.operations.some((operation) => operation.label === "Guardar borrador y reanudar"), true);
     const create = view.operations.find((operation) => operation.capability === "create:luchador")!;
     const validation = view.operations.find((operation) => operation.capability === "validate:noticia")!;
-    assert.equal(create.canExecute, true);
-    assert.equal(create.stateLabel, "Lista");
+    const identityGuard = view.operations.find((operation) => operation.capability === "resolve_identity:fighter")!;
+    assert.equal(identityGuard.canExecute, true);
+    assert.equal(create.canExecute, false);
+    assert.equal(create.stateLabel, "Pendiente");
     assert.equal(validation.support, "simulatable");
     assert.equal(validation.canExecute, false);
     assert.equal(entityWrites, 0);
@@ -169,7 +171,7 @@ async function main(): Promise<void> {
     const legacyPreview = readFileSync(resolve("_laboratorio/laboratorio-ia/src/review/components/ExternalNewsResumePreviewPanel.tsx"), "utf8");
     const styles = readFileSync(resolve("_laboratorio/laboratorio-ia/src/styles.css"), "utf8");
     assert.equal(details.includes("<GlobalResolutionControls reviewCase={reviewCase} />"), true);
-    assert.equal(component.includes("recoverExternalNewsGlobalResolution(reviewCase.id)"), true);
+    assert.equal(component.includes("producerControls!.recover(reviewCase.id)"), true);
     assert.equal(component.includes("useEffect(() => executeExternalNewsResolutionOperation"), false);
     assert.equal(component.includes("useEffect(() => initializeExternalNewsGlobalResolution"), false);
     assert.equal(component.includes("aria-busy={locked}"), true);
@@ -184,6 +186,11 @@ async function main(): Promise<void> {
     assert.equal(component.toLowerCase().includes("telegram"), false);
     assert.equal(component.includes("saveDraft("), false);
     assert.equal(component.includes("localStorage"), false);
+    assert.equal(component.includes("Comprobar en Sanity"), true);
+    assert.equal(component.includes("producerControls.createInspectionRuntime()"), true);
+    assert.equal(component.includes("useEffect(() => confirmSanityInspection"), false);
+    assert.equal(component.includes("inspectionEvidence:"), true);
+    assert.equal(component.includes("Cancelar comprobación"), true);
     assert.equal(legacyPreview.includes('reviewCase.context.producer !== "external_news" || reviewCase.globalResolution'), true);
     assert.equal(component.includes('aria-label="Preview universal preparada"'), true);
     assert.equal(styles.includes("@media (max-width: 560px)"), true);

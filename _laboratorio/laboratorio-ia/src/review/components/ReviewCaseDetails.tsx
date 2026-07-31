@@ -20,6 +20,7 @@ import DecisionMemoryPanel from "../memory/components/DecisionMemoryPanel";
 import RelevantMemoryPanel from "../retrieval/components/RelevantMemoryPanel";
 import InvestigationPanel from "../investigation/deep/InvestigationPanel";
 import GlobalResolutionControls from "./GlobalResolutionControls";
+import ReconciliationCasePanel from "../entityReconciliation/components/ReconciliationCasePanel";
 
 type ReviewCaseDetailsProps = {
   reviewCase: ReviewCase;
@@ -221,6 +222,7 @@ export default function ReviewCaseDetails({
       <PreparedEntityMaterializationPanel reviewCase={reviewCase} />
       <PreparedEntitySchemaRequirementsPanel reviewCase={reviewCase} />
       <GlobalResolutionControls reviewCase={reviewCase} />
+      <ReconciliationCasePanel reviewCase={reviewCase} />
       <ExternalNewsResumePreviewPanel reviewCase={reviewCase} />
       <DecisionOutcomePanel reviewCase={reviewCase} />
       <DecisionMemoryPanel reviewCase={reviewCase} />

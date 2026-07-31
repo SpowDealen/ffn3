@@ -147,6 +147,19 @@ export function createReviewCase(input: CreateReviewCaseInput): ReviewCase {
   return reviewCase;
 }
 
+export function registerCanonicalReviewCase(reviewCase: ReviewCase): {status: "accepted" | "already_registered"; reviewCase: ReviewCase} {
+  const reviewCases = repository.load();
+  const byId = reviewCases.find((item) => item.id === reviewCase.id);
+  const byDedupe = reviewCases.find((item) => item.dedupeKey === reviewCase.dedupeKey);
+  const existing = byId ?? byDedupe;
+  if (existing) {
+    if (existing.id !== reviewCase.id || existing.dedupeKey !== reviewCase.dedupeKey || existing.context.producer !== reviewCase.context.producer || existing.context.requestFingerprint !== reviewCase.context.requestFingerprint) throw new Error("fighter_resolution_case_collision");
+    return {status: "already_registered", reviewCase: existing};
+  }
+  save([structuredClone(reviewCase), ...reviewCases]);
+  return {status: "accepted", reviewCase: structuredClone(reviewCase)};
+}
+
 export function updateReviewCase(
   id: string,
   input: UpdateReviewCaseInput,
@@ -155,6 +168,13 @@ export function updateReviewCase(
   return replaceById(id, (reviewCase) =>
     applyReviewCaseUpdate(reviewCase, input),
   );
+}
+
+export function updateReviewCaseContextIfCurrent(id: string, expectedVersion: number, context: import("../types").ReviewJsonObject): ReviewCase | undefined {
+  return replaceById(id, (reviewCase) => {
+    if (reviewCase.version !== expectedVersion) throw new Error("La versión del caso cambió antes de guardar la decisión.");
+    return applyReviewCaseUpdate(reviewCase, {context});
+  });
 }
 
 function persistGlobalResolutionCheckpoint(reviewCase: ReviewCase, checkpoint: GlobalResolutionCheckpoint, now: string): ReviewCase {

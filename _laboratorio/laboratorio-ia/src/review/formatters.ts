@@ -31,8 +31,10 @@ export const REVIEW_MODULE_LABELS: Record<ReviewModule, string> = {
   "bkfc.events": "BKFC Eventos",
   "one.news": "ONE Noticias",
   "one.events": "ONE Eventos",
+  "fekm.participants": "FEKM Participantes",
   "external.news": "Fuentes externas",
   "editorial.builder": "Builder editorial",
+  "entity.reconciliation": "Reconciliación de entidades",
   sanity: "Sanity",
 };
 

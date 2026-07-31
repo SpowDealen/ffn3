@@ -2,6 +2,8 @@ import type {EntityOperation, OperationSupportLevel} from "../../entityOperation
 import type {GlobalResolutionAssumption, GlobalResolutionBlocker, GlobalResolutionPlanStatus, GlobalResolutionPlanningPolicy, GlobalResolutionWarning} from "../types";
 import type {ResolutionDependencyPolicy, ResolutionGraphState, ResolutionNodeState} from "../../resolutionGraph";
 import type {ReviewJsonObject} from "../../types";
+import type {ProducerCheckpointBinding} from "../producers/types";
+import type {FighterIdentityGuardAuthorization} from "../identityGuard";
 
 export type GlobalResolutionCheckpointPhase =
   | "planned"
@@ -183,6 +185,12 @@ export type GlobalResolutionCheckpointHistoryEntry = {
   operationId?: string;
   status: string;
   occurredAt: string;
+  inspectorId?: string;
+  capability?: string;
+  evidenceFingerprint?: string;
+  assessmentFingerprint?: string;
+  appliedAction?: "repair_checkpoint" | "enable_retry";
+  reasonCodes?: string[];
 };
 
 export type GlobalResolutionCheckpoint = {
@@ -192,6 +200,7 @@ export type GlobalResolutionCheckpoint = {
   caseVersion: number;
   storedAtCaseVersion: number;
   producer: string;
+  producerManifest?: ProducerCheckpointBinding;
   plan: SerializedGlobalResolutionPlan;
   graph: SerializedResolutionGraph;
   planFingerprint: string;
@@ -203,6 +212,7 @@ export type GlobalResolutionCheckpoint = {
   simulation?: SerializedSimulationSummary;
   execution?: SerializedExecutionSummary;
   referenceResolution?: SerializedReferenceResolutionSummary;
+  identityGuard?: FighterIdentityGuardAuthorization;
   resume?: SerializedResumeSummary;
   history: GlobalResolutionCheckpointHistoryEntry[];
   createdAt: string;
@@ -212,6 +222,7 @@ export type GlobalResolutionCheckpoint = {
 export type GlobalResolutionRecoveryEnvironment = {
   capabilities: SerializedCapabilityRequirement[];
   executors: SerializedExecutorRequirement[];
+  producers?: ProducerCheckpointBinding[];
 };
 
 export type GlobalResolutionContinuation = {
