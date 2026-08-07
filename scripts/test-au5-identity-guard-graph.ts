@@ -68,6 +68,7 @@ async function main() {
   assert.equal(empty.authorization.decision, "create_new");
   assert.equal(empty.authorization.discoveryStatus, "complete");
   assert.equal(validateFighterIdentityGuardAuthorization(empty.authorization, {plan: current, creationOperationId: create.id}).valid, true);
+  assert.equal(empty.authorization.entityType, "fighter"); assert.equal(empty.authorization.schemaType, "luchador"); assert.equal(empty.authorization.createCapability, "create:luchador"); assert.equal(empty.authorization.planId, current.id); assert.equal(empty.authorization.rulesVersion, "1.0.0"); assert.ok(empty.authorization.nonce);
 
   const existing = await resolveFighterIdentityGuard({plan: current, guardOperationId: guard.id, service: service([{_id: "fighter:ada", _type: "luchador", nombre: "Ada Fighter"}]), now: () => now});
   assert.equal(existing.authorization.decision, "reuse_existing");

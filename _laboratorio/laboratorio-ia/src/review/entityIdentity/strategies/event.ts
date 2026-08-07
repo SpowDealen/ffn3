@@ -17,7 +17,7 @@ function build(input: EventIdentityInput): EventIdentity {
   const officialUrl = normalizeCanonicalUrl(input.officialUrl);
   const mainEvent = [...(input.mainEvent ?? [])].map((value) => normalizeIdentityText(value).normalizedValue).filter(Boolean).sort();
   const common = commonIdentity(input, input.baseName && input.baseName !== input.primaryLabel ? [{value: input.baseName, type: "official", confidence: .95, verified: true}] : []);
-  const context = normalizedContext({baseName, edition, organization: input.organization, date, city: input.city, venue: input.venue, country: input.country, mainEvent, officialUrl, rescheduledFrom: normalizeIdentityDate(input.rescheduledFrom)});
+  const context = normalizedContext({baseName, edition, organization: input.organization, date, city: input.city, venue: input.venue, country: input.country, mainEvent, officialUrl, rescheduledFrom: normalizeIdentityDate(input.rescheduledFrom), slug: input.slug});
   const keys = [
     ...externalIdentityKeys(common.externalIdentifiers),
     ...(input.organization && edition ? [identityKey("organization-plus-event-number", "very_strong", ["organization", "edition"], `${normalizeIdentityText(input.organization).normalizedValue}:${edition}`)] : []),
@@ -27,7 +27,7 @@ function build(input: EventIdentityInput): EventIdentity {
   return finalizeIdentity<EventIdentity>({
     ...common,
     entityType: "event",
-    rawInput: safeRaw({primaryLabel: input.primaryLabel, baseName: input.baseName, edition: input.edition, organization: input.organization, date: input.date, city: input.city, venue: input.venue, country: input.country, officialUrl: input.officialUrl}),
+    rawInput: safeRaw({primaryLabel: input.primaryLabel, baseName: input.baseName, edition: input.edition, organization: input.organization, date: input.date, city: input.city, venue: input.venue, country: input.country, officialUrl: input.officialUrl, slug: input.slug}),
     normalizedFields: {primaryLabel: normalizeIdentityText(input.primaryLabel, {normalizeVersus: true}), baseName: normalizeIdentityText(baseName), ...(input.organization ? {organization: normalizeIdentityText(input.organization)} : {})},
     identityKeys: keys,
     context,
@@ -48,6 +48,11 @@ function compare(input: EventIdentity, candidate: EventIdentity) {
     decision: "conflicting_identity", score: 0, input, candidate,
     conflicting: [evidence("conflict", "event_edition_conflict", "definitive", "Las ediciones del evento son distintas.", "edition")],
     conflictCodes: ["event_edition_conflict"],
+  });
+  if (input.attributes.date && candidate.attributes.date && input.attributes.date !== candidate.attributes.date) return comparison({
+    decision: "conflicting_identity", score: 0, input, candidate,
+    conflicting: [evidence("conflict", "event_date_conflict", "definitive", "Las fechas del evento son incompatibles.", "date")],
+    conflictCodes: ["event_date_conflict"],
   });
   const sameOrganization = Boolean(input.attributes.organization && candidate.attributes.organization && sameNormalized(input.attributes.organization, candidate.attributes.organization));
   if (sameOrganization && input.attributes.edition && input.attributes.edition === candidate.attributes.edition) return comparison({

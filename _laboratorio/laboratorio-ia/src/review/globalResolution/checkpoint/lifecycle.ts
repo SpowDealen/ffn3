@@ -6,7 +6,8 @@ import type {ExternalNewsResumeAdapterResult} from "../externalNewsResumeExecuto
 import type {PreparedExternalNewsResume, ReplaceProjectedReferenceResult, ResolvedEditorialReference} from "../fighterReferenceResolution";
 import type {GlobalResolutionSimulationResult} from "../simulateGlobalResolutionPlan";
 import type {GlobalResolutionPlan} from "../types";
-import {validateFighterIdentityGuardAuthorization, validateFighterIdentityGuardEvidence, type FighterIdentityGuardAuthorization} from "../identityGuard";
+import {validateFighterIdentityGuardEvidence, type FighterIdentityGuardAuthorization} from "../identityGuard";
+import {identityCreationGuardForCreation, validateIdentityCreationAuthorization, validateIdentityCreationPreflight, type IdentityCreationPreflight} from "../identityCreationGuard";
 import {createGlobalResolutionCheckpoint, evolveGlobalResolutionCheckpoint, summarizeGlobalResolutionExecution, summarizeGlobalResolutionSimulation} from "./checkpoint";
 import type {GlobalResolutionCurrentCatalog} from "./catalog";
 import {deserializeResolutionGraph} from "./serialization";
@@ -233,9 +234,10 @@ export function markCheckpointExecutionStarted(input: LifecycleBase & {
   const graph = graphFrom(input.checkpoint);
   const node = graph.nodes.find((candidate) => candidate.operation.id === input.operationId);
   if (!node || node.state !== "ready" || Boolean(input.resume) !== node.isResumeNode) throw new Error("global_resolution_execution_start_not_ready");
-  if (node.operation.kind === "create_entity" && node.operation.entityType === "luchador") {
-    const guard = validateFighterIdentityGuardAuthorization(input.checkpoint.identityGuard, {plan: input.plan, creationOperationId: node.operation.id});
-    if (!guard.valid) throw new Error(`fighter_identity_guard_required:${guard.reasonCode}`);
+  if (node.operation.kind === "create_entity") {
+    const guard = validateIdentityCreationAuthorization(input.checkpoint.identityGuard, {plan: input.plan, creationOperationId: node.operation.id});
+    const prefix = node.operation.entityType === "luchador" ? "fighter_identity_guard_required" : "identity_guard_required";
+    if (!guard.valid) throw new Error(`${prefix}:${guard.reasonCode}`);
   }
   node.state = "executing";
   const projected = withState(graph, undefined, input.startedAt);
@@ -296,9 +298,10 @@ export function updateCheckpointAfterExecution(input: LifecycleBase & {
     ])];
     for (const operationId of operationIds) {
       const operation = input.plan.operations.find((candidate) => candidate.id === operationId);
-      if (operation?.kind === "create_entity" && operation.entityType === "luchador") {
-        const guard = validateFighterIdentityGuardAuthorization(input.checkpoint.identityGuard, {plan: input.plan, creationOperationId: operationId});
-        if (!guard.valid) throw new Error(`fighter_identity_guard_required:${guard.reasonCode}`);
+      if (operation?.kind === "create_entity") {
+        const guard = validateIdentityCreationAuthorization(input.checkpoint.identityGuard, {plan: input.plan, creationOperationId: operationId});
+        const prefix = operation.entityType === "luchador" ? "fighter_identity_guard_required" : "identity_guard_required";
+        if (!guard.valid) throw new Error(`${prefix}:${guard.reasonCode}`);
       }
     }
   }
@@ -386,7 +389,7 @@ export function updateCheckpointAfterFighterIdentityGuard(input: LifecycleBase &
   const authorization = input.authorization;
   const checked = validateFighterIdentityGuardEvidence(authorization, {plan: input.plan, creationOperationId: authorization.creationOperationId});
   if (!checked.valid) throw new Error(`fighter_identity_guard_invalid:${checked.reasonCode}`);
-  if (input.checkpoint.identityGuard?.authorizationFingerprint === authorization.authorizationFingerprint) return clone(input.checkpoint);
+  if (input.checkpoint.identityGuard && "authorizationFingerprint" in input.checkpoint.identityGuard && input.checkpoint.identityGuard.authorizationFingerprint === authorization.authorizationFingerprint) return clone(input.checkpoint);
   const graph = graphFrom(input.checkpoint);
   const guard = graph.nodes.find((node) => node.operation.id === authorization.guardOperationId);
   const create = graph.nodes.find((node) => node.operation.id === authorization.creationOperationId);
@@ -411,6 +414,40 @@ export function updateCheckpointAfterFighterIdentityGuard(input: LifecycleBase &
   const phase = phaseFor(projected, authorization.decision === "create_new" ? "partially_executed" : "blocked");
   const history = appendGlobalResolutionCheckpointHistory(input.checkpoint.history, event("checkpoint_updated", authorization.reasonCode, occurredAt, authorization.authorizationFingerprint, guard.operation.id));
   return evolve({...input, graph: projected, phase, simulation: input.checkpoint.simulation, execution: input.checkpoint.execution, referenceResolution: input.checkpoint.referenceResolution, identityGuard: authorization, resume: input.checkpoint.resume, history});
+}
+
+/** Projects a compact AU6 preflight into the graph. Reuse and create remain mutually exclusive. */
+export function updateCheckpointAfterIdentityCreationPreflight(input: LifecycleBase & {
+  checkpoint: GlobalResolutionCheckpoint;
+  preflight: IdentityCreationPreflight;
+}): GlobalResolutionCheckpoint {
+  const checked = validateIdentityCreationPreflight(input.preflight, {plan: input.plan, creationOperationId: input.preflight.operationId});
+  if (!checked.valid && input.preflight.state !== checked.reasonCode) throw new Error(`identity_creation_preflight_invalid:${checked.reasonCode}`);
+  if (input.checkpoint.identityGuard && "guardFingerprint" in input.checkpoint.identityGuard && input.checkpoint.identityGuard.guardFingerprint === input.preflight.guardFingerprint) return clone(input.checkpoint);
+  const graph = graphFrom(input.checkpoint);
+  const guardOperation = identityCreationGuardForCreation(input.plan.operations, input.preflight.operationId);
+  const guard = guardOperation && graph.nodes.find((node) => node.operation.id === guardOperation.id);
+  const create = graph.nodes.find((node) => node.operation.id === input.preflight.operationId);
+  if (!guard || !create || !create.dependencyIds.includes(guard.id) || !["ready", "pending"].includes(guard.state)) throw new Error("identity_creation_preflight_graph_invalid");
+  const occurredAt = input.preflight.authorizedAt;
+  if (input.preflight.state === "safe_to_create") {
+    guard.state = "succeeded";
+    guard.result = {output: {outcome: "create_new", guardFingerprint: input.preflight.guardFingerprint}};
+  } else if (input.preflight.state === "safe_to_reuse" && input.preflight.resolution.candidateId) {
+    guard.state = "succeeded";
+    guard.result = {references: [{type: create.operation.entityType, id: input.preflight.resolution.candidateId}], output: {outcome: "reuse_existing", guardFingerprint: input.preflight.guardFingerprint}};
+    create.state = "succeeded";
+    create.result = {references: [{type: create.operation.entityType, id: input.preflight.resolution.candidateId}], output: {outcome: "reused_existing"}};
+  } else {
+    guard.state = "blocked";
+    guard.error = {code: input.preflight.state, message: "La identidad no permite crear.", retryable: true};
+    create.state = "blocked";
+    create.error = {code: input.preflight.state, message: "Creación bloqueada por identity preflight.", retryable: true};
+  }
+  const projected = withState(graph, undefined, occurredAt);
+  const phase = phaseFor(projected, input.preflight.state === "safe_to_create" ? "partially_executed" : "blocked");
+  const history = appendGlobalResolutionCheckpointHistory(input.checkpoint.history, event("checkpoint_updated", input.preflight.state, occurredAt, input.preflight.guardFingerprint, guard.operation.id));
+  return evolve({...input, graph: projected, phase, simulation: input.checkpoint.simulation, execution: input.checkpoint.execution, referenceResolution: input.checkpoint.referenceResolution, identityGuard: input.preflight, resume: input.checkpoint.resume, history});
 }
 
 function resumeSummary(prepared: PreparedExternalNewsResume): SerializedResumeSummary {

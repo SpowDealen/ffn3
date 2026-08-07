@@ -18,6 +18,7 @@ import type {ReviewCaseStatus, ReviewModule, ReviewPriority} from "../types";
 import ReviewCaseDetails from "./ReviewCaseDetails";
 import ReviewCaseList from "./ReviewCaseList";
 import ReconciliationScanControls from "../entityReconciliation/components/ReconciliationScanControls";
+import EntityIdentityLookupControls from "../entityResolution/components/EntityIdentityLookupControls";
 
 type StatusFilter = "all" | ReviewCaseStatus;
 type PriorityFilter = "all" | ReviewPriority;
@@ -112,6 +113,7 @@ export default function ReviewCenter(): ReactElement {
         </div>
       </header>
 
+      <EntityIdentityLookupControls />
       <ReconciliationScanControls />
 
       <div className="review-metrics" aria-label="Resumen de casos">

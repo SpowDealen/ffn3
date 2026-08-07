@@ -3,7 +3,7 @@ import type {GlobalResolutionAssumption, GlobalResolutionBlocker, GlobalResoluti
 import type {ResolutionDependencyPolicy, ResolutionGraphState, ResolutionNodeState} from "../../resolutionGraph";
 import type {ReviewJsonObject} from "../../types";
 import type {ProducerCheckpointBinding} from "../producers/types";
-import type {FighterIdentityGuardAuthorization} from "../identityGuard";
+import type {IdentityCreationAuthorization} from "../identityCreationGuard";
 
 export type GlobalResolutionCheckpointPhase =
   | "planned"
@@ -212,7 +212,8 @@ export type GlobalResolutionCheckpoint = {
   simulation?: SerializedSimulationSummary;
   execution?: SerializedExecutionSummary;
   referenceResolution?: SerializedReferenceResolutionSummary;
-  identityGuard?: FighterIdentityGuardAuthorization;
+  /** Fighter uses the AU5 authorization; all supported types may persist the compact AU6 preflight. */
+  identityGuard?: IdentityCreationAuthorization;
   resume?: SerializedResumeSummary;
   history: GlobalResolutionCheckpointHistoryEntry[];
   createdAt: string;

@@ -18,7 +18,7 @@ function inferredAliases(label: string): string[] {
 function build(input: WeightCategoryIdentityInput): WeightCategoryIdentity {
   const weight = normalizeWeight(input.limit, input.unit);
   const common = commonIdentity(input, inferredAliases(input.primaryLabel).map((value) => ({value, type: "official" as const, confidence: .95, verified: true})));
-  const context = normalizedContext({limitKg: weight.limitKg, limitLb: weight.limitLb, discipline: input.discipline, organization: input.organization, division: input.division, ruleset: input.ruleset});
+  const context = normalizedContext({limitKg: weight.limitKg, limitLb: weight.limitLb, discipline: input.discipline, organization: input.organization, division: input.division, ruleset: input.ruleset, modality: input.modality, ageGroup: input.ageGroup, sex: input.sex, limitType: input.limitType, slug: input.slug});
   const keys = [
     ...externalIdentityKeys(common.externalIdentifiers),
     ...(weight.limitKg && input.discipline ? [identityKey("weight-limit-plus-discipline", "strong", ["limitKg", "discipline"], `${weight.limitKg}:${normalizeIdentityText(input.discipline).normalizedValue}`)] : []),
@@ -27,7 +27,7 @@ function build(input: WeightCategoryIdentityInput): WeightCategoryIdentity {
   return finalizeIdentity<WeightCategoryIdentity>({
     ...common,
     entityType: "weight_category",
-    rawInput: safeRaw({primaryLabel: input.primaryLabel, limit: input.limit, unit: input.unit, discipline: input.discipline, organization: input.organization, division: input.division, ruleset: input.ruleset}),
+    rawInput: safeRaw({primaryLabel: input.primaryLabel, limit: input.limit, unit: input.unit, discipline: input.discipline, organization: input.organization, division: input.division, ruleset: input.ruleset, modality: input.modality, ageGroup: input.ageGroup, sex: input.sex, limitType: input.limitType, slug: input.slug}),
     normalizedFields: {primaryLabel: normalizeIdentityText(input.primaryLabel)},
     identityKeys: keys, context, attributes: context as WeightCategoryIdentity["attributes"],
   });
@@ -43,6 +43,7 @@ function compare(input: WeightCategoryIdentity, candidate: WeightCategoryIdentit
   if (incompatible(input.attributes.discipline, candidate.attributes.discipline)) return comparison({decision: "conflicting_identity", score: 0, input, candidate, conflicting: [evidence("conflict", "discipline_conflict", "definitive", "Las disciplinas son incompatibles.")], conflictCodes: ["discipline_conflict"]});
   if (incompatible(input.attributes.division, candidate.attributes.division)) return comparison({decision: "conflicting_identity", score: 0, input, candidate, conflicting: [evidence("conflict", "division_conflict", "definitive", "Las divisiones son incompatibles.")], conflictCodes: ["division_conflict"]});
   if (incompatible(input.attributes.ruleset, candidate.attributes.ruleset)) return comparison({decision: "conflicting_identity", score: 0, input, candidate, conflicting: [evidence("conflict", "ruleset_conflict", "definitive", "Los reglamentos son incompatibles.")], conflictCodes: ["ruleset_conflict"]});
+  if ((["modality", "ageGroup", "sex", "limitType"] as const).some((field) => incompatible(input.attributes[field], candidate.attributes[field]))) return comparison({decision: "conflicting_identity", score: 0, input, candidate, conflicting: [evidence("conflict", "division_conflict", "definitive", "La clase regulatoria de la categoría es incompatible.")], conflictCodes: ["division_conflict"]});
   const leftKg = input.attributes.limitKg;
   const rightKg = candidate.attributes.limitKg;
   if (leftKg && rightKg && Math.abs(leftKg - rightKg) > .75) return comparison({decision: "conflicting_identity", score: 0, input, candidate, conflicting: [evidence("conflict", "weight_limit_conflict", "definitive", "Los límites de peso son incompatibles.")], conflictCodes: ["weight_limit_conflict"]});

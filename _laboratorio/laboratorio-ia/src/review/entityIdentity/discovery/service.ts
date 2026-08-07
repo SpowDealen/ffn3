@@ -29,6 +29,10 @@ function unavailable(request: CandidateDiscoveryRequest, code: string): Candidat
 export class CandidateDiscoveryService {
   constructor(private readonly registry: CandidateDiscoveryRegistry) {}
 
+  supportedEntityTypes(): readonly string[] {
+    return Object.freeze([...new Set(this.registry.listAdapters().flatMap((adapter) => adapter.entityTypes))].sort());
+  }
+
   async discover(request: CandidateDiscoveryRequest, options: {signal?: AbortSignal} = {}): Promise<CandidateDiscoveryResult> {
     if (options.signal?.aborted) return this.cancelled(request);
     let adapter;

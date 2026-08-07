@@ -1008,3 +1008,93 @@ Los estados operativos se interpretan así:
 - `stale`: invalida decisiones y planes anteriores; sólo permite solicitar un nuevo scan.
 
 Un bloque futuro de ejecución necesitaría autorización propia, revalidación completa de referencias, estrategia de conservación campo a campo, idempotencia de escritura, rollback y auditoría. B6 no implementa ni preautoriza esa frontera.
+
+## AU6 · Bloque 1 · Entity Resolution Engine
+
+`review/entityResolution` introduce una fachada tipada sobre las autoridades AU5 sin sustituirlas. `EntityResolutionEngine` valida una intención versionada, resuelve un perfil inyectado y normaliza evidencia, completeness, warnings, provenance, fingerprints y enlaces a casos. El registry rechaza duplicados incompatibles, solapamientos ambiguos y declaraciones mode/capability incoherentes; su introspección expone sólo descriptores congelados y nunca handlers o adapters.
+
+Los modos cerrados son `identity_lookup`, `creation_preflight` y `existing_reconciliation`. Luchador declara los tres: lookup delega en Candidate Discovery B2, preflight delega en el guard B3/B4 y reconciliación delega en B5. Evento, organización y categoría declaran únicamente reconciliación histórica. No existe perfil implícito ni degradación a fighter. Una combinación ausente devuelve `unsupported`/`blocked` sin IO ni autorización.
+
+El preflight no acepta autorización o token aportado por el caller. `resolveFighterIdentityGuard` sigue siendo la autoridad que construye y liga la autorización `create_new`; ahora usa el engine como orquestador y conserva sus validaciones de plan, operación, case, payload, fingerprint, caducidad y discovery completo. Lookup puede recomendar `create_new` como decisión de identidad, pero su resultado no contiene permiso de escritura. Estados parciales, truncados, indisponibles, cancelados o stale nunca habilitan creación.
+
+`executeReconciliationScanAction` permanece como export compatible, pero delega al mismo engine. Los cuatro perfiles reutilizan `scanExistingEntities` y `buildReconciliationReviewCases`; los enlaces resultantes fijan entity type, mode, rules, case/version, snapshot y context fingerprint. No registran automáticamente los casos ni toman decisiones: cualquier grupo sigue en revisión humana y cualquier cambio de request, contexto, reglas, perfil o fingerprint se evalúa como stale.
+
+El dominio no contiene clientes, GROQ, UI, persistencia, merges ni executors de creación. `AbortSignal` viaja en el contexto no serializable del servicio, mientras request/result permanecen JSON-safe. Los fallos técnicos se convierten en errores estables y sanitizados; la telemetría segura queda limitada a profile/version, mode, capability, source, fingerprint, completeness, reason code, timestamp y duración.
+
+## AU6 · Bloque 2 · Discovery read-only multientidad
+
+Candidate Discovery incorpora perfiles declarativos y adapters Sanity explícitos para `evento`, `organizacion` y `categoriaPeso`. El engine sólo anuncia `identity_lookup` cuando el registry inyectado contiene un adapter compatible para ese tipo; sin adapter, el modo es `unsupported` y nunca cae a fighter. `creation_preflight` continúa siendo exclusiva de luchador y la reconciliación histórica conserva su acción, casos y decisión humana separados.
+
+| Entidad | Campos reales de identidad/contexto | Estrategias habilitadas |
+| --- | --- | --- |
+| Evento | `nombre`, `slug.current`, `fecha`, `organizacion._ref`, `disciplina._ref`, recinto, ciudad y país | slug, título exacto/normalizado, número de edición, organización + fecha y recall acotado |
+| Organización | `nombre`, `slug.current`, `sitioWeb`, país, sede, año y disciplinas | dominio canónico, slug, nombre exacto/normalizado, contexto y recall acotado |
+| Categoría | `nombre`, `slug.current`, disciplina, modalidad, edad, sexo, tipo/límite/unidad | disciplina + límite convertido a kg, slug, nombre exacto/normalizado, contexto y recall acotado |
+
+Estos schemas no declaran aliases ni IDs externos comunes. Sus perfiles publican una lista vacía de namespaces y las queries no proyectan ni consultan campos inventados. Las diferencias draft/publicado se agrupan por el ID lógico sin `drafts.`, conservan ambas variantes y emiten warning cuando sus fingerprints de identidad difieren. Fecha/organización incompatible en eventos, dominio/país incompatible en organizaciones y disciplina, regulación o rango incompatible en categorías producen evidencia de conflicto.
+
+Cada tipo usa una query GROQ constante, con `_type` fijado, proyección mínima, orden por `_id` y slice estático `[0...51]`. El caller sólo aporta valores allowlisted; no aporta GROQ, filtros, orden, proyección, adapter ni cliente. La fase fuerte precede al recall amplio, los documentos se deduplican antes de aplicar el máximo, el cursor es acotado y `AbortSignal` distingue cancelación del operador y timeout. Los resultados preservan `complete`, `partial`, `truncated`, `unavailable` y `cancelled`, con reason codes y fingerprints deterministas; ninguna variante incompleta equivale a ausencia de candidatos.
+
+`POST /api/review/entity-identity/candidates` es el único borde Sanity de esta capacidad: valida body exacto, entity type, strategies del perfil, source implícita, límites, cursor y namespaces; fija query y projection en servidor, usa `perspective: raw`, `no-store` y devuelve únicamente records mínimos. No se ejecuta al importar módulos, construir el engine o renderizar el Centro de Revisión. El control “Buscar coincidencias existentes” lo invoca sólo por acción explícita, muestra entidad, completeness, strategies, evidencia, variantes, warnings y provenance segura, y declara que no crea, no reconcilia automáticamente y no muta. La reconciliación permanece en su control independiente.
+
+La matriz efectiva queda así:
+
+| Entidad | Identity lookup Sanity | Reconciliación read-only | Creación/intake protegido |
+| --- | --- | --- | --- |
+| Luchador | sí | sí | sí, mediante el guard AU5 |
+| Evento | sí | sí | no, fuera de alcance |
+| Organización | sí | sí | no, fuera de alcance |
+| Categoría | sí | sí | no, fuera de alcance |
+
+## AU6 · Bloque 3 · Guard universal antes de crear
+
+El inventario de escrituras confirma siete schemas de contenido con rutas históricas de creación: `luchador`, `evento`, `organizacion`, `categoriaPeso`, `disciplina`, `combate` y `noticia`. El resultado deportivo forma parte de `combate`; no existe schema ni operación `create:resultado`, por lo que permanece sin registrar y falla cerrado.
+
+La fuente de verdad es `identityCreationGuardProfiles`, enlazada con el registry de operaciones. Cada `create_entity` registrado recibe exactamente un `find_entity` con `scope: identity_guard`, capability `resolve_identity:<tipo>` y dependencia dura. La transformación es determinista e idempotente; un schema desconocido provoca `identity_creation_operation_unregistered` antes de construir el grafo.
+
+| Creación real | Profile | Discovery read-only | Preflight | Guard | Gate ejecutable | Estado AU6-B3 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `create:luchador` | fighter | sí | sí | `resolve_identity:fighter` | `fighterCreationExecutor` + dispatcher | habilitado únicamente con `create_new` completo y token vigente |
+| `create:evento` | event | sí, AU6-B2 | no | `resolve_identity:event` | no | bloqueado: `creation_preflight_missing` |
+| `create:organizacion` | organization | sí, AU6-B2 | no | `resolve_identity:organization` | no | bloqueado: `creation_preflight_missing` |
+| `create:categoriaPeso` | weight_category | sí, AU6-B2 | no | `resolve_identity:weight_category` | no | bloqueado: `creation_preflight_missing` |
+| `create:disciplina` | discipline | no | no | `resolve_identity:discipline` | no | bloqueado: `discovery_adapter_missing` |
+| `create:combate` | fight | no | no | `resolve_identity:fight` | no | bloqueado: `discovery_adapter_missing` |
+| `create:noticia` | news | no | no | `resolve_identity:news` | no | bloqueado: `discovery_adapter_missing` |
+
+Evento, organización y categoría no se consideran soportados solo por disponer de lookup B2: aún no tienen policy de decisión, autorización ni executor gate. Disciplina, combate y noticia tampoco reciben un profile ficticio; su contrato describe el bloqueo y los campos mínimos reales, pero no anuncia preflight funcional.
+
+El lifecycle y recovery validan ahora toda operación `create_entity` mediante `validateIdentityCreationAuthorization`. Un create no puede iniciarse, confirmarse desde una ejecución ni aparecer entre las siguientes operaciones recuperables sin autorización compatible. El dispatcher universal aplica la misma defensa antes de resolver cualquier executor y no lo invoca si falta el binding. Para fighter se conserva la autorización `1.0.0`; sus nuevos metadatos opcionales (`entityType`, schema, capability, plan ID, rules y nonce) forman parte del fingerprint, y los tokens anteriores siguen siendo válidos bajo las comprobaciones B3/B4 existentes.
+
+Las rutas heredadas que escribían eventos, organizaciones, categorías, combates o documentos genéricos quedan cerradas con HTTP 409 y `identity_resolution_unsupported`: `guardar-borrador`, FEKM category/event/organization, BKFC category/event/fights, ONE category/event/fights y UFC fights. El único write HTTP aún activo es la creación fighter del agente editorial, que ya exige el token cerrado y vuelve a validarlo antes de `client.create`. Los endpoints de intake fighter UFC/ONE/BKFC/FEKM siguen registrando intención sin escribir.
+
+La materialización preparada heredada también queda cerrada para todos los tipos. Su preview es ahora local/read-only, siempre devuelve `canExecute: false` y explica `identity_resolution_unsupported`; no llama `checkDuplicate`, no obtiene un executor y no escribe en el store. El agente asociado conserva únicamente la capability de validación local y ya no registra `sanity.create_prepared_entity` ni effects `create_entity`.
+
+El Centro de Revisión proyecta el estado del profile junto al control de identidad. Solo fighter puede presentar el preflight canónico; para el resto muestra el motivo de bloqueo y no ofrece una autorización de creación. No se expone un endpoint genérico de preflight para tipos bloqueados, ni se aceptan decisiones o tokens desde UI/body.
+
+## AU6 · Bloque 4 · Activación segura de creación de entidades
+
+B4 sustituye la limitación anterior: `fighter`, `event`, `organization` y `weight_category` tienen ahora un `IdentityCreationPreflight` versionado. La autoridad construye la identidad desde el `create_entity` ya planificado, ejecuta Candidate Discovery read-only en el tipo correcto, resuelve con la autoridad de identidad existente y firma el resultado mediante `guardFingerprint`. El contrato conserva únicamente tipo, fingerprints, estado de discovery/resolution, decisión, candidate ID de reuse, provenance mínima, case/version y blocker codes; no persiste documentos, GROQ, payload completo, secretos ni errores técnicos.
+
+`safe_to_create` exige descriptor válido, discovery `complete` y no truncado, resolución `create_new`, operation/identity/context fingerprints actuales y caducidad vigente. `partial`, `truncated`, `unavailable`, `cancelled` y timeout fallan cerrados. `reuse`, probable match, ambigüedad, conflictos e información insuficiente tampoco permiten crear. Los estados expuestos distinguen reuse seguro, create seguro y los bloqueos de discovery, stale, tipo incorrecto, no soportado y preflight ausente; nunca se reducen a un booleano.
+
+El grafo conserva la cadena dura `build identity → discover candidates → resolve identity → identity guard → reuse OR create`: cada `create_entity` soportado depende de exactamente un guard. Al proyectar el preflight, `safe_to_reuse` completa la rama de reuse con el candidate real y deja create sin ejecutar; `safe_to_create` sólo completa el guard. Son decisiones mutuamente excluyentes. Ninguna entidad soportada puede crearse únicamente porque no se haya encontrado una coincidencia superficial; la creación requiere una resolución de identidad válida basada en una búsqueda suficientemente completa.
+
+Checkpoint, lifecycle y recovery vuelven a validar la prueba antes de iniciar o confirmar un create. El checkpoint admite la autorización fighter histórica o el preflight compacto B4, ambos incluidos en su fingerprint. Cambio de operation, identidad, discovery, resolution, case/version, producer, capability, manifest o contexto invalida la continuidad. El dispatcher universal exige el binding de preflight también para los tres schemas nuevos, de modo que un plan/UI/effect fabricado sin prueba queda bloqueado antes de invocar executor. Las rutas legacy siguen cerradas en 409: no se han abierto writes HTTP ni se han introducido writes reales en tests.
+
+La protección residual TOCTOU es explícita: cualquier executor que materialice estos tipos debe revalidar el preflight y realizar una lectura final con el mismo descriptor antes del write; si el resultado cambia, se bloquea o se deriva a reconciliación, nunca se reintenta a ciegas. `fight`, `news`, `result`, `discipline` e `image` permanecen fuera de alcance y fail-closed; no hay fallback a fighter. La materialización heredada continúa siendo sólo preview y no constituye autorización.
+
+## AU6 · Bloque 5 · Planificación Resolutiva Transversal
+
+`buildTransversalResolutionPlan` es una capa de decisión sobre el núcleo AU2, no un segundo motor. Recibe requirements ordenables con hechos ya producidos por Identity Resolution, Creation Guard y Reconciliation; los traduce a `EntityOperation`, reutiliza `appendFinalValidationAndResume`, finaliza mediante el mismo `finalizeGlobalResolutionPlan` y construye el grafo canónico de AU2. La finalización del planner original también usa ahora esa frontera compartida, de forma que ambos caminos tienen exactamente las mismas reglas de guards, fingerprints, idempotencia, validación y grafo.
+
+Las decisiones públicas son `reuse`, `create`, `investigate`, `repair_reference`, `validate`, `resume` y `blocked`. `reuse` prevalece sobre cualquier intención de creación. `create_new` sólo se proyecta como `create` cuando existe payload preparado y un `IdentityCreationPreflight` `safe_to_create`; el proof se vuelve a validar contra el plan final y, si está stale o no coincide, la decisión publicada pasa a `blocked`. Evidencia insuficiente, resolution ausente o reconciliación no concluyente generan `investigate`. Ambigüedad, conflicto, dependencias inexistentes y tipos sin mapping generan blockers estructurales y nunca una selección arbitraria.
+
+Cada requirement declara dependencias por ID lógico. El planner las resuelve a operation IDs antes de construir el grafo, añade reparaciones de referencia después de la entidad que las alimenta y coloca la validación final más el resume después de todas las operaciones requeridas. El resultado incluye orden topológico, capas paralelizables, justificaciones, reason codes, fingerprints de evidencia y un `decisionFingerprint` determinista. No contiene candidatos completos ni documentos de reconciliación; el `inputFingerprint` usa únicamente fingerprints y estados compactos.
+
+AU3 consume el `GlobalResolutionPlan` resultante sin adaptación adicional: `createGlobalResolutionCheckpoint` conserva plan, graph, capabilities e idempotency keys. AU4 puede aportar un `GlobalResolutionReconciliationAssessment`; sólo `confirmed_succeeded`/`already_reconciled` con documento real se convierte en reuse, mientras conflicto bloquea y el resto investiga. AU5 aporta `EntityResolutionResult`; AU6 aporta el Creation Guard. La salida declara siempre `executionAllowed: false` y `writes: false`: B5 planifica y explica, pero nunca invoca executors, persiste casos ni realiza escrituras.
+
+El modo `entity_resolution` queda identificado explícitamente en metadata del grafo y no necesita un nodo resume. En `resume_producer`, el resume sigue siendo obligatorio y depende de la validación final. Esta distinción forma parte del fingerprint del grafo y evita excepciones implícitas basadas en nombres de operación.
+## AU6 · Bloque 6 · Integración interactiva y cierre
+
+`transversalInteractive.ts` adapta exclusivamente el `ReviewCase` y sus resoluciones ya registradas al planificador B5. Genera un checkpoint AU3 en fase `planned`, reutiliza recovery AU3 para detectar contexto stale y deriva una vista compacta sin payloads. La UI `TransversalResolutionPlanPanel` permite generar, recuperar y regenerar ese checkpoint local; no contiene executor, simulación, mutación editorial ni acción de resume.

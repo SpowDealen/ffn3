@@ -322,7 +322,8 @@ async function executeOperationInternal(input: {
   }
   if (!input.authorized) return operationError("authorization_required", input.operationId, ["explicit_operation_authorization_required"], recovery);
   if (capability === "create:luchador") {
-    const guard = validateFighterIdentityGuardAuthorization(validRecovery.checkpoint.identityGuard, {plan: validRecovery.plan, creationOperationId: input.operationId});
+    const fighterAuthorization = validRecovery.checkpoint.identityGuard && "authorizationFingerprint" in validRecovery.checkpoint.identityGuard ? validRecovery.checkpoint.identityGuard : undefined;
+    const guard = validateFighterIdentityGuardAuthorization(fighterAuthorization, {plan: validRecovery.plan, creationOperationId: input.operationId});
     if (!guard.valid) return operationError("operation_not_ready", input.operationId, [`identity_guard:${guard.reasonCode}`], recovery);
   }
   const executorRequirement = recovery.recovery.checkpoint.plan.executorRequirements.find((candidate) => candidate.capability === capability);
@@ -342,7 +343,8 @@ async function executeOperationInternal(input: {
     const producerReviewInput = reviewCase.context.producer === "external_news"
       ? buildExternalNewsUniversalReviewInput(reviewCase)
       : getReviewProducer(String(reviewCase.context.producer))?.buildReviewInput({reviewCase: structuredClone(reviewCase)} as unknown as ReviewJsonValue);
-    const extracted = extractFighterCreationUniversalPlan({plan: validRecovery.plan, simulation, reviewInput: input.reviewInput ?? producerReviewInput!, identityGuardAuthorization: validRecovery.checkpoint.identityGuard, now: dependencies.now});
+    const fighterAuthorization = validRecovery.checkpoint.identityGuard && "authorizationFingerprint" in validRecovery.checkpoint.identityGuard ? validRecovery.checkpoint.identityGuard : undefined;
+    const extracted = extractFighterCreationUniversalPlan({plan: validRecovery.plan, simulation, reviewInput: input.reviewInput ?? producerReviewInput!, identityGuardAuthorization: fighterAuthorization, now: dependencies.now});
     if (!extracted.ok || extracted.operationId !== input.operationId) return operationError("blocked", input.operationId, [extracted.ok ? "operation_id_changed" : extracted.reason], recovery);
     universalPlan = extracted.universalPlan;
     state = {caseId: reviewCase.id, operationId: input.operationId, idempotencyContext: input.idempotencyContext};

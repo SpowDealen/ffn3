@@ -55,7 +55,7 @@ async function main() {
   assert.equal(executorSource.includes(".checkDuplicate("), false); assert.equal(executorSource.includes("CandidateDiscovery"), false); assert.equal(executorSource.includes("client.fetch"), false);
   const routeSource = readFileSync("app/api/editorial-agent/entities/route.ts", "utf8");
   assert.equal(routeSource.includes("lower(nombre)"), false); assert.equal(routeSource.includes("createIfNotExists"), false); assert.match(routeSource, /identity_guard_required/); assert.match(routeSource, /persistence_conflict/);
-  const materializationSource = readFileSync("_laboratorio/laboratorio-ia/src/review/materialization/preparedEntityMaterialization.ts", "utf8"); assert.match(materializationSource, /entity\.entityType === "fighter"/); assert.match(materializationSource, /identity_guard_required/);
+  const materializationSource = readFileSync("_laboratorio/laboratorio-ia/src/review/materialization/preparedEntityMaterialization.ts", "utf8"); assert.match(materializationSource, /identity_resolution_unsupported/); assert.match(materializationSource, /identity_guard_required/); assert.equal(materializationSource.includes(".checkDuplicate("), false); assert.equal(materializationSource.includes(".createEntity("), false);
   for (const path of ["app/api/sources/ufc/events/create-fighters/route.ts", "app/api/sources/one/events/create-fighters/route.ts", "app/api/sources/bkfc/events/create-fighters/route.ts", "app/api/sources/fekm/participants/create/route.ts"]) {
     const source = readFileSync(path, "utf8"); assert.match(source, /normalizeProducerFighterResolutionRequests/); assert.equal(source.includes("@sanity/client"), false, path); assert.equal(source.includes("fighterCreationExecutor"), false, path);
   }

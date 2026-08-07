@@ -249,7 +249,16 @@ export function validateGlobalResolutionCheckpoint(value: unknown): CheckpointPa
   }
   if (value.identityGuard !== undefined) {
     const guard = value.identityGuard;
-    if (!object(guard) || guard.authorizationVersion !== "1.0.0" || guard.capability !== "resolve_identity:fighter"
+    const preflight = object(guard) && guard.version === "1.0.0" && "guardFingerprint" in guard;
+    if (preflight) {
+      if (!text(guard.operationId) || !fingerprint(guard.operationFingerprint) || !["fighter", "event", "organization", "weight_category"].includes(String(guard.entityType))
+        || !fingerprint(guard.identityFingerprint) || !object(guard.discovery) || !["complete", "partial", "truncated", "unavailable", "cancelled"].includes(String(guard.discovery.status)) || !fingerprint(guard.discovery.resultFingerprint) || typeof guard.discovery.completeEnoughForCreation !== "boolean"
+        || !object(guard.resolution) || !["reuse", "probable_match", "ambiguous", "create_new", "conflicting_identity", "insufficient_evidence", "unsupported"].includes(String(guard.resolution.status)) || !fingerprint(guard.resolution.resolutionFingerprint)
+        || !["reuse_existing", "create_new", "blocked"].includes(String(guard.decision)) || !text(guard.state) || !Array.isArray(guard.blockers) || !Array.isArray(guard.warnings) || !fingerprint(guard.contextFingerprint) || !fingerprint(guard.guardFingerprint)
+        || !object(guard.provenance) || !text(guard.provenance.producer) || !text(guard.provenance.caseId) || !Number.isInteger(guard.provenance.caseVersion) || !text(guard.provenance.discoveryAdapter)
+        || !text(guard.authorizedAt) || !text(guard.expiresAt) || Date.parse(String(guard.authorizedAt)) >= Date.parse(String(guard.expiresAt))
+        || guard.provenance.caseId !== value.caseId || guard.provenance.caseVersion !== value.caseVersion || guard.provenance.producer !== value.producer) reasons.push("global_resolution_checkpoint_identity_preflight_invalid");
+    } else if (!object(guard) || guard.authorizationVersion !== "1.0.0" || guard.capability !== "resolve_identity:fighter"
       || !text(guard.guardOperationId) || !text(guard.creationOperationId) || !fingerprint(guard.planFingerprint)
       || !text(guard.caseId) || !Number.isInteger(guard.caseVersion) || !text(guard.producer) || !text(guard.source)
       || !["create_new", "reuse_existing", "ambiguous", "blocked"].includes(String(guard.decision))
@@ -258,6 +267,12 @@ export function validateGlobalResolutionCheckpoint(value: unknown): CheckpointPa
       || !fingerprint(guard.discoveryResultFingerprint) || !Array.isArray(guard.candidateIds)
       || !Array.isArray(guard.strategyIds) || !Array.isArray(guard.warningCodes)
       || !fingerprint(guard.contextFingerprint) || !text(guard.authorizedAt) || !text(guard.expiresAt) || Date.parse(String(guard.authorizedAt)) >= Date.parse(String(guard.expiresAt)) || !fingerprint(guard.authorizationFingerprint)
+      || guard.entityType !== undefined && guard.entityType !== "fighter"
+      || guard.schemaType !== undefined && guard.schemaType !== "luchador"
+      || guard.createCapability !== undefined && guard.createCapability !== "create:luchador"
+      || guard.rulesVersion !== undefined && guard.rulesVersion !== "1.0.0"
+      || guard.planId !== undefined && (!plan.ok || guard.planId !== plan.value.planId)
+      || guard.nonce !== undefined && !text(guard.nonce)
       || guard.planFingerprint !== value.planFingerprint || guard.caseId !== value.caseId || guard.caseVersion !== value.caseVersion
       || guard.producer !== value.producer) reasons.push("global_resolution_checkpoint_identity_guard_invalid");
   }

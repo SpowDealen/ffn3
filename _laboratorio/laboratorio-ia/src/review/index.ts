@@ -28,3 +28,4 @@ export * from "./store/reviewStore";
 export * from "./store/selectors";
 export * from "./fighterResolutionIntake";
 export * from "./entityReconciliation";
+export * from "./entityResolution";

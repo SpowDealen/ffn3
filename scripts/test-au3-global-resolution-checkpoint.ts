@@ -280,7 +280,8 @@ function testRecovery(): void {
   }
   assert.equal(recoverGlobalResolutionCheckpoint({...persisted, version: persisted.version + 1}, environment).status, "stale");
   assert.equal(recoverGlobalResolutionCheckpoint({...persisted, context: {...persisted.context, title: "Changed snapshot"}}, environment).status, "stale");
-  assert.equal(recoverGlobalResolutionCheckpoint(persisted, {...environment, capabilities: environment.capabilities.slice(1)}).status, "stale");
+  const requiredCapability = checkpoint.plan.capabilityRequirements[0]?.id;
+  assert.equal(recoverGlobalResolutionCheckpoint(persisted, {...environment, capabilities: environment.capabilities.filter((capability) => capability.id !== requiredCapability)}).status, "stale");
   assert.equal(recoverGlobalResolutionCheckpoint(persisted, {...environment, executors: environment.executors.map((executor) => executor.executorId.includes("create") ? {...executor, manifestFingerprint: "sha256-v1:changed"} : executor)}).status, "stale");
   assert.equal(recoverGlobalResolutionCheckpoint({...persisted, status: "resumed", resumeExecution: {status: "succeeded", attemptCount: 1, draftId: "draft:other"}}, environment).status, "stale");
   const structurallyInvalid = structuredClone(checkpoint); structurallyInvalid.graph.nodes.push(structurallyInvalid.graph.nodes[0]);

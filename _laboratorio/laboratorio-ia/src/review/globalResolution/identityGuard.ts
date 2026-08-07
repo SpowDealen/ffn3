@@ -1,11 +1,11 @@
 import {buildEntityOperation, type EntityOperation} from "../entityOperations";
 import {buildEntityIdentity, type FighterIdentityInput, type IdentityProvenance} from "../entityIdentity";
 import {
-  buildCandidateDiscoveryRequest, resolveDiscoveredIdentity, type CandidateDiscoveryResult,
-  type CandidateDiscoveryService, type CandidateDiscoveryStatus,
+  type CandidateDiscoveryResolutionStatus, type CandidateDiscoveryResult, type CandidateDiscoveryService, type CandidateDiscoveryStatus,
 } from "../entityIdentity/discovery";
 import type {ReviewJsonObject, ReviewJsonValue} from "../types";
 import {computeUniversalFingerprint} from "../universal";
+import {createEntityResolutionEngine} from "../entityResolution/factory";
 import type {GlobalResolutionPlan} from "./types";
 
 export const FIGHTER_IDENTITY_GUARD_CAPABILITY = "resolve_identity:fighter" as const;
@@ -42,6 +42,12 @@ export type FighterIdentityGuardAuthorization = Readonly<{
   authorizedAt: string;
   expiresAt: string;
   authorizationFingerprint: string;
+  entityType?: "fighter";
+  schemaType?: "luchador";
+  createCapability?: "create:luchador";
+  planId?: string;
+  rulesVersion?: "1.0.0";
+  nonce?: string;
 }>;
 
 const object = (value: unknown): value is ReviewJsonObject => Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -127,7 +133,7 @@ export function fighterIdentityGuardForCreation(operations: readonly EntityOpera
   return operations.find((operation) => operation.requiredCapability === FIGHTER_IDENTITY_GUARD_CAPABILITY && creationIdFrom(operation) === creationOperationId);
 }
 
-function reason(discovery: CandidateDiscoveryResult, status: ReturnType<typeof resolveDiscoveredIdentity>["status"]): {decision: FighterIdentityGuardDecision; reasonCode: FighterIdentityGuardReasonCode} {
+function reason(discovery: CandidateDiscoveryResult, status: CandidateDiscoveryResolutionStatus): {decision: FighterIdentityGuardDecision; reasonCode: FighterIdentityGuardReasonCode} {
   if (discovery.status === "unavailable") return {decision: "blocked", reasonCode: "discovery_unavailable"};
   if (discovery.status === "cancelled") return {decision: "blocked", reasonCode: "discovery_cancelled"};
   if (discovery.status !== "complete" || discovery.truncated) return {decision: "blocked", reasonCode: "discovery_incomplete"};
@@ -142,7 +148,7 @@ function authorizationSemantic(value: Omit<FighterIdentityGuardAuthorization, "a
   return {...value, candidateIds: [...value.candidateIds].sort(), strategyIds: [...value.strategyIds].sort(), warningCodes: [...value.warningCodes].sort()};
 }
 
-export async function resolveFighterIdentityGuard(input: {
+async function resolveFighterIdentityGuardCore(input: {
   plan: GlobalResolutionPlan;
   guardOperationId: string;
   service: CandidateDiscoveryService;
@@ -158,9 +164,11 @@ export async function resolveFighterIdentityGuard(input: {
   if (!guard || guard.requiredCapability !== FIGHTER_IDENTITY_GUARD_CAPABILITY || !create || !identityInput) throw new Error("fighter_identity_guard_input_missing");
   const identity = buildEntityIdentity(identityInput);
   const source = input.source ?? text(payload?.source) ?? "sanity";
-  const request = buildCandidateDiscoveryRequest({identity, source, producerContext: {producerId: input.plan.producer, caseId: input.plan.caseId, caseVersion: input.plan.caseVersion}});
-  const discovery = await input.service.discover(request, {signal: input.signal});
-  const resolved = resolveDiscoveredIdentity(request, discovery);
+  const lookupService = Object.freeze({discover: (request: Parameters<CandidateDiscoveryService["discover"]>[0]) => input.service.discover(request, {signal: input.signal}), supportedEntityTypes: () => Object.freeze(["fighter"])}) as CandidateDiscoveryService;
+  const lookupEngine = createEntityResolutionEngine({candidateDiscoveryService: lookupService}, {clock: () => new Date((input.now ?? (() => new Date().toISOString()))()), monotonic: () => 0});
+  const lookup = await lookupEngine.resolve({version: 1, mode: "identity_lookup", entityType: "fighter", producer: input.plan.producer, source: "sanity", identity, producerContext: {producerId: input.plan.producer, caseId: input.plan.caseId, caseVersion: input.plan.caseVersion}});
+  if (lookup.mode !== "identity_lookup" || !lookup.identityLookup) throw new Error("fighter_identity_lookup_failed");
+  const {discovery, resolution: resolved} = lookup.identityLookup;
   const verdict = reason(discovery, resolved.status);
   const resolvedEntityId = verdict.decision === "reuse_existing" ? resolved.resolution.candidateId : undefined;
   const contextFingerprint = fp({planFingerprint: input.plan.fingerprint, caseId: input.plan.caseId, caseVersion: input.plan.caseVersion, producer: input.plan.producer, source, capability: FIGHTER_IDENTITY_GUARD_CAPABILITY});
@@ -171,15 +179,35 @@ export async function resolveFighterIdentityGuard(input: {
     caseId: input.plan.caseId, caseVersion: input.plan.caseVersion, producer: input.plan.producer, source,
     decision: verdict.decision, reasonCode: verdict.reasonCode, identityFingerprint: identity.fingerprint,
     creationPayloadFingerprint: fp(create.payload),
-    requestFingerprint: request.requestFingerprint, discoveryStatus: discovery.status,
+    requestFingerprint: discovery.requestFingerprint, discoveryStatus: discovery.status,
     discoveryResultFingerprint: discovery.resultFingerprint,
     candidateIds: Object.freeze(discovery.candidates.map((candidate) => candidate.candidateId).sort()),
     strategyIds: Object.freeze(discovery.executedStrategies.map((strategy) => strategy.strategyId).sort()),
     warningCodes: Object.freeze(discovery.warnings.map((warning) => warning.code).sort()),
     resolvedEntityId, contextFingerprint, authorizedAt,
     expiresAt: new Date(Date.parse(authorizedAt) + FIGHTER_IDENTITY_GUARD_TTL_MS).toISOString(),
+    entityType: "fighter", schemaType: "luchador", createCapability: "create:luchador", planId: input.plan.id, rulesVersion: "1.0.0",
+    nonce: fp({planId: input.plan.id, creationOperationId: create.id, requestFingerprint: discovery.requestFingerprint, identityFingerprint: identity.fingerprint}),
   };
   return {authorization: Object.freeze({...semantic, authorizationFingerprint: fp(authorizationSemantic(semantic))}), discovery};
+}
+
+export async function resolveFighterIdentityGuard(input: {
+  plan: GlobalResolutionPlan;
+  guardOperationId: string;
+  service: CandidateDiscoveryService;
+  source?: string;
+  signal?: AbortSignal;
+  now?: () => string;
+}): Promise<{authorization: FighterIdentityGuardAuthorization; discovery: CandidateDiscoveryResult}> {
+  const resolvedAt = input.now ? new Date(input.now()) : new Date();
+  const engine = createEntityResolutionEngine({
+    candidateDiscoveryService: input.service,
+    creationPreflight: (request, context) => resolveFighterIdentityGuardCore({plan: request.plan, guardOperationId: request.guardOperationId, service: input.service, source: request.source, signal: input.signal ?? context.signal, now: () => context.now.toISOString()}),
+  }, {clock: () => resolvedAt, monotonic: () => 0});
+  const result = await engine.resolve({version: 1, mode: "creation_preflight", entityType: "fighter", producer: input.plan.producer, source: "sanity", plan: input.plan, guardOperationId: input.guardOperationId});
+  if (result.mode !== "creation_preflight" || !result.creationPreflight || !("authorizationFingerprint" in result.creationPreflight.authorization)) throw new Error("fighter_identity_guard_resolution_failed");
+  return {authorization: result.creationPreflight.authorization, discovery: result.creationPreflight.discovery};
 }
 
 export function validateFighterIdentityGuardAuthorization(value: FighterIdentityGuardAuthorization | undefined, input: {
@@ -202,6 +230,8 @@ export function validateFighterIdentityGuardToken(value: FighterIdentityGuardAut
     && value.planFingerprint === input.planFingerprint && value.caseId === input.caseId
     && value.caseVersion === input.caseVersion && value.producer === input.producer
     && value.creationPayloadFingerprint === fp(input.creationPayload)
+    && (!value.entityType || value.entityType === "fighter") && (!value.schemaType || value.schemaType === "luchador")
+    && (!value.createCapability || value.createCapability === "create:luchador")
     && value.decision === "create_new" && value.discoveryStatus === "complete"
     && Number.isFinite(Date.parse(value.authorizedAt)) && Number.isFinite(Date.parse(value.expiresAt))
     && Date.parse(value.authorizedAt) < Date.parse(value.expiresAt) && Date.parse(input.now) < Date.parse(value.expiresAt)
@@ -218,6 +248,8 @@ export function validateFighterIdentityGuardEvidence(value: FighterIdentityGuard
     || value.guardOperationId !== guard.id || value.creationOperationId !== input.creationOperationId
     || value.planFingerprint !== input.plan.fingerprint || value.caseId !== input.plan.caseId
     || value.caseVersion !== input.plan.caseVersion || value.producer !== input.plan.producer
+    || value.entityType !== undefined && value.entityType !== "fighter" || value.schemaType !== undefined && value.schemaType !== "luchador"
+    || value.createCapability !== undefined && value.createCapability !== "create:luchador" || value.planId !== undefined && value.planId !== input.plan.id
     || value.creationPayloadFingerprint !== fp(input.plan.operations.find((operation) => operation.id === input.creationOperationId)?.payload ?? null)
     || fp(authorizationSemantic(semantic)) !== value.authorizationFingerprint) return {valid: false, reasonCode: "fingerprint_mismatch"};
   return {valid: true, reasonCode: value.reasonCode};

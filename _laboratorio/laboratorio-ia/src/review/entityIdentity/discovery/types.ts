@@ -10,7 +10,7 @@ export type CandidateDiscoveryStrategyId = typeof CANDIDATE_DISCOVERY_STRATEGY_I
 export type CandidateDiscoveryStatus = "complete" | "partial" | "truncated" | "unavailable" | "cancelled";
 export type CandidateDiscoveryReason =
   | "limit_reached" | "adapter_unavailable" | "technical_failure" | "missing_context"
-  | "unsupported_strategy" | "cancelled" | "early_exact_id" | "cost_policy";
+  | "unsupported_strategy" | "cancelled" | "early_exact_id" | "cost_policy" | "timeout";
 
 export type CandidateDiscoveryStrategy = Readonly<{
   strategyId: CandidateDiscoveryStrategyId;
@@ -49,6 +49,7 @@ export type CandidateDiscoveryRequest = Readonly<{
   capability: `resolve_identity:${UniversalEntityType}`;
   strategies: readonly CandidateDiscoveryStrategy[];
   limits: CandidateDiscoveryLimits;
+  cursor?: string;
   requestFingerprint: string;
 }>;
 
@@ -99,6 +100,7 @@ export type CandidateDiscoveryAdapterResult = Readonly<{
   warnings: readonly CandidateDiscoveryWarning[];
   truncated: boolean;
   reason?: CandidateDiscoveryReason;
+  cursor?: string;
   adapterFingerprint: string;
   resultFingerprint: string;
 }>;

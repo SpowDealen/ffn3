@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./buildGlobalResolutionPlan";
+export * from "./finalizeGlobalResolutionPlan";
 export * from "./buildResolutionGraphFromOperations";
 export * from "./deriveEntityOperations";
 export * from "./fingerprintGlobalResolutionPlan";
@@ -19,3 +20,6 @@ export * from "./reconciliation";
 export * from "./producers";
 export * from "./inspection";
 export * from "./identityGuard";
+export * from "./identityCreationGuard";
+export * from "./transversalPlanning";
+export * from "./transversalInteractive";

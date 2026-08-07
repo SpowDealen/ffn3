@@ -15,6 +15,9 @@ import type {
 } from "./types";
 import { validateUniversalExecutionPlan } from "./validateUniversalExecutionPlan";
 import { validateUniversalSimulation } from "./validateUniversalSimulation";
+import {identityCreationGuardProfileForSchema, isIdentityCreationSupported, validateIdentityCreationPreflightToken, type IdentityCreationPreflight} from "../globalResolution/identityCreationGuard";
+import {validateFighterIdentityGuardToken, type FighterIdentityGuardAuthorization} from "../globalResolution/identityGuard";
+import type {ReviewJsonObject} from "../types";
 import {
   validateCompensationResult,
   validateExecutionResult,
@@ -26,6 +29,25 @@ const defaultPolicy: UniversalExecutionPolicy = {
   approvedRiskLevels: [],
 };
 const nowDefault = () => new Date().toISOString();
+const record = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+function createEffectsAuthorized(plan: UniversalExecutionPlan, now: string): boolean {
+  for (const effect of plan.effects) {
+    if (effect.type !== "create_entity") continue;
+    const profile = identityCreationGuardProfileForSchema(effect.entityType);
+    if (!profile || !isIdentityCreationSupported(profile) || !record(effect.payload)) return false;
+    const payload = effect.payload;
+    if (!record(payload.draft) || typeof payload.globalPlanId !== "string" || typeof payload.globalPlanFingerprint !== "string" || typeof payload.globalOperationId !== "string") return false;
+    if (profile.schemaType === "luchador" && record(payload.identityGuardAuthorization)) {
+      const authorization = payload.identityGuardAuthorization as unknown as FighterIdentityGuardAuthorization;
+      if (authorization.planId && authorization.planId !== payload.globalPlanId) return false;
+      if (!validateFighterIdentityGuardToken(authorization, {creationOperationId: payload.globalOperationId, planFingerprint: payload.globalPlanFingerprint, caseId: authorization.caseId, caseVersion: authorization.caseVersion, producer: authorization.producer, creationPayload: payload.draft as ReviewJsonObject, now})) return false;
+      continue;
+    }
+    if (!record(payload.identityCreationPreflight) || typeof payload.globalOperationFingerprint !== "string" || typeof payload.globalContextFingerprint !== "string") return false;
+    if (!validateIdentityCreationPreflightToken(payload.identityCreationPreflight as unknown as IdentityCreationPreflight, {entityType: effect.entityType as import("../entityOperations").EntityOperationEntityType, operationId: payload.globalOperationId, operationFingerprint: payload.globalOperationFingerprint, contextFingerprint: payload.globalContextFingerprint, now})) return false;
+  }
+  return true;
+}
 function terminal(
   plan: UniversalExecutionPlan,
   sim: UniversalPlanSimulation,
@@ -137,6 +159,7 @@ async function run(
           retryable: false,
         },
       });
+    if (!createEffectsAuthorized(plan, startedAt)) return terminal(plan, simulation, state, "blocked", startedAt, now(), {error: {code: "identity_guard_required", message: "create_entity_requires_bound_identity_authorization", retryable: false}});
     const bindings: RegisteredReviewExecutor[] = [];
     for (const allocation of simulation.allocations) {
       const b = getRegisteredReviewExecutor(allocation.executorId);

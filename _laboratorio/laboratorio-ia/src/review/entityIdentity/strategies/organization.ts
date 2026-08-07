@@ -19,7 +19,7 @@ function build(input: OrganizationIdentityInput): OrganizationIdentity {
     ...(input.abbreviation ? [{value: input.abbreviation, type: "abbreviation" as const, confidence: .95, verified: true}] : []),
     ...(input.historicalNames ?? []).map((value) => ({value, type: "historical" as const, confidence: .9, verified: true})),
   ]);
-  const context = normalizedContext({officialName, abbreviation, officialDomain: domain, country: input.country, primaryDiscipline: input.primaryDiscipline});
+  const context = normalizedContext({officialName, abbreviation, officialDomain: domain, country: input.country, primaryDiscipline: input.primaryDiscipline, slug: input.slug});
   const keys = [
     ...externalIdentityKeys(common.externalIdentifiers),
     identityKey("organization-official-name", "strong", ["officialName"], normalizeIdentityText(officialName).normalizedValue),
@@ -28,7 +28,7 @@ function build(input: OrganizationIdentityInput): OrganizationIdentity {
   return finalizeIdentity<OrganizationIdentity>({
     ...common,
     entityType: "organization",
-    rawInput: safeRaw({primaryLabel: input.primaryLabel, officialName, abbreviation: input.abbreviation, officialDomain: input.officialDomain, country: input.country}),
+    rawInput: safeRaw({primaryLabel: input.primaryLabel, officialName, abbreviation: input.abbreviation, officialDomain: input.officialDomain, country: input.country, slug: input.slug}),
     normalizedFields: {primaryLabel: normalizeIdentityText(input.primaryLabel), officialName: normalizeIdentityText(officialName), ...(input.abbreviation ? {abbreviation: normalizeAcronym(input.abbreviation)} : {})},
     identityKeys: keys, context, attributes: context as OrganizationIdentity["attributes"],
   });
@@ -39,6 +39,8 @@ function compare(input: OrganizationIdentity, candidate: OrganizationIdentity) {
   if (base) return base;
   if (matchingExternalId(input, candidate)) return comparison({decision: "exact_match", score: 1, input, candidate, matchedKeys: [evidence("key_match", "organization_external_id_exact", "definitive", "Coincide el ID externo de la organización.")]});
   if (input.attributes.officialDomain && input.attributes.officialDomain === candidate.attributes.officialDomain) return comparison({decision: "exact_match", score: .99, input, candidate, matchedKeys: [evidence("key_match", "official_domain_match", "very_strong", "Coincide el dominio oficial.")]});
+  if (input.attributes.officialDomain && candidate.attributes.officialDomain && input.attributes.officialDomain !== candidate.attributes.officialDomain) return comparison({decision: "conflicting_identity", score: 0, input, candidate, conflicting: [evidence("conflict", "organization_conflict", "definitive", "Los dominios oficiales son incompatibles.", "officialDomain")], conflictCodes: ["organization_conflict"]});
+  if (input.attributes.country && candidate.attributes.country && input.attributes.country !== candidate.attributes.country && input.normalizedPrimaryLabel === candidate.normalizedPrimaryLabel) return comparison({decision: "conflicting_identity", score: 0, input, candidate, conflicting: [evidence("conflict", "organization_conflict", "strong", "El mismo nombre aparece en países incompatibles.", "country")], conflictCodes: ["organization_conflict"]});
   const labels = labelRelation(input, candidate);
   if (labels.verifiedAlias || labels.exact) return comparison({decision: "strong_match", score: .95, input, candidate, matchedKeys: [evidence("alias_match", "organization_name_alias_match", "strong", "Coinciden nombre oficial o alias verificado.")]});
   const leftAcronym = input.attributes.abbreviation ?? acronym(input.attributes.officialName);

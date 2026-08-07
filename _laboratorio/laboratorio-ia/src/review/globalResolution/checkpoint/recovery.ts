@@ -5,7 +5,7 @@ import {fingerprintGlobalResolutionCase, fingerprintGlobalResolutionSnapshot} fr
 import {deserializeGlobalResolutionPlan, deserializeResolutionGraph} from "./serialization";
 import {validateGlobalResolutionCheckpoint} from "./checkpoint";
 import type {GlobalResolutionCheckpoint, GlobalResolutionContinuation, GlobalResolutionRecoveryEnvironment, GlobalResolutionRecoveryResult, SerializedCapabilityRequirement} from "./types";
-import {validateFighterIdentityGuardAuthorization} from "../identityGuard";
+import {validateIdentityCreationAuthorization} from "../identityCreationGuard";
 
 const unique = (values: readonly string[]) => [...new Set(values)].sort();
 
@@ -47,9 +47,9 @@ function deriveContinuation(checkpoint: GlobalResolutionCheckpoint, graph: impor
   const blockedOperationIds = unique(graph.nodes.filter((node) => ["blocked", "failed"].includes(node.state)).map((node) => node.operation.id));
   const nextReadyOperationIds = unique(graph.nodes.filter((node) => {
     if (!deriveResolutionNodeReadiness(graph, node).ready) return false;
-    if (node.operation.kind !== "create_entity" || node.operation.entityType !== "luchador") return true;
+    if (node.operation.kind !== "create_entity") return true;
     const plan = deserializeGlobalResolutionPlan(checkpoint.plan, graph, checkpoint.createdAt);
-    return plan.ok && validateFighterIdentityGuardAuthorization(checkpoint.identityGuard, {plan: plan.value, creationOperationId: node.operation.id}).valid;
+    return plan.ok && validateIdentityCreationAuthorization(checkpoint.identityGuard, {plan: plan.value, creationOperationId: node.operation.id}).valid;
   }).map((node) => node.operation.id));
   const nextOperations = graph.nodes.filter((node) => nextReadyOperationIds.includes(node.operation.id));
   const activeExecutionPhase = ["planned", "simulated", "partially_executed", "ready_to_resume"].includes(checkpoint.phase);

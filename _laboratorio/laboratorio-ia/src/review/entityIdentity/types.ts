@@ -116,16 +116,17 @@ export type FighterIdentity = BaseIdentity<"fighter", SafeEntityContext & {
 }>;
 export type EventIdentity = BaseIdentity<"event", SafeEntityContext & {
   baseName: string; edition?: string; organization?: string; date?: string; city?: string; venue?: string;
-  country?: string; mainEvent?: readonly string[]; officialUrl?: string; rescheduledFrom?: string;
+  country?: string; mainEvent?: readonly string[]; officialUrl?: string; rescheduledFrom?: string; slug?: string;
 }>;
 export type OrganizationIdentity = BaseIdentity<"organization", SafeEntityContext & {
-  officialName: string; abbreviation?: string; officialDomain?: string; country?: string; primaryDiscipline?: string;
+  officialName: string; abbreviation?: string; officialDomain?: string; country?: string; primaryDiscipline?: string; slug?: string;
 }>;
 export type DisciplineIdentity = BaseIdentity<"discipline", SafeEntityContext & {
   catalogId?: string; modality?: string; ruleset?: string;
 }>;
 export type WeightCategoryIdentity = BaseIdentity<"weight_category", SafeEntityContext & {
   limitKg?: number; limitLb?: number; discipline?: string; organization?: string; division?: string; ruleset?: string;
+  modality?: string; ageGroup?: string; sex?: string; limitType?: string; slug?: string;
 }>;
 export type FightIdentity = BaseIdentity<"fight", SafeEntityContext & {
   eventKey?: string; eventDate?: string; participants: readonly string[]; category?: string; discipline?: string; phase?: string;
@@ -159,17 +160,18 @@ export type FighterIdentityInput = CommonIdentityInput<"fighter"> & {
 };
 export type EventIdentityInput = CommonIdentityInput<"event"> & {
   baseName?: string; edition?: string | number; organization?: string; date?: string; city?: string; venue?: string;
-  country?: string; mainEvent?: readonly string[]; officialUrl?: string; rescheduledFrom?: string;
+  country?: string; mainEvent?: readonly string[]; officialUrl?: string; rescheduledFrom?: string; slug?: string;
 };
 export type OrganizationIdentityInput = CommonIdentityInput<"organization"> & {
   officialName?: string; abbreviation?: string; historicalNames?: readonly string[]; officialDomain?: string;
-  country?: string; primaryDiscipline?: string;
+  country?: string; primaryDiscipline?: string; slug?: string;
 };
 export type DisciplineIdentityInput = CommonIdentityInput<"discipline"> & {
   catalogId?: string; catalogAliases?: readonly string[]; modality?: string; ruleset?: string;
 };
 export type WeightCategoryIdentityInput = CommonIdentityInput<"weight_category"> & {
   limit?: number; unit?: "kg" | "lb"; discipline?: string; organization?: string; division?: string; ruleset?: string;
+  modality?: string; ageGroup?: string; sex?: string; limitType?: string; slug?: string;
 };
 export type FightIdentityInput = CommonIdentityInput<"fight"> & {
   eventKey?: string; eventDate?: string; participants: readonly string[]; category?: string; discipline?: string; phase?: string;

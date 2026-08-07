@@ -14,8 +14,20 @@ export const pilotCapabilityRegistry = createGlobalResolutionCapabilityRegistry(
   {id: "validate:luchador_prepared", support: "simulatable", operationKinds: ["validate_entity"], description: "Valida el borrador preparado de luchador sin escritura."},
   {id: "find:luchador", support: "simulatable", operationKinds: ["find_entity"], description: "Evalúa candidatos inyectados de luchador."},
   {id: "resolve_identity:fighter", support: "simulatable", operationKinds: ["find_entity"], description: "Resuelve identidad de luchador mediante discovery read-only antes de crear."},
+  {id: "resolve_identity:event", support: "simulatable", operationKinds: ["find_entity"], description: "Resuelve identidad de evento mediante discovery read-only antes de crear."},
+  {id: "resolve_identity:organization", support: "simulatable", operationKinds: ["find_entity"], description: "Resuelve identidad de organización mediante discovery read-only antes de crear."},
+  {id: "resolve_identity:weight_category", support: "simulatable", operationKinds: ["find_entity"], description: "Resuelve identidad de categoría mediante discovery read-only antes de crear."},
+  {id: "resolve_identity:discipline", support: "contract_only", operationKinds: ["find_entity"], description: "Bloquea creación de disciplinas sin discovery universal."},
+  {id: "resolve_identity:fight", support: "contract_only", operationKinds: ["find_entity"], description: "Bloquea creación de combates sin discovery universal."},
+  {id: "resolve_identity:news", support: "contract_only", operationKinds: ["find_entity"], description: "Bloquea creación de noticias sin discovery universal."},
   {id: "reuse:luchador", support: "simulatable", operationKinds: ["reuse_entity"], description: "Proyecta reutilización de un candidato inequívoco."},
   {id: "create:luchador", support: "executable", operationKinds: ["create_entity"], description: "Persiste un luchador cuya identidad ya fue autorizada por resolve_identity:fighter."},
+  {id: "create:evento", support: "contract_only", operationKinds: ["create_entity"], description: "Creación bloqueada hasta disponer de preflight y executor gate universales."},
+  {id: "create:organizacion", support: "contract_only", operationKinds: ["create_entity"], description: "Creación bloqueada hasta disponer de preflight y executor gate universales."},
+  {id: "create:categoriaPeso", support: "contract_only", operationKinds: ["create_entity"], description: "Creación bloqueada hasta disponer de preflight y executor gate universales."},
+  {id: "create:disciplina", support: "contract_only", operationKinds: ["create_entity"], description: "Creación bloqueada sin discovery universal."},
+  {id: "create:combate", support: "contract_only", operationKinds: ["create_entity"], description: "Creación bloqueada sin discovery universal."},
+  {id: "create:noticia", support: "contract_only", operationKinds: ["create_entity"], description: "Creación bloqueada sin discovery universal."},
   {id: "replace_reference:noticia:luchador", support: "executable", operationKinds: ["replace_reference"], description: "Sustituye de forma pura una referencia proyectada por un ID real validado."},
   {id: "validate:noticia", support: "simulatable", operationKinds: ["validate_entity"], description: "Valida de forma pura el payload reconstruido."},
   {id: "resume:external_news", support: "executable", operationKinds: ["validate_entity"], description: "Reanuda external_news mediante el flujo real autorizado y registrado."},
@@ -24,7 +36,7 @@ export const pilotCapabilityRegistry = createGlobalResolutionCapabilityRegistry(
 export function capabilityForOperation(operation: EntityOperation): string | undefined {
   const payload = operation.payload && typeof operation.payload === "object" && !Array.isArray(operation.payload) ? operation.payload : undefined;
   const scope = typeof payload?.scope === "string" ? payload.scope : "";
-  if (scope === "identity_guard" && operation.entityType === "luchador" && operation.kind === "find_entity") return "resolve_identity:fighter";
+  if (scope === "identity_guard" && operation.kind === "find_entity") return operation.requiredCapability;
   if (scope === "resume" && typeof payload?.producer === "string") return `resume:${payload.producer}`;
   if (scope === "final_payload") return `validate:${operation.entityType}`;
   if (operation.entityType === "luchador" && operation.kind === "validate_entity") return "validate:luchador_prepared";
