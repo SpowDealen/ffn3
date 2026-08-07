@@ -3,6 +3,12 @@ import {getExternalNewsResumeSnapshot} from "../../resume/externalNews";
 import {computeUniversalFingerprint} from "../../universal";
 import type {GlobalResolutionCheckpoint, SerializedResolutionGraph} from "./types";
 
+function normalizeIdentityGuard(guard: NonNullable<GlobalResolutionCheckpoint["identityGuard"]>) {
+  return "authorizationFingerprint" in guard
+    ? {...guard, authorizedAt: undefined, candidateIds: [...guard.candidateIds].sort(), strategyIds: [...guard.strategyIds].sort(), warningCodes: [...guard.warningCodes].sort()}
+    : {...guard, authorizedAt: undefined, blockers: [...guard.blockers].sort((left, right) => left.code.localeCompare(right.code)), warnings: [...guard.warnings].sort((left, right) => left.code.localeCompare(right.code))};
+}
+
 export function fingerprintGlobalResolutionCase(reviewCase: ReviewCase): string {
   const input = {
     schemaVersion: reviewCase.schemaVersion,
@@ -64,7 +70,7 @@ export function fingerprintGlobalResolutionCheckpoint(checkpoint: Omit<GlobalRes
     planFingerprint: checkpoint.execution.planFingerprint,
     simulationFingerprint: checkpoint.execution.simulationFingerprint,
     status: checkpoint.execution.status,
-    operations: checkpoint.execution.operations.map(({startedAt: _startedAt, completedAt: _completedAt, ...operation}) => operation),
+    operations: checkpoint.execution.operations.map((operation) => Object.fromEntries(Object.entries(operation).filter(([key]) => key !== "startedAt" && key !== "completedAt"))),
     resultFingerprint: checkpoint.execution.resultFingerprint,
   } : undefined;
   const referenceResolution = checkpoint.referenceResolution ? {
@@ -98,11 +104,15 @@ export function fingerprintGlobalResolutionCheckpoint(checkpoint: Omit<GlobalRes
     simulation,
     execution,
     referenceResolution,
-    identityGuard: checkpoint.identityGuard ? "authorizationFingerprint" in checkpoint.identityGuard
-      ? {...checkpoint.identityGuard, authorizedAt: undefined, candidateIds: [...checkpoint.identityGuard.candidateIds].sort(), strategyIds: [...checkpoint.identityGuard.strategyIds].sort(), warningCodes: [...checkpoint.identityGuard.warningCodes].sort()}
-      : {...checkpoint.identityGuard, authorizedAt: undefined, blockers: [...checkpoint.identityGuard.blockers].sort((left, right) => left.code.localeCompare(right.code)), warnings: [...checkpoint.identityGuard.warnings].sort((left, right) => left.code.localeCompare(right.code))}
-      : undefined,
+    identityGuard: checkpoint.identityGuard ? normalizeIdentityGuard(checkpoint.identityGuard) : undefined,
+    identityGuards: checkpoint.identityGuards?.map(normalizeIdentityGuard).sort((left, right) => ("authorizationFingerprint" in left ? left.creationOperationId : left.operationId).localeCompare("authorizationFingerprint" in right ? right.creationOperationId : right.operationId)),
+    transaction: checkpoint.transaction ? {schemaVersion: checkpoint.transaction.schemaVersion, transactionId: checkpoint.transaction.transactionId, transactionFingerprint: checkpoint.transaction.transactionFingerprint, sourcePlanFingerprint: checkpoint.transaction.sourcePlanFingerprint, sourceCheckpointFingerprint: checkpoint.transaction.sourceCheckpointFingerprint, phase: checkpoint.transaction.phase, checkpointFingerprint: checkpoint.transaction.checkpointFingerprint} : undefined,
     resume,
-    history: checkpoint.history.map(({occurredAt: _occurredAt, ...entry}) => entry),
+    history: checkpoint.history.map((entry) => Object.fromEntries(Object.entries(entry).filter(([key]) => key !== "occurredAt"))),
   } as unknown as ReviewJsonValue);
+}
+
+/** Fingerprint of the resolution context excluding the mutable AU7 transaction projection. */
+export function fingerprintGlobalResolutionCheckpointSource(checkpoint: GlobalResolutionCheckpoint): string {
+  return fingerprintGlobalResolutionCheckpoint({...checkpoint, transaction: undefined});
 }

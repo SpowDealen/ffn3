@@ -206,6 +206,16 @@ textarea {
 .review-definition-grid dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .review-definition-grid-compact { margin-top: 8px; }
 .review-subsection { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--panel-border); }
+.transaction-center { scroll-margin-top: 16px; }
+.transaction-state { align-self: flex-start; }
+.transaction-state-completed, .transaction-state-ready { color: var(--panel-ok-text); }
+.transaction-state-blocked, .transaction-state-failed, .transaction-state-stale, .transaction-state-reconciliation_required, .transaction-state-compensation_required { color: var(--panel-error-text); }
+.transaction-incidents { display: grid; gap: 8px; }
+.transaction-incidents article { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--panel-error-text); border-radius: 10px; overflow-wrap: anywhere; }
+.transaction-timeline ol { display: grid; gap: 8px; margin: 0; padding-left: 22px; }
+.transaction-timeline li { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(100px, 1fr) auto; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
+.transaction-timeline time { color: var(--panel-text-muted); font-size: 12px; }
+.transaction-compensation { scroll-margin-top: 16px; }
 .review-subtitle,
 .review-small-title { margin: 0; }
 .review-subtitle { font-size: 17px; }
@@ -234,6 +244,8 @@ textarea {
 }
 
 @media (max-width: 560px) {
+  .transaction-timeline li { grid-template-columns: 1fr; }
+  .transaction-actions > * { width: 100%; }
   .review-center { padding: 14px; }
   .review-filters { grid-template-columns: 1fr; }
   .review-search { grid-column: auto; }

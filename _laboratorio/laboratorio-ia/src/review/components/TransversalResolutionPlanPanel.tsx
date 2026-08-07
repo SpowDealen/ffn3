@@ -59,7 +59,7 @@ export default function TransversalResolutionPlanPanel({reviewCase}: {reviewCase
   }
 
   return (
-    <section className="review-subsection" aria-label="Planificador resolutivo transversal">
+    <section className="review-subsection" id={`transversal-resolution-${reviewCase.id}`} aria-label="Planificador resolutivo transversal">
       <div className="review-row review-row-wrap">
         <div>
           <p className="review-kicker">AU6 · Planificación resolutiva</p>

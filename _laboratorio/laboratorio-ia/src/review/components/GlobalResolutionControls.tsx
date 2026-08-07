@@ -305,7 +305,7 @@ export default function GlobalResolutionControls({reviewCase}: {reviewCase: Revi
             assessment: result.assessment,
           });
         }
-      } catch (error) {
+      } catch {
         if (!gate.current.isCurrent(token, reviewCase.id)) return;
         if (controller.signal.aborted) setInspectionState({status: "idle"});
         else setInspectionState({status: "failed", operationId, code: "inspection_failed", message: "No se pudo leer Sanity.", retryable: true});
@@ -351,7 +351,7 @@ export default function GlobalResolutionControls({reviewCase}: {reviewCase: Revi
 
   const reconciliationIds = reconciliationOperationIds(reviewCase);
 
-  return <section className="review-subsection global-resolution-controls" aria-labelledby={`global-resolution-title-${reviewCase.id}`} aria-busy={locked}>
+  return <section className="review-subsection global-resolution-controls" id={`global-resolution-${reviewCase.id}`} tabIndex={-1} aria-labelledby={`global-resolution-title-${reviewCase.id}`} aria-busy={locked}>
     <div className="review-row review-row-wrap">
       <div><p className="review-kicker">MOTOR UNIVERSAL · CONTROL MANUAL</p><h4 className="review-subtitle" id={`global-resolution-title-${reviewCase.id}`}>Resolución global</h4></div>
       <div className="global-resolution-heading-actions">

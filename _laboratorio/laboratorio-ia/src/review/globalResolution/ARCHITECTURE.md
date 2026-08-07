@@ -1098,3 +1098,11 @@ El modo `entity_resolution` queda identificado explícitamente en metadata del g
 ## AU6 · Bloque 6 · Integración interactiva y cierre
 
 `transversalInteractive.ts` adapta exclusivamente el `ReviewCase` y sus resoluciones ya registradas al planificador B5. Genera un checkpoint AU3 en fase `planned`, reutiliza recovery AU3 para detectar contexto stale y deriva una vista compacta sin payloads. La UI `TransversalResolutionPlanPanel` permite generar, recuperar y regenerar ese checkpoint local; no contiene executor, simulación, mutación editorial ni acción de resume.
+
+## AU7 · Cierre operativo transaccional
+
+El detalle del Centro de Revisión incorpora `TransactionOperationalCenter` después del plan transversal. La transacción se reconstruye desde el plan AU2/AU3 y sólo su checkpoint compacto se anida en `GlobalResolutionCheckpoint`; la UI recupera al abrir sin ejecutar. Inicio, step, batch, pausa, reanudación, reconciliación, compensación y regeneración son controles explícitos. La ejecución pasa por el executor AU7 B3 y el orquestador B5, manteniendo AU4 como autoridad de reconciliación y AU5/AU6 como autoridad de identidad y Creation Guard.
+
+## AU7 · Transaction Engine
+
+El núcleo transaccional lógico universal se documenta en [`../transactions/ARCHITECTURE.md`](../transactions/ARCHITECTURE.md). AU7 compone el plan y checkpoint existentes; no reemplaza el grafo ni el lifecycle AU3.

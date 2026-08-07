@@ -4,6 +4,7 @@ import type {ResolutionDependencyPolicy, ResolutionGraphState, ResolutionNodeSta
 import type {ReviewJsonObject} from "../../types";
 import type {ProducerCheckpointBinding} from "../producers/types";
 import type {IdentityCreationAuthorization} from "../identityCreationGuard";
+import type {UniversalTransactionCheckpoint} from "../../transactions/types";
 
 export type GlobalResolutionCheckpointPhase =
   | "planned"
@@ -214,6 +215,10 @@ export type GlobalResolutionCheckpoint = {
   referenceResolution?: SerializedReferenceResolutionSummary;
   /** Fighter uses the AU5 authorization; all supported types may persist the compact AU6 preflight. */
   identityGuard?: IdentityCreationAuthorization;
+  /** AU7 B2 multi-guard collection. `identityGuard` remains readable for legacy checkpoints. */
+  identityGuards?: IdentityCreationAuthorization[];
+  /** Compact AU7 transaction-state projection; the plan is reconstructed from the source plan. */
+  transaction?: UniversalTransactionCheckpoint;
   resume?: SerializedResumeSummary;
   history: GlobalResolutionCheckpointHistoryEntry[];
   createdAt: string;

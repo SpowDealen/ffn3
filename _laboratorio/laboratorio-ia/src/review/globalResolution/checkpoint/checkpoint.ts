@@ -9,6 +9,7 @@ import {fingerprintGlobalResolutionCase, fingerprintGlobalResolutionCheckpoint, 
 import {deserializeGlobalResolutionPlan, deserializeResolutionGraph, serializeGlobalResolutionPlan, serializeResolutionGraph, validateSerializedGlobalResolutionPlan, validateSerializedResolutionGraph, type CheckpointParseResult} from "./serialization";
 import type {GlobalResolutionCheckpoint, GlobalResolutionCheckpointHistoryEntry, GlobalResolutionCheckpointPhase, SerializedExecutionOperationSummary, SerializedExecutionSummary, SerializedExecutorRequirement, SerializedReferenceResolutionSummary, SerializedResumeSummary, SerializedSimulationSummary} from "./types";
 import type {ProducerCheckpointBinding} from "../producers/types";
+import {validateUniversalTransactionCheckpoint} from "../../transactions/checkpoint";
 
 const PHASES = new Set<GlobalResolutionCheckpointPhase>(["planned", "simulated", "partially_executed", "ready_to_resume", "completed", "blocked", "failed", "reconciliation_required"]);
 const text = (value: unknown): value is string => typeof value === "string" && Boolean(value.trim());
@@ -63,7 +64,7 @@ export function summarizeGlobalResolutionExecution(execution: UniversalPlanExecu
     };
   });
   const planFingerprint = options.checkpointPlanFingerprint ?? execution.planFingerprint;
-  const semantic = {planFingerprint, simulationFingerprint: execution.simulationFingerprint, status: execution.status, operations: operations.map(({startedAt: _startedAt, completedAt: _completedAt, ...operation}) => operation)};
+  const semantic = {planFingerprint, simulationFingerprint: execution.simulationFingerprint, status: execution.status, operations: operations.map((operation) => Object.fromEntries(Object.entries(operation).filter(([key]) => key !== "startedAt" && key !== "completedAt")))};
   return {...semantic, operations, startedAt: execution.startedAt, completedAt: execution.completedAt, resultFingerprint: computeUniversalFingerprint(semantic as unknown as ReviewJsonValue)};
 }
 
@@ -79,6 +80,8 @@ export function createGlobalResolutionCheckpoint(input: {
   execution?: SerializedExecutionSummary;
   referenceResolution?: SerializedReferenceResolutionSummary;
   identityGuard?: GlobalResolutionCheckpoint["identityGuard"];
+  identityGuards?: GlobalResolutionCheckpoint["identityGuards"];
+  transaction?: GlobalResolutionCheckpoint["transaction"];
   resume?: SerializedResumeSummary;
   history?: readonly GlobalResolutionCheckpointHistoryEntry[];
   now?: () => string;
@@ -106,6 +109,8 @@ export function createGlobalResolutionCheckpoint(input: {
     execution: input.execution ? clone(input.execution) : undefined,
     referenceResolution: input.referenceResolution ? clone(input.referenceResolution) : undefined,
     identityGuard: input.identityGuard ? clone(input.identityGuard) : undefined,
+    identityGuards: input.identityGuards ? clone(input.identityGuards) : undefined,
+    transaction: input.transaction ? clone(input.transaction) : undefined,
     resume: input.resume ? clone(input.resume) : undefined,
     history: clone([...(input.history ?? [])].slice(-50)),
   };
@@ -136,6 +141,8 @@ export function retargetGlobalResolutionCheckpoint(checkpoint: GlobalResolutionC
     execution: checkpoint.execution ? clone(checkpoint.execution) : undefined,
     referenceResolution: checkpoint.referenceResolution ? clone(checkpoint.referenceResolution) : undefined,
     identityGuard: checkpoint.identityGuard ? clone(checkpoint.identityGuard) : undefined,
+    identityGuards: checkpoint.identityGuards ? clone(checkpoint.identityGuards) : undefined,
+    transaction: checkpoint.transaction ? clone(checkpoint.transaction) : undefined,
     resume: checkpoint.resume ? clone(checkpoint.resume) : undefined,
     history: clone(checkpoint.history.slice(-50)),
   };
@@ -156,6 +163,8 @@ export function evolveGlobalResolutionCheckpoint(input: {
   execution?: SerializedExecutionSummary;
   referenceResolution?: SerializedReferenceResolutionSummary;
   identityGuard?: GlobalResolutionCheckpoint["identityGuard"];
+  identityGuards?: GlobalResolutionCheckpoint["identityGuards"];
+  transaction?: GlobalResolutionCheckpoint["transaction"];
   resume?: SerializedResumeSummary;
   history: readonly GlobalResolutionCheckpointHistoryEntry[];
   now?: () => string;
@@ -185,6 +194,8 @@ export function evolveGlobalResolutionCheckpoint(input: {
     execution: input.execution ? clone(input.execution) : undefined,
     referenceResolution: input.referenceResolution ? clone(input.referenceResolution) : undefined,
     identityGuard: input.identityGuard ? clone(input.identityGuard) : undefined,
+    identityGuards: input.identityGuards ? clone(input.identityGuards) : undefined,
+    transaction: input.transaction ? clone(input.transaction) : undefined,
     resume: input.resume ? clone(input.resume) : undefined,
     history: clone([...input.history].slice(-50)),
   };
@@ -276,6 +287,22 @@ export function validateGlobalResolutionCheckpoint(value: unknown): CheckpointPa
       || guard.planFingerprint !== value.planFingerprint || guard.caseId !== value.caseId || guard.caseVersion !== value.caseVersion
       || guard.producer !== value.producer) reasons.push("global_resolution_checkpoint_identity_guard_invalid");
   }
+  if (value.identityGuards !== undefined) {
+    if (!Array.isArray(value.identityGuards)) reasons.push("global_resolution_checkpoint_identity_guards_invalid");
+    else {
+      const operationIds = value.identityGuards.map((guard) => object(guard) ? ("creationOperationId" in guard ? guard.creationOperationId : guard.operationId) : undefined);
+      if (operationIds.some((operationId) => !text(operationId)) || new Set(operationIds).size !== operationIds.length) reasons.push("global_resolution_checkpoint_identity_guards_duplicate");
+      for (const guard of value.identityGuards) {
+        const legacyValidation = validateGlobalResolutionCheckpoint({...value, identityGuard: guard as GlobalResolutionCheckpoint["identityGuard"], identityGuards: undefined});
+        if (!legacyValidation.ok && legacyValidation.reasons.some((reason) => reason.includes("identity_"))) reasons.push("global_resolution_checkpoint_identity_guards_invalid");
+      }
+    }
+  }
+  if (value.transaction !== undefined) {
+    const transaction = validateUniversalTransactionCheckpoint(value.transaction);
+    if (!transaction.valid) reasons.push(...transaction.reasons.map((reason) => `global_resolution_${reason}`));
+    else if ((value.transaction as import("../../transactions/types").UniversalTransactionCheckpoint).sourcePlanFingerprint !== value.planFingerprint) reasons.push("global_resolution_transaction_source_plan_mismatch");
+  }
   if (value.resume !== undefined) {
     const resume = value.resume;
     if (!object(resume) || !text(resume.operationId) || !text(resume.planId) || !fingerprint(resume.planFingerprint) || !fingerprint(resume.previewFingerprint) || !fingerprint(resume.payloadFingerprint) || !fingerprint(resume.snapshotFingerprint) || !Array.isArray(resume.referenceIds) || resume.referenceIds.some((id) => !text(id) || id.startsWith("projected:")) || !object(resume.validation) || typeof resume.validation.valid !== "boolean" || !Array.isArray(resume.validation.blockerCodes) || !text(resume.preparedAt) || resume.outcome !== undefined && !["resumed", "already_resumed", "blocked", "failed", "reconciliation_required"].includes(String(resume.outcome)) || resume.completedAt !== undefined && !text(resume.completedAt)) reasons.push("global_resolution_checkpoint_resume_invalid");
@@ -298,7 +325,7 @@ export function validateGlobalResolutionCheckpoint(value: unknown): CheckpointPa
   if (!isSerializableReviewValue(value) || findSensitiveKeys(value).length) reasons.push("global_resolution_checkpoint_not_safe");
   if (!reasons.length) {
     const checkpoint = value as unknown as GlobalResolutionCheckpoint;
-    const {id: _id, checkpointFingerprint: _fingerprint, createdAt: _createdAt, updatedAt: _updatedAt, ...base} = checkpoint;
+    const base = Object.fromEntries(Object.entries(checkpoint).filter(([key]) => !["id", "checkpointFingerprint", "createdAt", "updatedAt"].includes(key))) as Omit<GlobalResolutionCheckpoint, "id" | "checkpointFingerprint" | "createdAt" | "updatedAt">;
     const fingerprint = fingerprintGlobalResolutionCheckpoint(base);
     if (fingerprint !== checkpoint.checkpointFingerprint || checkpoint.id !== `global-resolution-checkpoint:${checkpoint.caseId}:${fingerprint.slice(-16)}`) reasons.push("global_resolution_checkpoint_fingerprint_mismatch");
   }
