@@ -112,6 +112,14 @@ export const externalNewsProducerManifest: GlobalResolutionProducerManifest = {
     retryPolicy: "manual_after_confirmed_absence",
     allowAutomaticExecution: false,
   },
+  autonomyPolicy: {
+    policyVersion: "1.0.0",
+    maximumAutonomousRisk: "medium",
+    allowedAutonomousCapabilities: ["resolve_identity:fighter", "validate:noticia"],
+    supervisedCapabilities: ["replace_reference:noticia:luchador"],
+    requiresAuthorizationCapabilities: ["create:luchador", "resume:external_news"],
+    forbiddenAutonomousCapabilities: [],
+  },
   compatibility: {
     caseTypes: ["external_news"],
     contracts: ["review-case:external-news:v1"],

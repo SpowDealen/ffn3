@@ -76,6 +76,15 @@ export function validateGlobalResolutionProducerManifest(
   };
   for (const id of capabilities.keys()) visit(id);
 
+  if (manifest.autonomyPolicy) {
+    const policy = manifest.autonomyPolicy;
+    if (!semver(policy.policyVersion)) issues.push(issue("error", "autonomy_policy_version_invalid", "La versión de la policy de autonomía no es válida.", "autonomyPolicy.policyVersion"));
+    const declared = [policy.allowedAutonomousCapabilities, policy.supervisedCapabilities ?? [], policy.requiresAuthorizationCapabilities, policy.forbiddenAutonomousCapabilities];
+    if (declared.flat().some((id) => !capabilities.has(id))) issues.push(issue("error", "autonomy_policy_capability_missing", "La policy de autonomía referencia una capability no declarada.", "autonomyPolicy"));
+    const groups = declared.map((values) => new Set(values));
+    if (groups.some((left, index) => groups.some((right, other) => other > index && [...left].some((id) => right.has(id))))) issues.push(issue("error", "autonomy_policy_capability_conflict", "Una capability aparece en límites de autonomía incompatibles.", "autonomyPolicy"));
+  }
+
   for (const binding of manifest.inspectors) {
     if (!capabilities.has(binding.capabilityId)) issues.push(issue("error", "inspector_capability_missing", "El binding de inspector apunta a una capability inexistente.", `inspectors.${binding.inspectorId}`));
     if (dependencies.inspectorIds && !dependencies.inspectorIds.has(binding.inspectorId)) issues.push(issue("error", "inspector_implementation_missing", "El inspector declarado no está registrado.", `inspectors.${binding.inspectorId}`));

@@ -25,6 +25,13 @@ export function normalizeGlobalResolutionProducerManifest(manifest: GlobalResolu
       ...binding,
       requiredEvidenceKinds: unique(binding.requiredEvidenceKinds),
     })).sort((left, right) => `${left.capabilityId}:${left.priority ?? 0}:${left.inspectorId}`.localeCompare(`${right.capabilityId}:${right.priority ?? 0}:${right.inspectorId}`)),
+    autonomyPolicy: manifest.autonomyPolicy ? {
+      ...manifest.autonomyPolicy,
+      allowedAutonomousCapabilities: unique(manifest.autonomyPolicy.allowedAutonomousCapabilities),
+      supervisedCapabilities: unique(manifest.autonomyPolicy.supervisedCapabilities),
+      requiresAuthorizationCapabilities: unique(manifest.autonomyPolicy.requiresAuthorizationCapabilities),
+      forbiddenAutonomousCapabilities: unique(manifest.autonomyPolicy.forbiddenAutonomousCapabilities),
+    } : undefined,
     compatibility: {
       ...manifest.compatibility,
       caseTypes: unique(manifest.compatibility.caseTypes),

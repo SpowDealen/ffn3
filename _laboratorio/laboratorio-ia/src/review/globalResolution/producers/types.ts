@@ -66,6 +66,15 @@ export type ProducerExecutionPolicy = {
   allowAutomaticExecution: false;
 };
 
+export type ProducerAutonomyPolicy = {
+  policyVersion: string;
+  maximumAutonomousRisk: "low" | "medium";
+  allowedAutonomousCapabilities: string[];
+  supervisedCapabilities?: string[];
+  requiresAuthorizationCapabilities: string[];
+  forbiddenAutonomousCapabilities: string[];
+};
+
 export type ProducerCompatibilityManifest = {
   caseTypes: string[];
   contracts?: string[];
@@ -85,6 +94,7 @@ export type GlobalResolutionProducerManifest = {
   adapters: ProducerAdapterManifest[];
   inspectors: ProducerInspectorBinding[];
   executionPolicy: ProducerExecutionPolicy;
+  autonomyPolicy?: ProducerAutonomyPolicy;
   compatibility: ProducerCompatibilityManifest;
   metadata?: SafeProducerMetadata;
 };
