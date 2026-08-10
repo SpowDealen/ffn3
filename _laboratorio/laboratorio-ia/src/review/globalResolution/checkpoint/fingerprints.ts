@@ -107,6 +107,7 @@ export function fingerprintGlobalResolutionCheckpoint(checkpoint: Omit<GlobalRes
     identityGuard: checkpoint.identityGuard ? normalizeIdentityGuard(checkpoint.identityGuard) : undefined,
     identityGuards: checkpoint.identityGuards?.map(normalizeIdentityGuard).sort((left, right) => ("authorizationFingerprint" in left ? left.creationOperationId : left.operationId).localeCompare("authorizationFingerprint" in right ? right.creationOperationId : right.operationId)),
     transaction: checkpoint.transaction ? {schemaVersion: checkpoint.transaction.schemaVersion, transactionId: checkpoint.transaction.transactionId, transactionFingerprint: checkpoint.transaction.transactionFingerprint, sourcePlanFingerprint: checkpoint.transaction.sourcePlanFingerprint, sourceCheckpointFingerprint: checkpoint.transaction.sourceCheckpointFingerprint, phase: checkpoint.transaction.phase, checkpointFingerprint: checkpoint.transaction.checkpointFingerprint} : undefined,
+    autonomousLoop: checkpoint.autonomousLoop ? {...checkpoint.autonomousLoop, history: [...checkpoint.autonomousLoop.history].sort((left, right) => left.iteration - right.iteration)} : undefined,
     resume,
     history: checkpoint.history.map((entry) => Object.fromEntries(Object.entries(entry).filter(([key]) => key !== "occurredAt"))),
   } as unknown as ReviewJsonValue);
@@ -114,5 +115,5 @@ export function fingerprintGlobalResolutionCheckpoint(checkpoint: Omit<GlobalRes
 
 /** Fingerprint of the resolution context excluding the mutable AU7 transaction projection. */
 export function fingerprintGlobalResolutionCheckpointSource(checkpoint: GlobalResolutionCheckpoint): string {
-  return fingerprintGlobalResolutionCheckpoint({...checkpoint, transaction: undefined});
+  return fingerprintGlobalResolutionCheckpoint({...checkpoint, transaction: undefined, autonomousLoop: undefined});
 }

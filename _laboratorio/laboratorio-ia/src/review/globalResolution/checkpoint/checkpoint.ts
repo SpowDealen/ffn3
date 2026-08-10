@@ -12,6 +12,13 @@ import type {ProducerCheckpointBinding} from "../producers/types";
 import {validateUniversalTransactionCheckpoint} from "../../transactions/checkpoint";
 
 const PHASES = new Set<GlobalResolutionCheckpointPhase>(["planned", "simulated", "partially_executed", "ready_to_resume", "completed", "blocked", "failed", "reconciliation_required"]);
+const LOOP_PHASES = new Set(["running", "paused", "blocked", "completed", "cancelled"]);
+const LOOP_STOP_REASONS = new Set([
+  "insufficient_evidence", "contradictory_evidence", "stale_evidence", "authorization_required", "human_required",
+  "reconciliation_required", "compensation_required", "high_risk", "destructive_risk", "unsupported_capability",
+  "checkpoint_conflict", "transaction_stale", "strategy_stale", "unexpected_postcondition", "iteration_budget_reached",
+  "no_progress", "cancellation", "persistence_conflict", "transaction_blocked", "explicit_continuation_required", "completed",
+]);
 const text = (value: unknown): value is string => typeof value === "string" && Boolean(value.trim());
 const fingerprint = (value: unknown): value is string => typeof value === "string" && /^sha256-v1:[a-z0-9]+$/i.test(value);
 const object = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -82,6 +89,7 @@ export function createGlobalResolutionCheckpoint(input: {
   identityGuard?: GlobalResolutionCheckpoint["identityGuard"];
   identityGuards?: GlobalResolutionCheckpoint["identityGuards"];
   transaction?: GlobalResolutionCheckpoint["transaction"];
+  autonomousLoop?: GlobalResolutionCheckpoint["autonomousLoop"];
   resume?: SerializedResumeSummary;
   history?: readonly GlobalResolutionCheckpointHistoryEntry[];
   now?: () => string;
@@ -111,6 +119,7 @@ export function createGlobalResolutionCheckpoint(input: {
     identityGuard: input.identityGuard ? clone(input.identityGuard) : undefined,
     identityGuards: input.identityGuards ? clone(input.identityGuards) : undefined,
     transaction: input.transaction ? clone(input.transaction) : undefined,
+    autonomousLoop: input.autonomousLoop ? clone(input.autonomousLoop) : undefined,
     resume: input.resume ? clone(input.resume) : undefined,
     history: clone([...(input.history ?? [])].slice(-50)),
   };
@@ -143,6 +152,7 @@ export function retargetGlobalResolutionCheckpoint(checkpoint: GlobalResolutionC
     identityGuard: checkpoint.identityGuard ? clone(checkpoint.identityGuard) : undefined,
     identityGuards: checkpoint.identityGuards ? clone(checkpoint.identityGuards) : undefined,
     transaction: checkpoint.transaction ? clone(checkpoint.transaction) : undefined,
+    autonomousLoop: checkpoint.autonomousLoop ? clone(checkpoint.autonomousLoop) : undefined,
     resume: checkpoint.resume ? clone(checkpoint.resume) : undefined,
     history: clone(checkpoint.history.slice(-50)),
   };
@@ -165,6 +175,7 @@ export function evolveGlobalResolutionCheckpoint(input: {
   identityGuard?: GlobalResolutionCheckpoint["identityGuard"];
   identityGuards?: GlobalResolutionCheckpoint["identityGuards"];
   transaction?: GlobalResolutionCheckpoint["transaction"];
+  autonomousLoop?: GlobalResolutionCheckpoint["autonomousLoop"];
   resume?: SerializedResumeSummary;
   history: readonly GlobalResolutionCheckpointHistoryEntry[];
   now?: () => string;
@@ -196,6 +207,7 @@ export function evolveGlobalResolutionCheckpoint(input: {
     identityGuard: input.identityGuard ? clone(input.identityGuard) : undefined,
     identityGuards: input.identityGuards ? clone(input.identityGuards) : undefined,
     transaction: input.transaction ? clone(input.transaction) : undefined,
+    autonomousLoop: input.autonomousLoop ? clone(input.autonomousLoop) : input.checkpoint.autonomousLoop ? clone(input.checkpoint.autonomousLoop) : undefined,
     resume: input.resume ? clone(input.resume) : undefined,
     history: clone([...input.history].slice(-50)),
   };
@@ -302,6 +314,25 @@ export function validateGlobalResolutionCheckpoint(value: unknown): CheckpointPa
     const transaction = validateUniversalTransactionCheckpoint(value.transaction);
     if (!transaction.valid) reasons.push(...transaction.reasons.map((reason) => `global_resolution_${reason}`));
     else if ((value.transaction as import("../../transactions/types").UniversalTransactionCheckpoint).sourcePlanFingerprint !== value.planFingerprint) reasons.push("global_resolution_transaction_source_plan_mismatch");
+  }
+  if (value.autonomousLoop !== undefined) {
+    const loop = value.autonomousLoop;
+    if (!object(loop) || loop.schemaVersion !== 1 || !text(loop.loopId) || !fingerprint(loop.loopFingerprint) || !Number.isInteger(loop.iteration) || Number(loop.iteration) < 1 || !LOOP_PHASES.has(String(loop.phase))
+      || !fingerprint(loop.decisionFingerprint) || !fingerprint(loop.sufficiencyFingerprint) || !fingerprint(loop.autonomyFingerprint) || !fingerprint(loop.strategyFingerprint)
+      || loop.transactionFingerprint !== undefined && !fingerprint(loop.transactionFingerprint) || loop.stopReason !== undefined && !LOOP_STOP_REASONS.has(String(loop.stopReason)) || !Array.isArray(loop.history)) reasons.push("global_resolution_autonomous_loop_invalid");
+    else {
+      const history = loop.history;
+      const iterations = history.map((entry) => object(entry) ? Number(entry.iteration) : -1);
+      const chronological = iterations.every((iteration, index) => Number.isInteger(iteration) && iteration >= 1 && (index === 0 || iterations[index - 1] < iteration));
+      const validEntries = history.every((entry) => object(entry) && Number.isInteger(entry.iteration) && LOOP_PHASES.has(String(entry.phase)) && fingerprint(entry.stateFingerprint) && fingerprint(entry.blockersFingerprint)
+        && fingerprint(entry.decisionFingerprint) && fingerprint(entry.sufficiencyFingerprint) && fingerprint(entry.autonomyFingerprint) && fingerprint(entry.strategyFingerprint)
+        && (entry.transactionFingerprint === undefined || fingerprint(entry.transactionFingerprint)) && (entry.stopReason === undefined || LOOP_STOP_REASONS.has(String(entry.stopReason))));
+      const last = history.at(-1);
+      if (loop.loopId !== `autonomous-loop:${String(value.caseId)}:${String(loop.loopFingerprint).slice(-16)}` || history.length < 1 || history.length > 25 || !chronological || !validEntries
+        || !object(last) || last.iteration !== loop.iteration || last.phase !== loop.phase || last.decisionFingerprint !== loop.decisionFingerprint || last.sufficiencyFingerprint !== loop.sufficiencyFingerprint
+        || last.autonomyFingerprint !== loop.autonomyFingerprint || last.strategyFingerprint !== loop.strategyFingerprint || last.transactionFingerprint !== loop.transactionFingerprint || last.stopReason !== loop.stopReason
+        || loop.phase === "running" && loop.stopReason !== undefined || loop.phase !== "running" && loop.stopReason === undefined || loop.phase === "completed" && loop.stopReason !== "completed" || loop.phase === "cancelled" && loop.stopReason !== "cancellation") reasons.push("global_resolution_autonomous_loop_binding_invalid");
+    }
   }
   if (value.resume !== undefined) {
     const resume = value.resume;

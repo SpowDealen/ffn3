@@ -6,6 +6,68 @@ import type {ProducerCheckpointBinding} from "../producers/types";
 import type {IdentityCreationAuthorization} from "../identityCreationGuard";
 import type {UniversalTransactionCheckpoint} from "../../transactions/types";
 
+export type AutonomousSupervisedLoopPhase = "running" | "paused" | "blocked" | "completed" | "cancelled";
+
+export type AutonomousSupervisedLoopStopReason =
+  | "insufficient_evidence"
+  | "contradictory_evidence"
+  | "stale_evidence"
+  | "authorization_required"
+  | "human_required"
+  | "reconciliation_required"
+  | "compensation_required"
+  | "high_risk"
+  | "destructive_risk"
+  | "unsupported_capability"
+  | "checkpoint_conflict"
+  | "transaction_stale"
+  | "strategy_stale"
+  | "unexpected_postcondition"
+  | "iteration_budget_reached"
+  | "no_progress"
+  | "cancellation"
+  | "persistence_conflict"
+  | "transaction_blocked"
+  | "explicit_continuation_required"
+  | "completed";
+
+export type AutonomousSupervisedLoopHistoryEntry = {
+  iteration: number;
+  /** Compact AU8 B6 audit fields. No evidence payload, approval or token is retained. */
+  decisionKind?: string;
+  sufficiencyStatus?: string;
+  autonomyLevel?: string;
+  phase: AutonomousSupervisedLoopPhase;
+  result?: string;
+  occurredAt?: string;
+  stateFingerprint: string;
+  blockersFingerprint: string;
+  decisionFingerprint: string;
+  sufficiencyFingerprint: string;
+  autonomyFingerprint: string;
+  strategyFingerprint: string;
+  transactionFingerprint?: string;
+  stopReason?: AutonomousSupervisedLoopStopReason;
+};
+
+/** AU8 B5 compact projection. It deliberately stores no payloads, approvals or tokens. */
+export type AutonomousSupervisedLoopCheckpoint = {
+  schemaVersion: 1;
+  loopId: string;
+  loopFingerprint: string;
+  iteration: number;
+  phase: AutonomousSupervisedLoopPhase;
+  decisionFingerprint: string;
+  sufficiencyFingerprint: string;
+  autonomyFingerprint: string;
+  strategyFingerprint: string;
+  transactionFingerprint?: string;
+  /** B6 binding across evidence, manifests, guards and reconciliation. */
+  contextFingerprint?: string;
+  stopReason?: AutonomousSupervisedLoopStopReason;
+  history: AutonomousSupervisedLoopHistoryEntry[];
+};
+
 export type GlobalResolutionCheckpointPhase =
   | "planned"
   | "simulated"
@@ -219,6 +281,8 @@ export type GlobalResolutionCheckpoint = {
   identityGuards?: IdentityCreationAuthorization[];
   /** Compact AU7 transaction-state projection; the plan is reconstructed from the source plan. */
   transaction?: UniversalTransactionCheckpoint;
+  /** Compact AU8 B5 supervised-loop projection composed into the AU3 checkpoint. */
+  autonomousLoop?: AutonomousSupervisedLoopCheckpoint;
   resume?: SerializedResumeSummary;
   history: GlobalResolutionCheckpointHistoryEntry[];
   createdAt: string;

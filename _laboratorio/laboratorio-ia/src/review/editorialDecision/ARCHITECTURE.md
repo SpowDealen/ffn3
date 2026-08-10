@@ -120,3 +120,50 @@ AU8 B4 ya convierte decisión, suficiencia y autonomía en una estrategia
 topológica completa reutilizando el grafo AU2. La priorización multicaso, la
 integración visual y el checkpoint de inteligencia siguen pendientes para B5 y
 deben conservar esta función como única autoridad sin autoejecución.
+
+## AU8 · Closure (B6)
+
+`AutonomousReviewCenter` cierra AU8 como capa operativa de presentación dentro
+de `ReviewCaseDetails`. Compone —sin sustituir— AU4 evidence, AU5 identity,
+AU6 planning/Creation Guard, AU7 transaction y AU8 B1–B5:
+
+```text
+evidence → sufficiency → decision → autonomy → strategy → supervised loop
+→ AU7 transaction → observe → re-evaluate → complete / pause / escalate
+```
+
+La UI usa `buildAutonomousReviewCenterModel`, una proyección pura de resúmenes
+seguros. Expone estado, evidencia, decisión, autonomía, estrategia, progreso
+real AU7, incidencias y una única acción prioritaria. No muestra payloads,
+secretos, aprobaciones, tokens, GROQ, errores crudos ni razonamiento interno.
+
+### Persistencia, historial y staleness
+
+El único almacenamiento es `GlobalResolutionCheckpoint` de AU3. B5 conserva
+historial compacto y capped a 25 entradas: decisión, suficiencia, autonomía,
+fingerprints de estrategia/transacción, resultado, stop y timestamp. B6 añade
+un binding de contexto que incluye caso, evidencia, Creation Guard, producer y
+capability manifests y reconciliación. Si cambia cualquiera de esos vínculos,
+el Centro muestra `Stale` y exige regeneración explícita.
+
+Abrir el caso es sólo `recover → render`: no hay auto-resume, evaluación ni
+efecto. Regenerar reconstruye exclusivamente el checkpoint AU6/AU8 y descarta
+autorizaciones runtime. Pausar se registra en AU3; reanudar invoca B5 con
+`continue` de forma explícita.
+
+### Handoffs y comportamiento no soportado
+
+AU7 permanece como única vía de efectos. El Centro Autónomo delega autorización
+y compensación al Centro Operativo Transaccional; reconciliación se abre en AU4;
+la revisión humana sólo explica motivo, evidencia segura y riesgo. Una
+capability, schema, referencia o entidad sin soporte no se inventa: queda
+visible como bloqueo fail-closed. Los intents de investigación sólo pueden
+operar de forma read-only cuando B3 permite `autonomous_safe` y existe adapter
+registrado.
+
+### Relación con AU9
+
+AU8 termina en el límite de una recomendación supervisada, recuperable y
+explicable por caso. AU9 podrá consumir estos resúmenes/versiones para
+priorización o coordinación superior, sin ampliar permisos, persistir tokens ni
+acceder a executors directamente.

@@ -10,7 +10,7 @@ import ReviewIssueDetails from "./ReviewIssueDetails";
 import ReviewIssueEditor from "./ReviewIssueEditor";
 import ReviewCaseResolutionStatus from "./ReviewCaseResolutionStatus";
 import ReviewResolutionSummary from "./ReviewResolutionSummary";
-import AutonomousReviewPanel from "./AutonomousReviewPanel";
+import AutonomousReviewCenter from "./AutonomousReviewCenter";
 import ExternalNewsResumePreviewPanel from "./ExternalNewsResumePreviewPanel";
 import AutonomousInvestigationPanel from "../investigation/components/AutonomousInvestigationPanel";
 import PreparedEntityMaterializationPanel from "../materialization/components/PreparedEntityMaterializationPanel";
@@ -219,7 +219,7 @@ export default function ReviewCaseDetails({
         </div>
       </section>
 
-      <AutonomousReviewPanel caseId={reviewCase.id} editable={canEdit} />
+      <AutonomousReviewCenter reviewCase={reviewCase} />
       <AutonomousInvestigationPanel caseId={reviewCase.id} editable={canEdit} investigable={reviewCase.issues.some((issue) => ["missing_entity", "missing_reference", "ambiguous_reference", "contradictory_data", "low_confidence", "recoverable_error"].includes(issue.kind) && (!reviewCase.resolutions.some((resolution) => resolution.issueId === issue.id) || reviewCase.resolutions.some((resolution) => resolution.issueId === issue.id && resolution.type === "retry")))} />
       <PreparedEntityMaterializationPanel reviewCase={reviewCase} />
       <PreparedEntitySchemaRequirementsPanel reviewCase={reviewCase} />

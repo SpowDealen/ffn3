@@ -311,6 +311,18 @@ textarea {
 .review-feedback { margin: 0; padding: 10px; border: 1px solid var(--panel-border); border-radius: 10px; color: var(--panel-text-soft); }
 .review-feedback { border-color: rgba(96,165,250,.38); background: rgba(59,130,246,.1); color: #dbeafe; }
 .autonomous-review { min-width: 0; }
+.autonomous-operational-center { min-width: 0; scroll-margin-top: 16px; }
+.autonomous-center-state-completed { color: var(--panel-ok-text); }
+.autonomous-center-state-blocked, .autonomous-center-state-stale, .autonomous-center-state-human_review, .autonomous-center-state-reconciliation_required, .autonomous-center-state-compensation_required { color: var(--panel-error-text); }
+.autonomous-center-explanations { display: grid; grid-template-columns: repeat(auto-fit, minmax(205px, 1fr)); gap: 8px; }
+.autonomous-center-explanations article, .autonomous-center-details, .autonomous-center-handoff { min-width: 0; padding: 10px; border: 1px solid var(--panel-border); border-radius: 10px; overflow-wrap: anywhere; }
+.autonomous-center-explanations h5, .autonomous-center-explanations p { margin: 0; }
+.autonomous-center-explanations h5 { margin-bottom: 5px; font-size: 12px; }
+.autonomous-center-explanations p, .autonomous-center-details li, .autonomous-center-handoff { color: var(--panel-text-soft); font-size: 13px; }
+.autonomous-center-details summary { cursor: pointer; font-weight: 800; }
+.autonomous-center-details ol, .autonomous-center-details ul { display: grid; gap: 6px; margin: 8px 0 0; padding-left: 22px; }
+.autonomous-center-handoff { background: rgba(59,130,246,.06); }
+@media (max-width: 560px) { .autonomous-center-actions > * { width: 100%; } .autonomous-center-explanations { grid-template-columns: 1fr; } }
 .review-mode-label { align-self: center; padding: 6px 9px; border: 1px solid rgba(96,165,250,.55); border-radius: 999px; color: #bfdbfe; font-size: 12px; letter-spacing: .05em; }
 .autonomous-summary { display: flex; flex-wrap: wrap; gap: 8px; }
 .autonomous-summary span { padding: 6px 9px; border: 1px solid var(--panel-border); border-radius: 999px; }
