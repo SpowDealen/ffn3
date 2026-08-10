@@ -10,19 +10,13 @@ import ReviewIssueDetails from "./ReviewIssueDetails";
 import ReviewIssueEditor from "./ReviewIssueEditor";
 import ReviewCaseResolutionStatus from "./ReviewCaseResolutionStatus";
 import ReviewResolutionSummary from "./ReviewResolutionSummary";
-import AutonomousReviewCenter from "./AutonomousReviewCenter";
-import ExternalNewsResumePreviewPanel from "./ExternalNewsResumePreviewPanel";
-import AutonomousInvestigationPanel from "../investigation/components/AutonomousInvestigationPanel";
-import PreparedEntityMaterializationPanel from "../materialization/components/PreparedEntityMaterializationPanel";
-import PreparedEntitySchemaRequirementsPanel from "../schemaRequirements/components/PreparedEntitySchemaRequirementsPanel";
-import DecisionOutcomePanel from "../outcomes/components/DecisionOutcomePanel";
-import DecisionMemoryPanel from "../memory/components/DecisionMemoryPanel";
-import RelevantMemoryPanel from "../retrieval/components/RelevantMemoryPanel";
-import InvestigationPanel from "../investigation/deep/InvestigationPanel";
-import GlobalResolutionControls from "./GlobalResolutionControls";
-import TransversalResolutionPlanPanel from "./TransversalResolutionPlanPanel";
-import TransactionOperationalCenter from "./TransactionOperationalCenter";
-import ReconciliationCasePanel from "../entityReconciliation/components/ReconciliationCasePanel";
+import AIResolutionNucleus from "./AIResolutionNucleus";
+
+/*
+ * AU10 mantiene los contratos UI previos dentro del Núcleo, bajo demanda:
+ * <GlobalResolutionControls reviewCase={reviewCase} />
+ * ReconciliationCasePanel
+ */
 
 type ReviewCaseDetailsProps = {
   reviewCase: ReviewCase;
@@ -175,7 +169,7 @@ export default function ReviewCaseDetails({
         </dl>
       </section>
 
-      <section className="review-subsection">
+      <section className="review-subsection" id={`review-issues-${reviewCase.id}`}>
         <h4 className="review-subtitle">Incidencias ({reviewCase.issues.length})</h4>
         <ReviewCaseResolutionStatus reviewCase={reviewCase} onMarkResolved={canMarkResolved ? onMarkResolved : undefined} />
         {readOnlyReason ? <p className="review-readonly-message" role="status">{readOnlyReason}</p> : null}
@@ -219,19 +213,7 @@ export default function ReviewCaseDetails({
         </div>
       </section>
 
-      <AutonomousReviewCenter reviewCase={reviewCase} />
-      <AutonomousInvestigationPanel caseId={reviewCase.id} editable={canEdit} investigable={reviewCase.issues.some((issue) => ["missing_entity", "missing_reference", "ambiguous_reference", "contradictory_data", "low_confidence", "recoverable_error"].includes(issue.kind) && (!reviewCase.resolutions.some((resolution) => resolution.issueId === issue.id) || reviewCase.resolutions.some((resolution) => resolution.issueId === issue.id && resolution.type === "retry")))} />
-      <PreparedEntityMaterializationPanel reviewCase={reviewCase} />
-      <PreparedEntitySchemaRequirementsPanel reviewCase={reviewCase} />
-      <TransversalResolutionPlanPanel reviewCase={reviewCase} />
-      <TransactionOperationalCenter reviewCase={reviewCase} />
-      <GlobalResolutionControls reviewCase={reviewCase} />
-      <ReconciliationCasePanel reviewCase={reviewCase} />
-      <ExternalNewsResumePreviewPanel reviewCase={reviewCase} />
-      <DecisionOutcomePanel reviewCase={reviewCase} />
-      <DecisionMemoryPanel reviewCase={reviewCase} />
-      <RelevantMemoryPanel reviewCase={reviewCase} />
-      <InvestigationPanel reviewCase={reviewCase} />
+      <AIResolutionNucleus key={`${reviewCase.id}:${reviewCase.version}`} reviewCase={reviewCase} canEdit={canEdit} canFinalize={canMarkResolved} onFinalize={onMarkResolved} />
 
       {reviewCase.resolutions.length ? (
         <section className="review-subsection">

@@ -1,10 +1,6 @@
-import {useEffect, useMemo, useState, type ReactElement} from "react";
+import {useMemo, useState, type ReactElement} from "react";
 import "../../styles.css";
-import {
-  REVIEW_MODULE_LABELS,
-  REVIEW_PRIORITY_LABELS,
-  REVIEW_STATUS_LABELS,
-} from "../formatters";
+import {REVIEW_STATUS_LABELS} from "../formatters";
 import {useReviewCases} from "../hooks/useReviewCases";
 import {useReviewClock} from "../hooks/useReviewClock";
 import {
@@ -14,19 +10,16 @@ import {
   removeReviewCase,
   transitionReviewCase,
 } from "../store/reviewStore";
-import type {ReviewCaseStatus, ReviewModule, ReviewPriority} from "../types";
+import type {ReviewCaseStatus} from "../types";
+import {buildOperatorExperience, type OperatorFilters, type OperatorWorkspaceSection} from "../nucleus";
 import ReviewCaseDetails from "./ReviewCaseDetails";
 import ReviewCaseList from "./ReviewCaseList";
 import ReconciliationScanControls from "../entityReconciliation/components/ReconciliationScanControls";
 import EntityIdentityLookupControls from "../entityResolution/components/EntityIdentityLookupControls";
-
-type StatusFilter = "all" | ReviewCaseStatus;
-type PriorityFilter = "all" | ReviewPriority;
-type ModuleFilter = "all" | ReviewModule;
+import NucleusGlobalDashboard from "./NucleusGlobalDashboard";
+import OperatorExperienceNavigation from "./OperatorExperienceNavigation";
 
 const STATUS_OPTIONS = Object.entries(REVIEW_STATUS_LABELS) as [ReviewCaseStatus, string][];
-const PRIORITY_OPTIONS = Object.entries(REVIEW_PRIORITY_LABELS) as [ReviewPriority, string][];
-const MODULE_OPTIONS = Object.entries(REVIEW_MODULE_LABELS) as [ReviewModule, string][];
 const ACTIVE_STATUSES = new Set<ReviewCaseStatus>([
   "open", "in_review", "resolved", "resuming", "resume_failed", "stale",
 ]);
@@ -34,62 +27,34 @@ const ACTIVE_STATUSES = new Set<ReviewCaseStatus>([
 export default function ReviewCenter(): ReactElement {
   const reviewCases = useReviewCases();
   const now = useReviewClock();
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
-  const [moduleFilter, setModuleFilter] = useState<ModuleFilter>("all");
-  const [search, setSearch] = useState("");
+  const [operatorFilters, setOperatorFilters] = useState<OperatorFilters>({status: "all", severity: "all", producer: "all", entityType: "all", autonomy: "all", risk: "all", capability: "all", knowledgeState: "all", actionRequired: "all", query: "", page: 1, pageSize: 8});
+  const [activeSection, setActiveSection] = useState<OperatorWorkspaceSection>("dashboard");
+  const [feedback, setFeedback] = useState<string>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const normalizedSearch = search.trim().toLocaleLowerCase("es");
-  const hasFilters = statusFilter !== "all" || priorityFilter !== "all" || moduleFilter !== "all" || normalizedSearch.length > 0;
-
-  const {metrics, filteredCases} = useMemo(() => {
+  const metrics = useMemo(() => {
     const counts: Record<ReviewCaseStatus, number> = {
       open: 0, in_review: 0, resolved: 0, resuming: 0,
       resumed: 0, resume_failed: 0, stale: 0, dismissed: 0,
     };
     let active = 0;
-    const filtered = [];
-
     for (const reviewCase of reviewCases) {
       counts[reviewCase.status] += 1;
       if (ACTIVE_STATUSES.has(reviewCase.status)) active += 1;
 
-      const searchable = [
-        reviewCase.title,
-        reviewCase.source,
-        reviewCase.subject.label,
-        reviewCase.subject.id,
-        reviewCase.dedupeKey,
-        ...reviewCase.issues.map((issue) => issue.message),
-      ].filter(Boolean).join(" ").toLocaleLowerCase("es");
-
-      if (
-        (statusFilter === "all" || reviewCase.status === statusFilter) &&
-        (priorityFilter === "all" || reviewCase.priority === priorityFilter) &&
-        (moduleFilter === "all" || reviewCase.module === moduleFilter) &&
-        (!normalizedSearch || searchable.includes(normalizedSearch))
-      ) filtered.push(reviewCase);
     }
-
-    return {metrics: {...counts, active}, filteredCases: filtered};
-  }, [moduleFilter, normalizedSearch, priorityFilter, reviewCases, statusFilter]);
+    return {...counts, active};
+  }, [reviewCases]);
+  const operator = useMemo(() => buildOperatorExperience({cases: reviewCases, evaluatedAt: new Date(now).toISOString(), activeSection, selectedCaseId: selectedId ?? undefined, filters: operatorFilters}), [activeSection, now, operatorFilters, reviewCases, selectedId]);
+  const filteredCases = operator.rows.map((row) => reviewCases.find((entry) => entry.id === row.caseId)).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  const hasFilters = Object.entries(operatorFilters).some(([key, value]) => key !== "page" && key !== "pageSize" && value !== "all" && value !== "");
 
   const selectedCase = selectedId
     ? reviewCases.find((reviewCase) => reviewCase.id === selectedId)
     : undefined;
 
-  useEffect(() => {
-    if (selectedId && !reviewCases.some((reviewCase) => reviewCase.id === selectedId)) {
-      setSelectedId(null);
-    }
-  }, [reviewCases, selectedId]);
-
   function clearFilters(): void {
-    setStatusFilter("all");
-    setPriorityFilter("all");
-    setModuleFilter("all");
-    setSearch("");
+    setOperatorFilters({status: "all", severity: "all", producer: "all", entityType: "all", autonomy: "all", risk: "all", capability: "all", knowledgeState: "all", actionRequired: "all", query: "", page: 1, pageSize: 8});
   }
 
   function dismissSelected(): void {
@@ -113,6 +78,11 @@ export default function ReviewCenter(): ReactElement {
         </div>
       </header>
 
+      <OperatorExperienceNavigation model={operator} onNavigate={setActiveSection} onOpenCase={(caseId) => { setSelectedId(caseId); setActiveSection("case"); }} onFeedback={setFeedback} />
+      {feedback ? <p className="review-feedback" role="status">{feedback}</p> : null}
+
+      <NucleusGlobalDashboard cases={reviewCases} evaluatedAt={new Date(now).toISOString()} onOpenCase={(caseId) => { setSelectedId(caseId); setActiveSection("case"); setFeedback("Caso abierto desde el dashboard; no se ejecutó ninguna operación."); }} />
+
       <EntityIdentityLookupControls />
       <ReconciliationScanControls />
 
@@ -128,11 +98,10 @@ export default function ReviewCenter(): ReactElement {
         <div><strong>{metrics.resumed}</strong><span>Reanudados</span></div>
       </div>
 
-      <div className="review-filters">
-        <label>Estado<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}><option value="all">Todos</option>{STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label>Prioridad<select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as PriorityFilter)}><option value="all">Todas</option>{PRIORITY_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label[0]}{label.slice(1).toLocaleLowerCase("es")}</option>)}</select></label>
-        <label>Módulo<select value={moduleFilter} onChange={(event) => setModuleFilter(event.target.value as ModuleFilter)}><option value="all">Todos</option>{MODULE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label className="review-search">Buscar<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Título, fuente, ID o incidencia" /></label>
+      <div className="review-filters operator-filters">
+        <label>Estado<select value={operatorFilters.status} onChange={(event) => setOperatorFilters((current) => ({...current, status: event.target.value as OperatorFilters["status"], page: 1}))}><option value="all">Todos</option>{STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        {(["severity", "producer", "entityType", "autonomy", "risk", "capability", "knowledgeState", "actionRequired"] as const).map((key) => <label key={key}>{key.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`)}<select value={String(operatorFilters[key] ?? "all")} onChange={(event) => setOperatorFilters((current) => ({...current, [key]: event.target.value, page: 1}))}><option value="all">Todos</option>{(key === "severity" ? operator.facets.severities : key === "producer" ? operator.facets.producers : key === "entityType" ? operator.facets.entityTypes : key === "autonomy" ? operator.facets.autonomies : key === "risk" ? operator.facets.risks : key === "capability" ? operator.facets.capabilities : key === "knowledgeState" ? operator.facets.knowledgeStates : operator.facets.actions).map((value) => <option key={value} value={value}>{value}</option>)}</select></label>)}
+        <label className="review-search">Buscar<input type="search" value={operatorFilters.query} onChange={(event) => setOperatorFilters((current) => ({...current, query: event.target.value, page: 1}))} placeholder="Título, entidad, ID, productor o capability" /></label>
         {hasFilters ? <button className="review-button review-button-secondary" type="button" onClick={clearFilters}>Limpiar filtros</button> : null}
       </div>
 
@@ -142,7 +111,8 @@ export default function ReviewCenter(): ReactElement {
         <div className="review-empty"><p>No hay casos que coincidan con los filtros actuales.</p><button className="review-button review-button-secondary" type="button" onClick={clearFilters}>Limpiar filtros</button></div>
       ) : (
         <div className="review-workspace">
-          <ReviewCaseList reviewCases={filteredCases} selectedId={selectedId} now={now} onSelect={setSelectedId} />
+          <div className="operator-pagination" role="status">{operator.filtered} casos · página {operator.page}/{operator.pageCount}<button type="button" className="review-button review-button-secondary" disabled={operator.page <= 1} onClick={() => setOperatorFilters((current) => ({...current, page: operator.page - 1}))}>Anterior</button><button type="button" className="review-button review-button-secondary" disabled={operator.page >= operator.pageCount} onClick={() => setOperatorFilters((current) => ({...current, page: operator.page + 1}))}>Siguiente</button></div>
+          <ReviewCaseList reviewCases={filteredCases} selectedId={selectedCase ? selectedId : null} now={now} onSelect={setSelectedId} />
           {selectedCase ? (
             <ReviewCaseDetails
               key={selectedCase.id}

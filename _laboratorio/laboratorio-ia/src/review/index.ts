@@ -31,3 +31,5 @@ export * from "./entityReconciliation";
 export * from "./entityResolution";
 export * from "./transactions";
 export * from "./editorialDecision";
+export * from "./knowledge";
+export * from "./nucleus";

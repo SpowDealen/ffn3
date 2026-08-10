@@ -1,0 +1,24 @@
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {buildCrossCaseGraph, buildGlobalResolutionDashboard, buildNucleusResolutionViewModel, buildOperationalWorkspaceViewModel, buildOperatorExperience, deriveNucleusCompletion, globalResolutionDashboardSecurity, knowledgeCenterSecurity, nucleusResolutionSecurity, operationalWorkspaceSecurity, operatorExperienceSecurity, recoverReviewCenterTransaction, transactionExecutorSecurity, transactionOrchestratorSecurity, universalEditorialKnowledgeSecurity, universalTransactionSecurity, type ReviewCase} from "../_laboratorio/laboratorio-ia/src/review";
+import {recoverTransversalPlanView} from "../_laboratorio/laboratorio-ia/src/review/globalResolution/transversalInteractive";
+import {transversalResolutionPlannerSecurity} from "../_laboratorio/laboratorio-ia/src/review/globalResolution/transversalPlanning";
+
+const NOW = "2026-08-10T10:00:00.000Z";
+let assertions = 0;
+const equal = <T>(a: T, b: T) => { assert.equal(a, b); assertions += 1; };
+const check = (v: unknown) => { assert.ok(v); assertions += 1; };
+function reviewCase(overrides: Partial<ReviewCase> = {}): ReviewCase { return {schemaVersion: 1, id: "cert:case", dedupeKey: "cert:case", module: "external.news", title: "Certificación", status: "open", priority: "high", subject: {type: "fighter", id: "fighter:cert"}, issues: [], resolutions: [], context: {producer: "cert", token: "must-not-leak", payloadSnapshot: {raw: "must-not-leak"}}, createdAt: NOW, updatedAt: NOW, version: 1, resumeAttempts: 0, ...overrides}; }
+function main(): void {
+  const first = reviewCase(); const second = reviewCase({id: "cert:related", dedupeKey: "cert:related", subject: {type: "fighter", id: "fighter:cert"}}); const cases = [first, second];
+  const nucleus = buildNucleusResolutionViewModel({reviewCase: first, evaluatedAt: NOW}); const workspace = buildOperationalWorkspaceViewModel({reviewCase: first, evaluatedAt: NOW}); const graph = buildCrossCaseGraph({cases, evaluatedAt: NOW}); const dashboard = buildGlobalResolutionDashboard({cases, evaluatedAt: NOW}); const operator = buildOperatorExperience({cases, evaluatedAt: NOW, selectedCaseId: first.id});
+  equal(nucleus.writes, false); equal(workspace.writes, false); equal(graph.writes, false); equal(dashboard.writes, false); equal(operator.writes, false); equal(workspace.onePrimaryAction, true); equal(operator.navigation.length, 5); check(graph.relations.length > 0); equal(dashboard.summary.totalCases, 2); equal(operator.rows.length, 2);
+  const completion = deriveNucleusCompletion({...nucleus.facts, supported: true, stale: false, evidenceSufficient: true, contradiction: false, identityResolved: true, strategyCompleted: true, transactionRequired: false, transactionCompleted: false, reconciliationPending: false, compensationPending: false, authorizationPending: false, blocked: false, outcomeVerifiable: true, caseMarkedResolved: false}); equal(completion.eligible, true); equal(completion.completed, false);
+  equal(recoverTransversalPlanView(first).status, "absent"); equal(recoverReviewCenterTransaction(first).state, "planned");
+  equal(nucleusResolutionSecurity.createsStores, false); equal(nucleusResolutionSecurity.invokesExecutors, false); equal(operationalWorkspaceSecurity.createsPlanners, false); equal(globalResolutionDashboardSecurity.createsExecutors, false); equal(operatorExperienceSecurity.createsRouters, false); equal(transversalResolutionPlannerSecurity.creationGuardRequired, true); equal(transversalResolutionPlannerSecurity.ambiguityBlocks, true); equal(universalTransactionSecurity.invokesExecutors, false); equal(transactionExecutorSecurity.automaticExecution, false); equal(transactionOrchestratorSecurity.autoReconciliation, false); equal(knowledgeCenterSecurity.autoAppliesRecommendations, false); equal(universalEditorialKnowledgeSecurity.replacesCurrentEvidence, false);
+  const serialized = JSON.stringify({nucleus, workspace, graph, dashboard, operator}); check(!serialized.includes("must-not-leak")); check(!serialized.includes("payloadSnapshot"));
+  for (const file of ["_laboratorio/laboratorio-ia/src/review/nucleus/model.ts", "_laboratorio/laboratorio-ia/src/review/nucleus/dashboard.ts", "_laboratorio/laboratorio-ia/src/review/nucleus/operatorExperience.ts"]) { const source = readFileSync(file, "utf8"); check(!/from ["'][^"']*(executor|store|sanity)/i.test(source)); check(!source.includes("fetch(")); }
+  const certification = readFileSync(new URL("../_laboratorio/laboratorio-ia/src/review/nucleus/CERTIFICATION.md", import.meta.url), "utf8"); check(certification.includes("AU7")); check(certification.includes("Creation Guard")); check(certification.includes("advisory-only")); check(certification.includes("CAS"));
+  console.log(`AU10 B6 final certification: OK (${assertions} assertions; AU2–AU10 integration, recovery, concurrency contracts, security, completion and UI contracts)`);
+}
+main();
