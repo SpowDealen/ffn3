@@ -20,8 +20,9 @@ import NotificationGroupingMetadata from "./NotificationGroupingMetadata";
 import NotificationPriorityBadge from "./NotificationPriorityBadge";
 import type {
   LabNotification,
-  NotificationLevel,
 } from "./types";
+import {presentHistoricalEditorialCopy} from "../lib/editorialReadError";
+import {FeedbackEmptyState} from "../components/feedback/VisualFeedback";
 
 const MAX_VISIBLE_NOTIFICATIONS = 20;
 
@@ -45,68 +46,6 @@ function formatRelativeDate(value: string): string {
 
   const days = Math.floor(hours / 24);
   return `${days} d`;
-}
-
-function StatusIcon({
-  level,
-}: {
-  level: NotificationLevel;
-}): ReactElement {
-  if (level === "success") {
-    return (
-      <svg
-        viewBox="0 0 20 20"
-        width="15"
-        height="15"
-        fill="none"
-        aria-hidden="true"
-      >
-        <path
-          d="m5 10 3 3 7-7"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-
-  if (level === "review") {
-    return (
-      <svg
-        viewBox="0 0 20 20"
-        width="15"
-        height="15"
-        fill="none"
-        aria-hidden="true"
-      >
-        <path
-          d="M10 6v5m0 3h.01"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-      </svg>
-    );
-  }
-
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      width="15"
-      height="15"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="m6.5 6.5 7 7m0-7-7 7"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
 }
 
 function BellIcon(): ReactElement {
@@ -142,6 +81,9 @@ const NotificationItem = memo(function NotificationItem({
   notification: LabNotification;
   now: number;
 }): ReactElement {
+  const title = presentHistoricalEditorialCopy(notification.title);
+  const message = presentHistoricalEditorialCopy(notification.message);
+
   function openLocation(): void {
     markNotificationAsRead(notification.id);
 
@@ -186,7 +128,7 @@ const NotificationItem = memo(function NotificationItem({
         <div style={styles.itemHeader}>
           <div style={styles.itemTitleGroup}>
             <strong style={styles.itemTitle}>
-              {notification.title}
+              {title}
             </strong>
             <NotificationPriorityBadge
               priority={notification.priority}
@@ -199,7 +141,7 @@ const NotificationItem = memo(function NotificationItem({
         </div>
 
         <p style={styles.itemMessage}>
-          {notification.message}
+          {message}
         </p>
 
         <NotificationGroupingMetadata
@@ -229,7 +171,7 @@ const NotificationItem = memo(function NotificationItem({
           onClick={() => markNotificationAsRead(notification.id)}
           style={styles.unreadButton}
           title="Marcar como leída"
-          aria-label={`Marcar ${notification.title} como leída`}
+          aria-label={`Marcar ${title} como leída`}
         >
           <span style={styles.unreadDot} />
         </button>
@@ -242,21 +184,19 @@ export default function NotificationBell(): ReactElement {
   const [notifications, setNotifications] =
     useState<LabNotification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(0);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     function refresh(): void {
       setNotifications(getNotifications());
+      setNow(Date.now());
     }
 
     refresh();
 
     const unsubscribe = subscribeToNotifications(refresh);
-    const timer = window.setInterval(
-      () => setNow(Date.now()),
-      30_000,
-    );
+    const timer = window.setInterval(refresh, 30_000);
 
     return () => {
       unsubscribe();
@@ -378,21 +318,10 @@ export default function NotificationBell(): ReactElement {
                 />
               ))}
             </div>
-          ) : (
-            <div style={styles.emptyState}>
-              <div style={styles.emptyIcon}>
-                <StatusIcon level="success" />
-              </div>
-
-              <strong style={styles.emptyTitle}>
-                Todo en orden
-              </strong>
-
-              <p style={styles.emptyMessage}>
-                Los borradores, revisiones y errores aparecerán aquí.
-              </p>
-            </div>
-          )}
+          ) : <FeedbackEmptyState
+            title="Todo en orden"
+            detail="Los borradores, revisiones y errores aparecerán aquí."
+          />}
 
           {notifications.length > MAX_VISIBLE_NOTIFICATIONS ? (
             <footer style={styles.panelFooter}>

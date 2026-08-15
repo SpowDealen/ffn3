@@ -34,7 +34,8 @@ export type NotificationChannels = {
 
 export type NotificationDeliverySkipReason =
   | "policy"
-  | "disabled";
+  | "disabled"
+  | "sandbox";
 
 export type NotificationPriority =
   | "critical"

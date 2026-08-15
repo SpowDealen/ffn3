@@ -1,4 +1,5 @@
-import {getApiBaseUrl} from "./remote";
+import {apiUrl} from "../lib/apiUrl";
+import {readEditorialJsonResponse} from "../lib/editorialJsonResponse";
 
 export type TelegramHealthResponse = {
   ok: boolean;
@@ -6,6 +7,8 @@ export type TelegramHealthResponse = {
   configured: boolean;
   tokenConfigured: boolean;
   chatIdConfigured: boolean;
+  deliveryMode: "production" | "sandbox";
+  externalDispatchesAllowed: boolean;
   checkedAt: string;
   messageId?: number;
   skipped?: boolean;
@@ -46,6 +49,14 @@ function parseHealthResponse(
     configured: value.configured,
     tokenConfigured: value.tokenConfigured,
     chatIdConfigured: value.chatIdConfigured,
+    deliveryMode:
+      value.deliveryMode === "sandbox" ? "sandbox" : "production",
+    externalDispatchesAllowed:
+      typeof value.externalDispatchesAllowed === "boolean"
+        ? value.externalDispatchesAllowed
+        : value.deliveryMode !== "sandbox" &&
+          value.enabled &&
+          value.configured,
     checkedAt: value.checkedAt,
     messageId:
       typeof value.messageId === "number"
@@ -90,7 +101,7 @@ async function requestTelegramHealth(
 
   try {
     const response = await fetch(
-      `${getApiBaseUrl()}/api/notifications/telegram/health`,
+      apiUrl("/api/notifications/telegram/health"),
       {
         method,
         headers,
@@ -98,7 +109,9 @@ async function requestTelegramHealth(
         cache: "no-store",
       },
     );
-    const payload = parseHealthResponse(await response.json());
+    const payload = parseHealthResponse(
+      await readEditorialJsonResponse(response),
+    );
 
     if (!response.ok && !payload.error) {
       return {
@@ -112,12 +125,6 @@ async function requestTelegramHealth(
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(
         "La comprobación de Telegram agotó el tiempo de espera.",
-      );
-    }
-
-    if (error instanceof SyntaxError) {
-      throw new Error(
-        "El servidor devolvió una respuesta de diagnóstico no válida.",
       );
     }
 

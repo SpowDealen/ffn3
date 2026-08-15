@@ -9,6 +9,9 @@ export type NotificationLocation = {
   url?: string;
 };
 
+export type TelegramDeliveryMode = "production" | "sandbox";
+export type TelegramDeliverySkipReason = "disabled" | "sandbox";
+
 export type ServerNotificationInput = {
   level: NotificationLevel;
   title: string;
@@ -22,6 +25,8 @@ export type ServerNotificationInput = {
 export type TelegramSendResult = {
   ok: boolean;
   skipped?: boolean;
+  skipReason?: TelegramDeliverySkipReason;
+  deliveryMode?: TelegramDeliveryMode;
   messageId?: number;
   error?: string;
 };
@@ -31,4 +36,6 @@ export type TelegramConfigurationStatus = {
   configured: boolean;
   tokenConfigured: boolean;
   chatIdConfigured: boolean;
+  deliveryMode: TelegramDeliveryMode;
+  externalDispatchesAllowed: boolean;
 };

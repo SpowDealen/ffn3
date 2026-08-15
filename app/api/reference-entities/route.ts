@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { client } from "../../../sanity/lib/client";
+import { createClient } from "next-sanity";
 import type { ReferenceTarget } from "../../../_laboratorio/laboratorio-ia/src/types";
 import type { ReferenceEntityOption } from "../../../_laboratorio/laboratorio-ia/src/data/referenceEntities";
 
@@ -46,12 +46,62 @@ type LuchadorDoc = {
   eventIds?: string[] | null;
 };
 
-function getAllowedOrigin(request: Request): string {
-  const origin = request.headers.get("origin")?.trim();
+type ReferenceReadClient = Readonly<{
+  fetch<T>(query: string): Promise<T>;
+}>;
 
-  if (!origin) {
-    return "*";
-  }
+type ReferenceEntitiesConfiguration = Readonly<{
+  projectId: string;
+  dataset: string;
+  apiVersion: string;
+}>;
+
+function configuredValue(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
+/**
+ * This route is loaded before its handler runs. Unlike the shared page client,
+ * its read-only configuration must therefore be validated lazily so a missing
+ * production variable can produce controlled JSON instead of a Next HTML 500.
+ */
+function getReferenceEntitiesConfiguration():
+  | ReferenceEntitiesConfiguration
+  | undefined {
+  const projectId = configuredValue(
+    process.env.NEXT_PUBLIC_SANITY_PROJECT_ID ?? process.env.SANITY_STUDIO_PROJECT_ID,
+  );
+  const dataset = configuredValue(
+    process.env.NEXT_PUBLIC_SANITY_DATASET ?? process.env.SANITY_STUDIO_DATASET,
+  );
+
+  if (!projectId || !dataset) return undefined;
+
+  return Object.freeze({
+    projectId,
+    dataset,
+    apiVersion:
+      configuredValue(process.env.NEXT_PUBLIC_SANITY_API_VERSION) ??
+      configuredValue(process.env.SANITY_STUDIO_API_VERSION) ??
+      "2025-03-15",
+  });
+}
+
+function createReferenceReadClient(
+  configuration: ReferenceEntitiesConfiguration,
+): ReferenceReadClient {
+  return createClient({
+    ...configuration,
+    useCdn: true,
+  });
+}
+
+function getAllowedOrigin(request: Request): string | undefined {
+  if (process.env.NODE_ENV !== "development") return undefined;
+
+  const origin = request.headers.get("origin")?.trim();
+  if (!origin) return undefined;
 
   const allowedOrigins = new Set([
     "http://localhost:5173",
@@ -60,16 +110,18 @@ function getAllowedOrigin(request: Request): string {
     "http://127.0.0.1:3000",
   ]);
 
-  return allowedOrigins.has(origin) ? origin : "*";
+  return allowedOrigins.has(origin) ? origin : undefined;
 }
 
 function withCors(response: NextResponse, request: Request): NextResponse {
   const allowedOrigin = getAllowedOrigin(request);
 
-  response.headers.set("Access-Control-Allow-Origin", allowedOrigin);
-  response.headers.set("Access-Control-Allow-Methods", "GET,OPTIONS");
-  response.headers.set("Access-Control-Allow-Headers", "Content-Type");
-  response.headers.set("Vary", "Origin");
+  if (allowedOrigin) {
+    response.headers.set("Access-Control-Allow-Origin", allowedOrigin);
+    response.headers.set("Access-Control-Allow-Methods", "GET,OPTIONS");
+    response.headers.set("Access-Control-Allow-Headers", "Content-Type");
+    response.headers.set("Vary", "Origin");
+  }
 
   return response;
 }
@@ -160,7 +212,9 @@ function filterOptions(
   });
 }
 
-async function fetchReferenceEntities(): Promise<
+async function fetchReferenceEntities(
+  client: ReferenceReadClient,
+): Promise<
   Record<ReferenceTarget, ReferenceEntityOption[]>
 > {
   const [disciplinas, organizaciones, eventos, categoriasPeso, luchadores] =
@@ -275,7 +329,26 @@ export async function GET(request: Request) {
     const selectedEventIds = toArray(searchParams.get("eventos"));
     const selectedCategoriaPesoIds = toArray(searchParams.get("categoriasPeso"));
 
-    const referenceData = await fetchReferenceEntities();
+    const configuration = getReferenceEntitiesConfiguration();
+
+    if (!configuration) {
+      return withCors(
+        NextResponse.json(
+          {
+            ok: false,
+            code: "reference_entities_unavailable",
+            message:
+              "Las entidades de referencia no están disponibles porque falta la configuración de lectura editorial.",
+          },
+          { status: 503 }
+        ),
+        request
+      );
+    }
+
+    const referenceData = await fetchReferenceEntities(
+      createReferenceReadClient(configuration)
+    );
 
     const data: Record<ReferenceTarget, ReferenceEntityOption[]> = {
       disciplina: filterOptions(
@@ -322,15 +395,19 @@ export async function GET(request: Request) {
 
     return withCors(NextResponse.json(response), request);
   } catch (error) {
-    console.error("Error cargando entidades de referencia desde Sanity:", error);
+    console.error("Error cargando entidades de referencia desde Sanity:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
 
     return withCors(
       NextResponse.json(
         {
           ok: false,
-          message: "No se pudieron cargar las entidades de referencia.",
+          code: "reference_entities_unavailable",
+          message:
+            "Las entidades de referencia no están disponibles temporalmente.",
         },
-        { status: 500 }
+        { status: 503 }
       ),
       request
     );

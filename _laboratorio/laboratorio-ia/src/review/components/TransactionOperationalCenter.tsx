@@ -12,6 +12,7 @@ import {
   type TransactionIncident,
 } from "../transactions";
 import {getReviewCase} from "../store/reviewStore";
+import {ProgressBar, StepProgress, type FeedbackStep} from "../../components/feedback/VisualFeedback";
 
 type Feedback = Readonly<{kind: "status" | "error"; message: string}>;
 
@@ -33,6 +34,14 @@ const EVENT_LABELS: Readonly<Record<string, string>> = Object.freeze({transactio
 
 function short(value?: string): string { return value ? `${value.slice(0, 12)}…${value.slice(-8)}` : "—"; }
 function recover(reviewCase: ReviewCase, incidents: readonly TransactionIncident[] = []): TransactionCenterView { return recoverReviewCenterTransaction(getReviewCase(reviewCase.id) ?? reviewCase, {}, incidents); }
+function feedbackStepState(state: string): FeedbackStep["state"] {
+  if (["succeeded", "reused", "compensated"].includes(state)) return "completed";
+  if (["executing", "compensating"].includes(state)) return "active";
+  if (["reconciliation_required", "blocked"].includes(state)) return "warning";
+  if (["failed", "compensation_failed"].includes(state)) return "error";
+  if (state === "cancelled") return "cancelled";
+  return "pending";
+}
 
 export default function TransactionOperationalCenter({reviewCase}: {reviewCase: ReviewCase}): ReactElement {
   const [view, setView] = useState<TransactionCenterView>(() => recover(reviewCase));
@@ -130,6 +139,12 @@ export default function TransactionOperationalCenter({reviewCase}: {reviewCase: 
   const progress = view.operational?.progress;
   const ready = view.operational?.nextReadySteps ?? [];
   const authorizationRequired = view.operational?.authorizationRequired ?? [];
+  const feedbackSteps = view.steps.map((step) => ({
+    id: step.stepId,
+    label: step.capability,
+    state: feedbackStepState(step.state),
+    detail: STEP_LABELS[step.state],
+  }));
 
   return <section className="review-subsection transaction-center" aria-labelledby={`transaction-center-title-${reviewCase.id}`} aria-busy={busy}>
     <div className="review-row review-row-wrap">
@@ -155,6 +170,8 @@ export default function TransactionOperationalCenter({reviewCase}: {reviewCase: 
       <div><dt>Checkpoint AU7</dt><dd title={view.transactionCheckpointFingerprint}>{short(view.transactionCheckpointFingerprint)}</dd></div>
       <div><dt>Checkpoint AU3</dt><dd title={view.globalCheckpointFingerprint}>{short(view.globalCheckpointFingerprint)}</dd></div>
     </dl>
+    {progress ? <ProgressBar label="Progreso de la transacción" current={progress.completed} total={progress.total} state={view.state === "completed" ? "success" : view.state === "failed" ? "error" : view.state === "blocked" || view.state === "stale" ? "warning" : "processing"} detail="Contador derivado de los steps AU7." /> : null}
+    {feedbackSteps.length ? <StepProgress label="Steps ordenados por dependencias" steps={feedbackSteps} /> : null}
 
     <div className="review-actions transaction-actions" aria-label="Acciones transaccionales explícitas">
       {view.canStart ? <button className="review-button" type="button" disabled={busy} onClick={() => initialize(false)}>Iniciar transacción</button> : null}

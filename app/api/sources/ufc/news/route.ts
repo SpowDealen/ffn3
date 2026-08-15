@@ -800,42 +800,53 @@ async function fetchArticle(
   }
 }
 
-function createResponseHeaders(): HeadersInit {
-  return {
+const LOCAL_DEVELOPMENT_ORIGINS = new Set([
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+]);
+
+function createResponseHeaders(request: Request): Headers {
+  const headers = new Headers({
     "Content-Type":
       "application/json; charset=utf-8",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods":
-      "GET, OPTIONS",
-    "Access-Control-Allow-Headers":
-      "Content-Type",
     "Cache-Control":
       "no-store, no-cache, must-revalidate",
     Pragma: "no-cache",
     Expires: "0",
-  };
+  });
+  const origin = request.headers.get("origin")?.trim();
+  if (process.env.NODE_ENV === "development" && origin && LOCAL_DEVELOPMENT_ORIGINS.has(origin)) {
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    headers.set("Access-Control-Allow-Headers", "Content-Type");
+    headers.set("Vary", "Origin");
+  }
+  return headers;
 }
 
 function createJsonResponse(
   payload: UfcNewsApiResponse,
   status: number,
+  request: Request,
 ): NextResponse {
   const json = JSON.stringify(payload);
 
   return new NextResponse(json, {
     status,
-    headers: createResponseHeaders(),
+    headers: createResponseHeaders(request),
   });
 }
 
-export async function OPTIONS(): Promise<NextResponse> {
+export async function OPTIONS(request: Request): Promise<NextResponse> {
   return new NextResponse(null, {
     status: 204,
-    headers: createResponseHeaders(),
+    headers: createResponseHeaders(request),
   });
 }
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
   const fetchedAt = new Date().toISOString();
 
   try {
@@ -869,7 +880,7 @@ export async function GET(): Promise<NextResponse> {
       items,
     };
 
-    return createJsonResponse(payload, 200);
+    return createJsonResponse(payload, 200, request);
   } catch (error) {
     const message =
       error instanceof Error
@@ -885,6 +896,6 @@ export async function GET(): Promise<NextResponse> {
       error: cleanText(message),
     };
 
-    return createJsonResponse(payload, 500);
+    return createJsonResponse(payload, 500, request);
   }
 }

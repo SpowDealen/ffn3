@@ -2,6 +2,7 @@ import {formatTelegramNotification} from "./formatter";
 import type {
   ServerNotificationInput,
   TelegramConfigurationStatus,
+  TelegramDeliveryMode,
   TelegramSendResult,
 } from "./types";
 
@@ -20,8 +21,24 @@ function isTelegramEnabled(): boolean {
   );
 }
 
+/**
+ * `noop` is retained as an explicit development alias, while the public
+ * contract reports a single safe mode: `sandbox`. This keeps production on
+ * the existing transport and makes a sandbox attempt observable end-to-end.
+ */
+export function getTelegramDeliveryMode(): TelegramDeliveryMode {
+  const value = process.env.TELEGRAM_DELIVERY_MODE
+    ?.trim()
+    .toLowerCase();
+
+  return value === "sandbox" || value === "noop"
+    ? "sandbox"
+    : "production";
+}
+
 export function getTelegramConfigurationStatus(): TelegramConfigurationStatus {
   const enabled = isTelegramEnabled();
+  const deliveryMode = getTelegramDeliveryMode();
   const tokenConfigured = Boolean(
     process.env.TELEGRAM_BOT_TOKEN?.trim(),
   );
@@ -34,6 +51,12 @@ export function getTelegramConfigurationStatus(): TelegramConfigurationStatus {
     configured: tokenConfigured && chatIdConfigured,
     tokenConfigured,
     chatIdConfigured,
+    deliveryMode,
+    externalDispatchesAllowed:
+      deliveryMode === "production" &&
+      enabled &&
+      tokenConfigured &&
+      chatIdConfigured,
   };
 }
 
@@ -167,10 +190,23 @@ function buildReplyMarkup(
 export async function sendTelegramNotification(
   notification: ServerNotificationInput,
 ): Promise<TelegramSendResult> {
+  const deliveryMode = getTelegramDeliveryMode();
+
   if (!isTelegramEnabled()) {
     return {
       ok: true,
       skipped: true,
+      skipReason: "disabled",
+      deliveryMode,
+    };
+  }
+
+  if (deliveryMode === "sandbox") {
+    return {
+      ok: true,
+      skipped: true,
+      skipReason: "sandbox",
+      deliveryMode,
     };
   }
 
@@ -180,6 +216,7 @@ export async function sendTelegramNotification(
   if (!configuration) {
     return {
       ok: false,
+      deliveryMode,
       error:
         "Faltan TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID en las variables de entorno.",
     };
@@ -220,6 +257,7 @@ export async function sendTelegramNotification(
     if (!response.ok || payload.ok !== true) {
       return {
         ok: false,
+        deliveryMode,
         error:
           payload.description ||
           `Telegram respondió con HTTP ${response.status}.`,
@@ -228,11 +266,13 @@ export async function sendTelegramNotification(
 
     return {
       ok: true,
+      deliveryMode,
       messageId: payload.result?.message_id,
     };
   } catch (error) {
     return {
       ok: false,
+      deliveryMode,
       error:
         error instanceof Error
           ? error.name === "AbortError"

@@ -106,7 +106,7 @@ async function main() {
 
     const fixture: LabNotification[] = [
       retried,
-      {...retried, id: "failed", deliveryStatus: "failed", deliveryError: "last failure", updatedAt: "2026-07-18T12:00:00.000Z", deliveredAt: undefined},
+      {...retried, id: "failed", deliveryStatus: "failed", deliveryError: "last failure", updatedAt: "2027-07-18T12:00:00.000Z", deliveredAt: undefined},
       {...retried, id: "pending", deliveryStatus: "pending", deliveredAt: undefined},
       {...retried, id: "skipped", deliveryStatus: "skipped", updateCount: 3},
     ];
@@ -117,7 +117,7 @@ async function main() {
     assert.equal(health.channelStatus, "Con incidencias");
     assert.equal(health.successRate, 50);
     assert.notEqual(health.averageDeliveryMs, null);
-    assert.equal(health.latestFailedAt, "2026-07-18T12:00:00.000Z");
+    assert.equal(health.latestFailedAt, "2027-07-18T12:00:00.000Z");
     assert.equal(health.latestFailureError, "last failure");
 
     for (const url of ["http://localhost:5173/", "http://127.0.0.1/", "http://10.0.0.1/", "http://192.168.1.2/", "file:///tmp/a"]) assert.equal(isPublicTelegramButtonUrl(url), false);

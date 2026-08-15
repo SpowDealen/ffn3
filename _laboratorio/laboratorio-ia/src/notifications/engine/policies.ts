@@ -34,11 +34,19 @@ export function resolveNotificationPolicy(
         groupKey: getNotificationGroupKey(event),
         channels: {
           activityCenter: true,
-          telegram: true,
+          telegram: false,
         },
       };
 
     case "source.failed":
+      return {
+        group: false,
+        channels: {
+          activityCenter: true,
+          telegram: false,
+        },
+      };
+
     case "review.required":
     case "draft.published":
       return {

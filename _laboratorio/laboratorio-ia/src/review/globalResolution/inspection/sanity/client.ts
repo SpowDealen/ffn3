@@ -1,13 +1,10 @@
 import type {SanityExternalNewsReadExecutor, SanityInspectionReadRequest, SanityInspectionReadResult} from "./types";
 import {parseSanityInspectionReadRequest} from "./types";
+import {apiUrl} from "../../../../lib/apiUrl";
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-function defaultInspectionEndpoint(): string {
-  const configured = import.meta.env?.VITE_FFN3_API_BASE_URL;
-  const base = typeof configured === "string" && configured.trim() ? configured.trim().replace(/\/+$/, "") : "http://localhost:3000";
-  return `${base}/api/review/global-resolution/inspect`;
-}
+function defaultInspectionEndpoint(): string { return apiUrl("/api/review/global-resolution/inspect"); }
 
 export function createSanityInspectionHttpReader(input: {
   endpoint?: string;

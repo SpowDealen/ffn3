@@ -10,7 +10,7 @@ import ReviewIssueDetails from "./ReviewIssueDetails";
 import ReviewIssueEditor from "./ReviewIssueEditor";
 import ReviewCaseResolutionStatus from "./ReviewCaseResolutionStatus";
 import ReviewResolutionSummary from "./ReviewResolutionSummary";
-import AIResolutionNucleus from "./AIResolutionNucleus";
+import AIResolutionNucleus, {type NucleusContextView} from "./AIResolutionNucleus";
 
 /*
  * AU10 mantiene los contratos UI previos dentro del Núcleo, bajo demanda:
@@ -27,6 +27,7 @@ type ReviewCaseDetailsProps = {
   onSaveResolution(resolution: ReviewResolution): void;
   onRemoveResolution(issueId: string): void;
   onMarkResolved(): void;
+  onNucleusContextChange?(context: NucleusContextView): void;
 };
 
 const SECRET_KEY_PATTERN = /(token|secret|authorization|cookie|password|api[_-]?key)/i;
@@ -88,6 +89,7 @@ export default function ReviewCaseDetails({
   onSaveResolution,
   onRemoveResolution,
   onMarkResolved,
+  onNucleusContextChange,
 }: ReviewCaseDetailsProps): ReactElement {
   const [contextOpen, setContextOpen] = useState(false);
   const [resumeOpen, setResumeOpen] = useState(false);
@@ -213,7 +215,7 @@ export default function ReviewCaseDetails({
         </div>
       </section>
 
-      <AIResolutionNucleus key={`${reviewCase.id}:${reviewCase.version}`} reviewCase={reviewCase} canEdit={canEdit} canFinalize={canMarkResolved} onFinalize={onMarkResolved} />
+      <AIResolutionNucleus key={`${reviewCase.id}:${reviewCase.version}`} reviewCase={reviewCase} canEdit={canEdit} canFinalize={canMarkResolved} onFinalize={onMarkResolved} onContextChange={onNucleusContextChange} />
 
       {reviewCase.resolutions.length ? (
         <section className="review-subsection">

@@ -29,20 +29,6 @@ function getString(value: unknown): string {
     : "";
 }
 
-function getApiBaseUrl(): string {
-  const raw =
-    import.meta.env.VITE_FFN3_API_BASE_URL;
-
-  if (
-    typeof raw !== "string" ||
-    !raw.trim()
-  ) {
-    return "http://localhost:3000";
-  }
-
-  return raw.trim().replace(/\/+$/, "");
-}
-
 function ensureDocumentShape(
   document: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -100,13 +86,11 @@ export async function saveDraft({
   const safeDocument =
     ensureDocumentShape(document);
 
-  const apiBaseUrl = getApiBaseUrl();
-
   let response: Response;
 
   try {
     response = await fetch(
-      `${apiBaseUrl}/api/guardar-borrador`,
+      apiUrl("/api/guardar-borrador"),
       {
         method: "POST",
         headers: {
@@ -152,3 +136,4 @@ export async function saveDraft({
 
   return data;
 }
+import {apiUrl} from "./apiUrl";

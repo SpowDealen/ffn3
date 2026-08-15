@@ -2,6 +2,7 @@ import type {
   LabNotification,
   NotificationLevel,
 } from "./types";
+import {apiUrl, getApiBaseUrl} from "../lib/apiUrl";
 
 type RemoteNotificationInput = {
   level: NotificationLevel;
@@ -20,6 +21,8 @@ export type RemoteNotificationResult =
   | {
       ok: true;
       skipped?: boolean;
+      skipReason?: "disabled" | "sandbox";
+      deliveryMode?: "production" | "sandbox";
       messageId?: number;
     }
   | {
@@ -28,26 +31,14 @@ export type RemoteNotificationResult =
       status?: number;
     };
 
-export function getApiBaseUrl(): string {
-  const raw =
-    import.meta.env.VITE_FFN3_API_BASE_URL;
-
-  if (
-    typeof raw !== "string" ||
-    !raw.trim()
-  ) {
-    return "http://localhost:3000";
-  }
-
-  return raw.trim().replace(/\/+$/, "");
-}
+export {getApiBaseUrl};
 
 export async function sendRemoteNotification(
   notification: RemoteNotificationInput,
 ): Promise<RemoteNotificationResult> {
   try {
     const response = await fetch(
-      `${getApiBaseUrl()}/api/notifications/telegram`,
+      apiUrl("/api/notifications/telegram"),
       {
         method: "POST",
         headers: {
@@ -76,12 +67,22 @@ export async function sendRemoteNotification(
 
     const payload = (await response.json()) as {
       skipped?: boolean;
+      skipReason?: unknown;
+      deliveryMode?: unknown;
       messageId?: number;
     };
 
     return {
       ok: true,
       skipped: payload.skipped,
+      skipReason:
+        payload.skipReason === "sandbox" || payload.skipReason === "disabled"
+          ? payload.skipReason
+          : undefined,
+      deliveryMode:
+        payload.deliveryMode === "sandbox" || payload.deliveryMode === "production"
+          ? payload.deliveryMode
+          : undefined,
       messageId: payload.messageId,
     };
   } catch (error) {

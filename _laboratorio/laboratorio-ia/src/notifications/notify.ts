@@ -6,12 +6,17 @@ import {
   errorTitle,
   reviewRecommendedTitle,
 } from "./templates";
-import type {NotificationLocation} from "./types";
+import type {NotificationChannels, NotificationLocation} from "./types";
 
 type BaseOptions = {
   source?: string;
   location?: NotificationLocation;
 };
+
+const READ_ONLY_CHANNELS: NotificationChannels = Object.freeze({
+  activityCenter: true,
+  telegram: false,
+});
 
 type AnalysisOptions = BaseOptions & {
   count: number;
@@ -54,6 +59,7 @@ export function notifySourceLoaded({
     source,
     count,
     location,
+    channels: READ_ONLY_CHANNELS,
   });
 }
 
@@ -184,6 +190,24 @@ export function notifyError({
   });
 }
 
+/** A read failure remains visible locally but never escalates to Telegram. */
+export function notifyReadError({
+  source,
+  action,
+  message,
+  location,
+}: ErrorOptions): void {
+  createNotification({
+    level: "error",
+    kind: "system",
+    title: errorTitle(action),
+    message,
+    source,
+    location,
+    channels: READ_ONLY_CHANNELS,
+  });
+}
+
 type EventAnalysisOptions = BaseOptions & {
   count: number;
   completed: number;
@@ -213,6 +237,7 @@ export function notifyEventsLoaded({
     message: `${source ?? "La fuente"} está disponible para analizar.`,
     source,
     count,
+    channels: READ_ONLY_CHANNELS,
   });
 }
 

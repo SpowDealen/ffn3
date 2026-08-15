@@ -66,7 +66,7 @@ async function validateNotifications() {
   assert.deepEqual(resolveNotificationPolicy(sourceLoaded), {
     group: true,
     groupKey,
-    channels: {activityCenter: true, telegram: true},
+    channels: {activityCenter: true, telegram: false},
   });
   assert.deepEqual(
     normalizeNotificationEvent(sourceLoaded, resolveNotificationPriority(sourceLoaded)),

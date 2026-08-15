@@ -4,14 +4,11 @@ import {createSanityFighterCandidateDiscoveryAdapter} from "./sanity";
 import type {CandidateDiscoveryAdapter} from "../types";
 import {createSanityMultiEntityCandidateDiscoveryAdapter, type SanityMultiEntityCandidateReader, type SanityMultiEntityCandidateRecord} from "./sanityMultiEntity";
 import type {DiscoveryEntityType} from "../profiles";
+import {apiUrl} from "../../../../lib/apiUrl";
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-function defaultEndpoint(): string {
-  const configured = import.meta.env?.VITE_FFN3_API_BASE_URL;
-  const base = typeof configured === "string" && configured.trim() ? configured.trim().replace(/\/+$/u, "") : "http://localhost:3000";
-  return `${base}/api/review/entity-identity/candidates`;
-}
+function defaultEndpoint(): string { return apiUrl("/api/review/entity-identity/candidates"); }
 
 const safeAttributes = (request: CandidateDiscoveryRequest) => {
   const allowed = new Set(["slug", "organization", "date", "officialDomain", "discipline", "limitKg"]);

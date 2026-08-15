@@ -15,7 +15,7 @@ export function inspectNotification(
 
 export function testNotificationEngineTelegram(): LabNotification {
   return notificationEngine.notify({
-    type: "source.loaded",
+    type: "draft.published",
     title: "Motor NIE",
     message: "Primera notificación generada por el motor",
     source: "UFC",
@@ -52,8 +52,8 @@ export function testCriticalNotification(): LabNotification {
 export function testLowNotification(): LabNotification {
   return notificationEngine.notify({
     type: "source.loaded",
-    title: "Motor NIE · Prioridad baja",
-    message: "Prueba manual de resolución de prioridad baja",
+    title: "Motor NIE · Lectura local",
+    message: "Prueba manual de una lectura que no entrega por Telegram",
     source: "UFC",
     count: 12,
     metadata: {

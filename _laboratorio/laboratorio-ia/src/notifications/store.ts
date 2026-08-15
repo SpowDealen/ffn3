@@ -249,7 +249,9 @@ function applyDeliveryResult(
       deliveryError: undefined,
       deliveredAt: new Date().toISOString(),
       deliverySkipReason: result.skipped
-        ? "disabled"
+        ? result.skipReason === "sandbox"
+          ? "sandbox"
+          : "disabled"
         : undefined,
     };
   });

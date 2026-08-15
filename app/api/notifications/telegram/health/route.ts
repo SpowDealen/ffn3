@@ -9,15 +9,21 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const HEALTH_TEST_COOLDOWN_MS = 30_000;
+const LOCAL_DEVELOPMENT_ORIGINS = new Set([
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+]);
 let lastHealthTestStartedAt = 0;
 
 function withCors(
   response: NextResponse,
   request: Request,
 ): NextResponse {
-  const origin = request.headers.get("origin");
+  const origin = request.headers.get("origin")?.trim();
 
-  if (origin) {
+  if (process.env.NODE_ENV === "development" && origin && LOCAL_DEVELOPMENT_ORIGINS.has(origin)) {
     response.headers.set("Access-Control-Allow-Origin", origin);
     response.headers.append("Vary", "Origin");
   }
@@ -134,10 +140,12 @@ export async function GET(
         configured: false,
         tokenConfigured: false,
         chatIdConfigured: false,
+        deliveryMode: "production",
+        externalDispatchesAllowed: false,
         checkedAt: new Date().toISOString(),
-        error: "No se pudo comprobar el estado de Telegram.",
+        error: "El estado de Telegram no está disponible temporalmente.",
       },
-      500,
+      503,
     );
   }
 }

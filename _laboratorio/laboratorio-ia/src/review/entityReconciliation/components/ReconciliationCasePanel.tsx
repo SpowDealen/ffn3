@@ -2,8 +2,9 @@ import {useState, type ReactElement} from "react";
 import type {ReviewCase} from "../../types";
 import {updateReviewCaseContextIfCurrent} from "../../store/reviewStore";
 import {applyReconciliationDecision, CORPUS_READ_STATUS_LABELS, ENTITY_KIND_LABELS, readReconciliationCheckpoint, RECONCILIATION_STATE_LABELS, reconciliationNoMutationMessage, type ReconciliationCheckpoint, type ReconciliationDecisionKind} from "..";
+import {apiUrl} from "../../../lib/apiUrl";
 
-function endpoint(): string { const configured = import.meta.env?.VITE_FFN3_API_BASE_URL; const base = typeof configured === "string" && configured.trim() ? configured.trim().replace(/\/+$/, "") : "http://localhost:3000"; return `${base}/api/review/entity-reconciliation/decision`; }
+function endpoint(): string { return apiUrl("/api/review/entity-reconciliation/decision"); }
 export default function ReconciliationCasePanel({reviewCase}: {reviewCase: ReviewCase}): ReactElement | null {
   const [busy, setBusy] = useState(false); const [feedback, setFeedback] = useState<string>();
   if (reviewCase.module !== "entity.reconciliation") return null;

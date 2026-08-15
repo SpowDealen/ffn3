@@ -4,6 +4,7 @@ import type {NucleusPrimaryAction, NucleusResolutionState, NucleusRisk} from "./
 
 export const OPERATOR_EXPERIENCE_VERSION = "1.0.0" as const;
 export type OperatorWorkspaceSection = "dashboard" | "priorities" | "case" | "activity" | "knowledge";
+export type OperatorCaseContext = "overview" | "workspace" | "timeline";
 export type OperatorFeedbackStatus = "started" | "completed" | "blocked" | "authorization_required" | "reconciliation_required" | "safe_error";
 export type OperatorFilters = Readonly<{status?: ReviewCaseStatus | "all"; severity?: ReviewPriority | "all"; producer?: string | "all"; entityType?: string | "all"; autonomy?: string | "all"; risk?: NucleusRisk | "all"; capability?: string | "all"; knowledgeState?: KnowledgeValidityState | "all"; actionRequired?: NucleusPrimaryAction["kind"] | "all"; query?: string; page?: number; pageSize?: number}>;
 export type OperatorCaseRow = Readonly<{caseId: string; title: string; state: NucleusResolutionState; action: NucleusPrimaryAction; progress: Readonly<{completed: number; total: number; percent: number}>; investigationSources: number; phaseCount: number; live: boolean; blockers: readonly string[]; relatedCases: number; fingerprint: string}>;

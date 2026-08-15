@@ -1,16 +1,16 @@
 import type {ReviewCase, ReviewJsonValue} from "../types";
 import {computeUniversalFingerprint} from "../universal";
 import {buildGlobalResolutionDashboard, projectGlobalDashboardCase} from "./dashboard";
-import {OPERATOR_EXPERIENCE_VERSION, type OperatorCaseRow, type OperatorExperienceViewModel, type OperatorFilters, type OperatorNotification, type OperatorWorkspaceSection} from "./operatorExperienceTypes";
+import {OPERATOR_EXPERIENCE_VERSION, type OperatorCaseContext, type OperatorCaseRow, type OperatorExperienceViewModel, type OperatorFilters, type OperatorNotification, type OperatorWorkspaceSection} from "./operatorExperienceTypes";
 import {buildNucleusResolutionViewModel} from "./model";
 
 const fp = (value: unknown) => computeUniversalFingerprint(value as ReviewJsonValue);
 const unique = (values: readonly string[]) => Object.freeze([...new Set(values.filter(Boolean))].sort());
 const active = new Set(["analyzing", "planning", "executing", "observing"]);
-const sectionLabels: Readonly<Record<OperatorWorkspaceSection, string>> = Object.freeze({dashboard: "Dashboard global", priorities: "Casos prioritarios", case: "Núcleo Resolutivo IA", activity: "Actividad", knowledge: "Conocimiento"});
+const sectionLabels: Readonly<Record<OperatorWorkspaceSection, string>> = Object.freeze({dashboard: "Dashboard", priorities: "Casos prioritarios", case: "Núcleo Resolutivo IA", activity: "Actividad", knowledge: "Conocimiento"});
 const defaultFilters: OperatorFilters = Object.freeze({status: "all", severity: "all", producer: "all", entityType: "all", autonomy: "all", risk: "all", capability: "all", knowledgeState: "all", actionRequired: "all", query: "", page: 1, pageSize: 8});
 
-export function buildOperatorExperience(input: Readonly<{cases: readonly ReviewCase[]; evaluatedAt: string; activeSection?: OperatorWorkspaceSection; selectedCaseId?: string; filters?: OperatorFilters}>): OperatorExperienceViewModel {
+export function buildOperatorExperience(input: Readonly<{cases: readonly ReviewCase[]; evaluatedAt: string; activeSection?: OperatorWorkspaceSection; selectedCaseId?: string; caseContext?: OperatorCaseContext; filters?: OperatorFilters}>): OperatorExperienceViewModel {
   const filters = Object.freeze({...defaultFilters, ...input.filters}); const dashboard = buildGlobalResolutionDashboard({cases: input.cases, evaluatedAt: input.evaluatedAt});
   const projections = input.cases.map((reviewCase) => ({reviewCase, projection: projectGlobalDashboardCase(reviewCase, input.evaluatedAt), nucleus: buildNucleusResolutionViewModel({reviewCase, evaluatedAt: input.evaluatedAt})}));
   const query = (filters.query ?? "").trim().toLocaleLowerCase("es");
@@ -32,5 +32,6 @@ export function buildOperatorExperience(input: Readonly<{cases: readonly ReviewC
   const selected = input.selectedCaseId ? projections.find((entry) => entry.reviewCase.id === input.selectedCaseId)?.reviewCase.title : undefined;
   const notificationPriority = {critical: 3, high: 2, normal: 1};
   const orderedNotifications = Object.freeze(notifications.sort((a, b) => notificationPriority[b.priority] - notificationPriority[a.priority] || a.fingerprint.localeCompare(b.fingerprint)).slice(0, 8));
-  return Object.freeze({version: OPERATOR_EXPERIENCE_VERSION, activeSection: input.activeSection ?? "dashboard", breadcrumbs: Object.freeze(["Centro de revisión", sectionLabels[input.activeSection ?? "dashboard"], ...(selected ? [selected] : [])]), navigation, filters, facets: Object.freeze({statuses: dashboard.facets.statuses, severities: dashboard.facets.severities, producers: dashboard.facets.producers, entityTypes: dashboard.facets.entityTypes, autonomies: dashboard.facets.autonomies, risks: dashboard.facets.risks, capabilities: dashboard.facets.capabilities, knowledgeStates: dashboard.facets.knowledgeStates, actions: unique(projections.map((entry) => entry.nucleus.primaryAction.kind))}), total: input.cases.length, filtered: filtered.length, page, pageSize, pageCount, rows, notifications: orderedNotifications, dashboardFingerprint: dashboard.dashboardFingerprint, writes: false, persistsFilters: false, invokesExecutors: false, autoExecutes: false});
+  const contextBreadcrumb = input.activeSection === "case" && input.caseContext && input.caseContext !== "overview" ? [input.caseContext === "workspace" ? "Workspace" : "Timeline"] : [];
+  return Object.freeze({version: OPERATOR_EXPERIENCE_VERSION, activeSection: input.activeSection ?? "dashboard", breadcrumbs: Object.freeze(["Centro de revisión", sectionLabels[input.activeSection ?? "dashboard"], ...(input.activeSection === "case" && selected ? [selected] : []), ...contextBreadcrumb]), navigation, filters, facets: Object.freeze({statuses: dashboard.facets.statuses, severities: dashboard.facets.severities, producers: dashboard.facets.producers, entityTypes: dashboard.facets.entityTypes, autonomies: dashboard.facets.autonomies, risks: dashboard.facets.risks, capabilities: dashboard.facets.capabilities, knowledgeStates: dashboard.facets.knowledgeStates, actions: unique(projections.map((entry) => entry.nucleus.primaryAction.kind))}), total: input.cases.length, filtered: filtered.length, page, pageSize, pageCount, rows, notifications: orderedNotifications, dashboardFingerprint: dashboard.dashboardFingerprint, writes: false, persistsFilters: false, invokesExecutors: false, autoExecutes: false});
 }

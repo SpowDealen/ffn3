@@ -138,6 +138,8 @@ export async function POST(
       NextResponse.json({
         ok: true,
         skipped: result.skipped ?? false,
+        skipReason: result.skipReason,
+        deliveryMode: result.deliveryMode ?? "production",
         messageId: result.messageId,
       }),
     );

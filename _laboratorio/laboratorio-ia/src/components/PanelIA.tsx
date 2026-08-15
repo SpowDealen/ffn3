@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import {
   contentTypeOptions,
@@ -7,12 +7,17 @@ import {
 import { buildContentOutput } from "../lib/buildContentOutput";
 import { getInitialFormState } from "../lib/getInitialFormState";
 import { saveDraft } from "../lib/saveDraft";
+import { getApiBaseUrl } from "../lib/apiUrl";
+import {classifyEditorialReadError, type EditorialReadError} from "../lib/editorialReadError";
+import {readEditorialJsonResponse} from "../lib/editorialJsonResponse";
+import {FeedbackBanner, InlineLoader} from "./feedback/VisualFeedback";
 import {
   notifyAnalysisCompleted,
   notifyDraftBatchProcessed,
   notifyDraftCreated,
   notifyEntityBatchProcessed,
   notifyError,
+  notifyReadError,
   notifyEventAnalysisCompleted,
   notifyEventCreated,
   notifyEventResolved,
@@ -220,6 +225,18 @@ type SaveDraftStatus =
       type: "error";
       message: string;
     };
+
+function EditorialLoadFeedback({status, onRetry, retrying}: {status: OfficialSourceStatus; onRetry?: () => void; retrying?: boolean}): ReactElement | null {
+  if (status.type === "idle") return null;
+  const isError = status.type === "error";
+  return <FeedbackBanner
+    state={isError ? "error" : "success"}
+    title={status.message}
+    action={isError && status.retryable && onRetry ? {label: "Reintentar", onClick: onRetry, disabled: retrying} : undefined}
+  >
+    {retrying ? <InlineLoader label="Reintentando la carga…" /> : null}
+  </FeedbackBanner>;
+}
 
 type ReferenceEntitiesApiResponse =
   | {
@@ -485,6 +502,7 @@ type OfficialSourceStatus =
   | {
       type: "error";
       message: string;
+      retryable?: boolean;
     };
 
 type SuggestedNewsRelations = {
@@ -953,17 +971,7 @@ type TransformEventApiResponse =
 
 const DEFAULT_CONTENT_TYPE: ContentTypeId = "noticia";
 
-function getDefaultApiBaseUrl(): string {
-  if (typeof window === "undefined") {
-    return "http://localhost:3000";
-  }
-
-  return `${window.location.protocol}//${window.location.hostname}:3000`;
-}
-
-const API_BASE_URL = (
-  import.meta.env.VITE_FFN3_API_BASE_URL?.trim() || getDefaultApiBaseUrl()
-).replace(/\/+$/, "");
+const API_BASE_URL = getApiBaseUrl();
 
 const AUTO_REFRESH_MS = 120_000;
 
@@ -2108,6 +2116,11 @@ export default function PanelIA(): ReactElement {
   const [referenceData, setReferenceData] = useState<
     Record<ReferenceTarget, ReferenceEntityOption[]>
   >(EMPTY_REFERENCE_DATA);
+  const auxiliaryForReferenceLoad = useRef(auxiliary);
+  const referenceRequestRef = useRef<Promise<void> | null>(null);
+  useEffect(() => {
+    auxiliaryForReferenceLoad.current = auxiliary;
+  }, [auxiliary]);
   useEffect(() => registerPanelSanityInvestigationSource(referenceData), [referenceData]);
   useEffect(() => registerEditorialSchemaRequirements(referenceData), [referenceData]);
 
@@ -2346,7 +2359,7 @@ export default function PanelIA(): ReactElement {
   const [isPreparingFullFekmEvent, setIsPreparingFullFekmEvent] = useState(false);
 
   const [isLoadingReferences, setIsLoadingReferences] = useState(false);
-  const [referenceLoadError, setReferenceLoadError] = useState("");
+  const [referenceLoadError, setReferenceLoadError] = useState<EditorialReadError | null>(null);
 
   const definition = useMemo(
     () => getContentTypeDefinition(contentType),
@@ -2537,38 +2550,56 @@ export default function PanelIA(): ReactElement {
   }, []);
 
   const reloadReferenceEntities = useCallback(async (): Promise<void> => {
-    try {
-      setIsLoadingReferences(true);
-      setReferenceLoadError("");
-
-      const response = await fetch(`${API_BASE_URL}/api/reference-entities`, {
-        method: "GET",
-        cache: "no-store",
-      });
-
-      const payload = (await response.json()) as ReferenceEntitiesApiResponse;
-
-      if (!response.ok || !payload.ok) {
-        throw new Error(
-          "message" in payload && payload.message
-            ? payload.message
-            : "No se pudieron cargar las referencias."
-        );
-      }
-
-      setReferenceData(payload.data);
-      setForm((prev) => clearInvalidDependentReferences(prev, auxiliary, payload.data));
-    } catch (error) {
-      setReferenceLoadError(
-        error instanceof Error
-          ? error.message
-          : "Error desconocido cargando referencias."
-      );
-      setReferenceData(EMPTY_REFERENCE_DATA);
-    } finally {
-      setIsLoadingReferences(false);
+    if (referenceRequestRef.current) {
+      return referenceRequestRef.current;
     }
-  }, [auxiliary]);
+
+    const request = (async (): Promise<void> => {
+      try {
+        setIsLoadingReferences(true);
+        setReferenceLoadError(null);
+
+        const response = await fetch(`${API_BASE_URL}/api/reference-entities`, {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        const payload = (await readEditorialJsonResponse(response)) as ReferenceEntitiesApiResponse;
+
+        if (!response.ok || !payload.ok) {
+          const message =
+            "message" in payload && payload.message
+              ? payload.message
+              : "No se pudieron cargar las referencias.";
+          throw new Error(
+            response.ok ? message : `HTTP ${response.status}: ${message}`
+          );
+        }
+
+        setReferenceData(payload.data);
+        setForm((prev) => clearInvalidDependentReferences(
+          prev,
+          auxiliaryForReferenceLoad.current,
+          payload.data,
+        ));
+      } catch (error) {
+        console.warn("[FFN3] Error técnico al cargar referencias", error);
+        setReferenceLoadError(classifyEditorialReadError(error));
+        setReferenceData(EMPTY_REFERENCE_DATA);
+      } finally {
+        setIsLoadingReferences(false);
+      }
+    })();
+
+    referenceRequestRef.current = request;
+    void request.finally(() => {
+      if (referenceRequestRef.current === request) {
+        referenceRequestRef.current = null;
+      }
+    });
+
+    return request;
+  }, []);
 
 
   const reloadExternalNews = useCallback(
@@ -2630,6 +2661,8 @@ export default function PanelIA(): ReactElement {
           message: `${payload.count} noticias externas de ${payload.sourceName || sourceName} cargadas.`,
         });
       } catch (error) {
+        const readError = classifyEditorialReadError(error);
+        console.warn(`[FFN3] Error técnico al cargar noticias de ${sourceName}`, error);
         setExternalNewsItems([]);
         setSelectedExternalNewsId("");
         setExternalNewsFetchedAt("");
@@ -2643,16 +2676,14 @@ export default function PanelIA(): ReactElement {
         setShowAllExternalNewsBatchItems(false);
         setExternalNewsStatus({
           type: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : `Error desconocido cargando noticias externas de ${sourceName}.`,
+          message: readError.message,
+          retryable: readError.retryable,
         });
       } finally {
         setIsLoadingExternalNews(false);
       }
     },
-    [API_BASE_URL, selectedExternalNewsSource, selectedExternalSourceId]
+    [selectedExternalNewsSource, selectedExternalSourceId]
   );
 
 
@@ -2766,7 +2797,6 @@ export default function PanelIA(): ReactElement {
       setIsPreparingExternalNewsBatch(false);
     }
   }, [
-    API_BASE_URL,
     externalNewsItems,
     selectedExternalNewsSource,
     selectedExternalSourceId,
@@ -3076,7 +3106,6 @@ export default function PanelIA(): ReactElement {
       });
     }
   }, [
-    API_BASE_URL,
     auxiliary,
     contentType,
     definition.schemaFields,
@@ -3467,7 +3496,6 @@ export default function PanelIA(): ReactElement {
       setIsCreatingExternalNewsDraft(false);
     }
   }, [
-    API_BASE_URL,
     contentType,
     definition.schemaFields,
     externalNewsBatchAnalysis,
@@ -3816,7 +3844,6 @@ export default function PanelIA(): ReactElement {
       setIsCreatingExternalNewsBatchDrafts(false);
     }
   }, [
-    API_BASE_URL,
     contentType,
     definition.schemaFields,
     externalNewsBatchAnalysis,
@@ -3877,10 +3904,9 @@ export default function PanelIA(): ReactElement {
         count: payload.count,
       });
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Error desconocido cargando las noticias oficiales de UFC.";
+      const readError = classifyEditorialReadError(error);
+      const message = readError.message;
+      console.warn("[FFN3] Error técnico al cargar noticias de UFC", error);
 
       setOfficialNewsItems([]);
       setSelectedOfficialNewsId("");
@@ -3888,9 +3914,10 @@ export default function PanelIA(): ReactElement {
       setOfficialSourceStatus({
         type: "error",
         message,
+        retryable: readError.retryable,
       });
 
-      notifyError({
+      notifyReadError({
         source: "UFC",
         action: "cargar las noticias",
         message,
@@ -4384,10 +4411,9 @@ export default function PanelIA(): ReactElement {
         count: payload.count,
       });
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Error desconocido cargando las noticias oficiales de BKFC.";
+      const readError = classifyEditorialReadError(error);
+      const message = readError.message;
+      console.warn("[FFN3] Error técnico al cargar noticias de BKFC", error);
 
       setBkfcNewsItems([]);
       setSelectedBkfcNewsId("");
@@ -4395,9 +4421,10 @@ export default function PanelIA(): ReactElement {
       setBkfcNewsStatus({
         type: "error",
         message,
+        retryable: readError.retryable,
       });
 
-      notifyError({
+      notifyReadError({
         source: "BKFC",
         action: "cargar las noticias",
         message,
@@ -5164,10 +5191,9 @@ export default function PanelIA(): ReactElement {
         count: payload.count,
       });
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Error desconocido cargando las noticias oficiales de ONE Championship.";
+      const readError = classifyEditorialReadError(error);
+      const message = readError.message;
+      console.warn("[FFN3] Error técnico al cargar noticias de ONE Championship", error);
 
       setOneNewsItems([]);
       setSelectedOneNewsId("");
@@ -5175,9 +5201,10 @@ export default function PanelIA(): ReactElement {
       setOneNewsStatus({
         type: "error",
         message,
+        retryable: readError.retryable,
       });
 
-      notifyError({
+      notifyReadError({
         source: "ONE Championship",
         action: "cargar las noticias",
         message,
@@ -5937,15 +5964,15 @@ export default function PanelIA(): ReactElement {
         message: `${payload.count} noticias oficiales de FEKM cargadas.`,
       });
     } catch (error) {
+      const readError = classifyEditorialReadError(error);
+      console.warn("[FFN3] Error técnico al cargar noticias de FEKM", error);
       setFekmNewsItems([]);
       setSelectedFekmNewsId("");
       setFekmNewsFetchedAt("");
       setFekmNewsStatus({
         type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Error desconocido cargando las noticias oficiales de FEKM.",
+        message: readError.message,
+        retryable: readError.retryable,
       });
     } finally {
       setIsLoadingFekmNews(false);
@@ -6597,10 +6624,9 @@ export default function PanelIA(): ReactElement {
         count: payload.count,
       });
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Error desconocido cargando los eventos oficiales de UFC.";
+      const readError = classifyEditorialReadError(error);
+      const message = readError.message;
+      console.warn("[FFN3] Error técnico al cargar eventos de UFC", error);
 
       setOfficialEventItems([]);
       setSelectedOfficialEventId("");
@@ -6608,9 +6634,10 @@ export default function PanelIA(): ReactElement {
       setOfficialEventSourceStatus({
         type: "error",
         message,
+        retryable: readError.retryable,
       });
 
-      notifyError({
+      notifyReadError({
         source: "UFC",
         action: "cargar los eventos",
         message,
@@ -7694,10 +7721,9 @@ export default function PanelIA(): ReactElement {
 
       completeProcess(processId);
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Error desconocido cargando los eventos oficiales de BKFC.";
+      const readError = classifyEditorialReadError(error);
+      const message = readError.message;
+      console.warn("[FFN3] Error técnico al cargar eventos de BKFC", error);
 
       setBkfcEventItems([]);
       setSelectedBkfcEventId("");
@@ -7706,9 +7732,10 @@ export default function PanelIA(): ReactElement {
       setBkfcSourceStatus({
         type: "error",
         message,
+        retryable: readError.retryable,
       });
 
-      notifyError({
+      notifyReadError({
         source: "BKFC",
         action: "cargar los eventos",
         message,
@@ -8455,7 +8482,9 @@ export default function PanelIA(): ReactElement {
       setFekmEventsFetchedAt("");
       setFekmEventResolution(null);
       setFekmEventOrchestration(null);
-      setFekmEventStatus({ type: "error", message: error instanceof Error ? error.message : "Error cargando eventos FEKM." });
+      const readError = classifyEditorialReadError(error);
+      console.warn("[FFN3] Error técnico al cargar eventos de FEKM", error);
+      setFekmEventStatus({ type: "error", message: readError.message, retryable: readError.retryable });
     } finally {
       setIsLoadingFekmEvents(false);
     }
@@ -8644,10 +8673,9 @@ export default function PanelIA(): ReactElement {
 
       completeProcess(processId);
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Error desconocido cargando los eventos oficiales de ONE Championship.";
+      const readError = classifyEditorialReadError(error);
+      const message = readError.message;
+      console.warn("[FFN3] Error técnico al cargar eventos de ONE Championship", error);
 
       setOneEventItems([]);
       setSelectedOneEventId("");
@@ -8656,9 +8684,10 @@ export default function PanelIA(): ReactElement {
       setOneEventSourceStatus({
         type: "error",
         message,
+        retryable: readError.retryable,
       });
 
-      notifyError({
+      notifyReadError({
         source: "ONE Championship",
         action: "cargar los eventos",
         message,
@@ -10801,15 +10830,13 @@ export default function PanelIA(): ReactElement {
   }
 
   return (
-    <div style={styles.page}>
+    <div className="panel-editorial-root" style={styles.page}>
       <div style={styles.container}>
-        <header style={styles.header}>
-          <div>
-            <p style={styles.eyebrow}>FFN3 · Laboratorio IA</p>
-            <h1 style={styles.title}>Panel editorial de borradores</h1>
-            <p style={styles.description}>
-              Genera una salida alineada con los schemas reales de Sanity antes de
-              pensar en guardado.
+        <section className="panel-editorial-controls" style={styles.header} aria-label="Preparación editorial">
+          <div style={styles.editorialContext}>
+            <p style={styles.editorialKicker}>Preparación de contenido</p>
+            <p style={styles.editorialDescription}>
+              <strong>{definition.label}.</strong> {definition.description}
             </p>
           </div>
 
@@ -10849,32 +10876,20 @@ export default function PanelIA(): ReactElement {
             </div>
 
             {isLoadingReferences ? (
-              <div style={styles.feedbackNeutral}>
-                Actualizando referencias desde Sanity...
-              </div>
+              <FeedbackBanner state="loading" title="Actualizando referencias editoriales">
+                <InlineLoader label="Consultando las referencias disponibles…" />
+              </FeedbackBanner>
             ) : null}
 
-            {referenceLoadError ? (
-              <div style={styles.feedbackError}>{referenceLoadError}</div>
-            ) : null}
+            {referenceLoadError ? <EditorialLoadFeedback status={{type: "error", message: referenceLoadError.message, retryable: referenceLoadError.retryable}} onRetry={() => { void reloadReferenceEntities(); }} retrying={isLoadingReferences} /> : null}
 
             {saveDraftStatus.type !== "idle" ? (
-              <div
-                style={
-                  saveDraftStatus.type === "success"
-                    ? styles.feedbackSuccess
-                    : styles.feedbackError
-                }
-              >
-                {saveDraftStatus.message}
-              </div>
+              <FeedbackBanner
+                state={saveDraftStatus.type}
+                title={saveDraftStatus.message}
+              />
             ) : null}
           </div>
-        </header>
-
-        <section style={styles.metaCard}>
-          <strong>{definition.label}</strong>
-          <p style={styles.metaText}>{definition.description}</p>
         </section>
 
         {contentType === "organizacion" ? (
@@ -10958,17 +10973,7 @@ export default function PanelIA(): ReactElement {
               </button>
             </div>
 
-            {officialSourceStatus.type !== "idle" ? (
-              <div
-                style={
-                  officialSourceStatus.type === "success"
-                    ? styles.feedbackSuccess
-                    : styles.feedbackError
-                }
-              >
-                {officialSourceStatus.message}
-              </div>
-            ) : null}
+            <EditorialLoadFeedback status={officialSourceStatus} onRetry={() => { void reloadOfficialUfcNews(); }} retrying={isLoadingOfficialNews} />
 
             {officialNewsFetchedAt ? (
               <p style={styles.sourceTimestamp}>
@@ -11226,7 +11231,7 @@ export default function PanelIA(): ReactElement {
             ) : null}
 
             {officialNewsItems.length > 0 ? (
-              <div style={styles.sourceLayout}>
+              <div className="panel-editorial-source-layout" style={styles.sourceLayout}>
                 <div style={styles.sourceList}>
                   {officialNewsItems.map((item) => {
                     const isSelected = item.id === selectedOfficialNewsId;
@@ -11493,17 +11498,7 @@ export default function PanelIA(): ReactElement {
               </button>
             </div>
 
-            {bkfcNewsStatus.type !== "idle" ? (
-              <div
-                style={
-                  bkfcNewsStatus.type === "success"
-                    ? styles.feedbackSuccess
-                    : styles.feedbackError
-                }
-              >
-                {bkfcNewsStatus.message}
-              </div>
-            ) : null}
+            <EditorialLoadFeedback status={bkfcNewsStatus} onRetry={() => { void reloadOfficialBkfcNews(); }} retrying={isLoadingBkfcNews} />
 
             {bkfcNewsFetchedAt ? (
               <p style={styles.sourceTimestamp}>
@@ -11736,7 +11731,7 @@ export default function PanelIA(): ReactElement {
             ) : null}
 
             {bkfcNewsItems.length > 0 ? (
-              <div style={styles.sourceLayout}>
+              <div className="panel-editorial-source-layout" style={styles.sourceLayout}>
                 <div style={styles.sourceList}>
                   {bkfcNewsItems.map((item) => {
                     const isSelected = item.id === selectedBkfcNewsId;
@@ -12003,17 +11998,7 @@ export default function PanelIA(): ReactElement {
               </button>
             </div>
 
-            {oneNewsStatus.type !== "idle" ? (
-              <div
-                style={
-                  oneNewsStatus.type === "success"
-                    ? styles.feedbackSuccess
-                    : styles.feedbackError
-                }
-              >
-                {oneNewsStatus.message}
-              </div>
-            ) : null}
+            <EditorialLoadFeedback status={oneNewsStatus} onRetry={() => { void reloadOfficialOneNews(); }} retrying={isLoadingOneNews} />
 
             {oneNewsFetchedAt ? (
               <p style={styles.sourceTimestamp}>
@@ -12246,7 +12231,7 @@ export default function PanelIA(): ReactElement {
             ) : null}
 
             {oneNewsItems.length > 0 ? (
-              <div style={styles.sourceLayout}>
+              <div className="panel-editorial-source-layout" style={styles.sourceLayout}>
                 <div style={styles.sourceList}>
                   {oneNewsItems.map((item) => {
                     const isSelected = item.id === selectedOneNewsId;
@@ -12511,17 +12496,7 @@ export default function PanelIA(): ReactElement {
               </button>
             </div>
 
-            {fekmNewsStatus.type !== "idle" ? (
-              <div
-                style={
-                  fekmNewsStatus.type === "success"
-                    ? styles.feedbackSuccess
-                    : styles.feedbackError
-                }
-              >
-                {fekmNewsStatus.message}
-              </div>
-            ) : null}
+            <EditorialLoadFeedback status={fekmNewsStatus} onRetry={() => { void reloadOfficialFekmNews(); }} retrying={isLoadingFekmNews} />
 
             {fekmNewsFetchedAt ? (
               <p style={styles.sourceTimestamp}>
@@ -12754,7 +12729,7 @@ export default function PanelIA(): ReactElement {
             ) : null}
 
             {fekmNewsItems.length > 0 ? (
-              <div style={styles.sourceLayout}>
+              <div className="panel-editorial-source-layout" style={styles.sourceLayout}>
                 <div style={styles.sourceList}>
                   {fekmNewsItems.map((item) => {
                     const isSelected = item.id === selectedFekmNewsId;
@@ -13079,17 +13054,7 @@ export default function PanelIA(): ReactElement {
               </div>
             </div>
 
-            {externalNewsStatus.type !== "idle" ? (
-              <div
-                style={
-                  externalNewsStatus.type === "success"
-                    ? styles.feedbackSuccess
-                    : styles.feedbackError
-                }
-              >
-                {externalNewsStatus.message}
-              </div>
-            ) : null}
+            <EditorialLoadFeedback status={externalNewsStatus} onRetry={() => { void reloadExternalNews(); }} retrying={isLoadingExternalNews} />
 
             {externalNewsReview ? (
               <section className="external-review-result" aria-label="Resultado del Centro de revisión">
@@ -13299,7 +13264,7 @@ export default function PanelIA(): ReactElement {
             ) : null}
 
             {externalNewsItems.length > 0 ? (
-              <div style={styles.sourceLayout}>
+              <div className="panel-editorial-source-layout" style={styles.sourceLayout}>
                 <div style={styles.sourceList}>
                   {externalNewsItems.map((item) => {
                     const isSelected = item.id === selectedExternalNewsId;
@@ -13640,17 +13605,7 @@ export default function PanelIA(): ReactElement {
               </button>
             </div>
 
-            {officialEventSourceStatus.type !== "idle" ? (
-              <div
-                style={
-                  officialEventSourceStatus.type === "success"
-                    ? styles.feedbackSuccess
-                    : styles.feedbackError
-                }
-              >
-                {officialEventSourceStatus.message}
-              </div>
-            ) : null}
+            <EditorialLoadFeedback status={officialEventSourceStatus} onRetry={() => { void reloadOfficialUfcEvents(); }} retrying={isLoadingOfficialEvents} />
 
             {officialEventsFetchedAt ? (
               <p style={styles.sourceTimestamp}>
@@ -13918,7 +13873,7 @@ export default function PanelIA(): ReactElement {
             ) : null}
 
             {officialEventItems.length > 0 ? (
-              <div style={styles.sourceLayout}>
+              <div className="panel-editorial-source-layout" style={styles.sourceLayout}>
                 <div style={styles.sourceList}>
                   {officialEventItems.map((item) => {
                     const isSelected = item.id === selectedOfficialEventId;
@@ -14309,20 +14264,10 @@ export default function PanelIA(): ReactElement {
               </p>
             ) : null}
 
-            {bkfcSourceStatus.type !== "idle" ? (
-              <div
-                style={
-                  bkfcSourceStatus.type === "success"
-                    ? styles.feedbackSuccess
-                    : styles.feedbackError
-                }
-              >
-                {bkfcSourceStatus.message}
-              </div>
-            ) : null}
+            <EditorialLoadFeedback status={bkfcSourceStatus} onRetry={() => { void reloadOfficialBkfcEvents(); }} retrying={isLoadingBkfcEvents} />
 
             {bkfcEventItems.length > 0 ? (
-              <div style={styles.sourceLayout}>
+              <div className="panel-editorial-source-layout" style={styles.sourceLayout}>
                 <div style={styles.sourceList}>
                   {bkfcEventItems.map((item) => {
                     const isSelected = item.id === selectedBkfcEventId;
@@ -14669,8 +14614,8 @@ export default function PanelIA(): ReactElement {
               </button>
             </div>
             {fekmEventsFetchedAt ? <p style={styles.metaText}>Última lectura: {new Date(fekmEventsFetchedAt).toLocaleString("es-ES")}</p> : null}
-            {fekmEventStatus.type !== "idle" ? <div style={fekmEventStatus.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{fekmEventStatus.message}</div> : null}
-            {fekmEventItems.length > 0 ? <div style={styles.sourceLayout}>
+            <EditorialLoadFeedback status={fekmEventStatus} onRetry={() => { void reloadOfficialFekmEvents(); }} retrying={isLoadingFekmEvents} />
+            {fekmEventItems.length > 0 ? <div className="panel-editorial-source-layout" style={styles.sourceLayout}>
               <div style={styles.sourceList}>
                 {fekmEventItems.map((item) => <button key={item.id} type="button" onClick={() => { setSelectedFekmEventId(item.id); setFekmEventResolution(null); setFekmEventOrchestration(null); setFekmEventStatus({ type: "idle", message: "" }); }} style={item.id === selectedFekmEventId ? styles.sourceItemSelected : styles.sourceItem}>
                   <span style={styles.sourceItemTitle}>{item.name}</span>
@@ -14745,20 +14690,10 @@ export default function PanelIA(): ReactElement {
               </p>
             ) : null}
 
-            {oneEventSourceStatus.type !== "idle" ? (
-              <div
-                style={
-                  oneEventSourceStatus.type === "success"
-                    ? styles.feedbackSuccess
-                    : styles.feedbackError
-                }
-              >
-                {oneEventSourceStatus.message}
-              </div>
-            ) : null}
+            <EditorialLoadFeedback status={oneEventSourceStatus} onRetry={() => { void reloadOfficialOneEvents(); }} retrying={isLoadingOneEvents} />
 
             {oneEventItems.length > 0 ? (
-              <div style={styles.sourceLayout}>
+              <div className="panel-editorial-source-layout" style={styles.sourceLayout}>
                 <div style={styles.sourceList}>
                   {oneEventItems.map((item) => {
                     const isSelected = item.id === selectedOneEventId;
@@ -15114,7 +15049,7 @@ export default function PanelIA(): ReactElement {
           </>
         ) : null}
 
-        <div style={styles.grid}>
+        <div className="panel-editorial-form-grid" style={styles.grid}>
           <section style={styles.card}>
             <h2 style={styles.sectionTitle}>Campos reales de schema</h2>
 
@@ -15265,43 +15200,39 @@ export default function PanelIA(): ReactElement {
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    minHeight: "100vh",
-    background: "#0b0f14",
-    color: "#f5f7fa",
-    padding: "32px 20px",
-    fontFamily:
-      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    minWidth: 0,
   },
   container: {
     maxWidth: 1320,
     margin: "0 auto",
     display: "grid",
-    gap: 20,
+    gap: 14,
   },
   header: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: 20,
+    gap: 14,
     flexWrap: "wrap",
   },
-  eyebrow: {
+  editorialContext: {
+    display: "grid",
+    gap: 4,
+    minWidth: 0,
+    maxWidth: 760,
+  },
+  editorialKicker: {
     margin: 0,
-    fontSize: 12,
-    letterSpacing: "0.12em",
+    fontSize: 11,
+    fontWeight: 800,
+    letterSpacing: "0.1em",
     textTransform: "uppercase",
-    opacity: 0.7,
+    opacity: 0.68,
   },
-  title: {
-    margin: "6px 0 10px",
-    fontSize: 34,
-    lineHeight: 1.1,
-  },
-  description: {
+  editorialDescription: {
     margin: 0,
-    maxWidth: 720,
-    opacity: 0.82,
-    lineHeight: 1.5,
+    lineHeight: 1.45,
+    opacity: 0.86,
   },
   stickyNav: {
     position: "sticky",

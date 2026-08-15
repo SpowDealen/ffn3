@@ -4,6 +4,7 @@ import type {
 } from "react";
 import {retryNotificationDelivery} from "./store";
 import type {LabNotification} from "./types";
+import {presentTelegramDeliveryFailure} from "../lib/editorialReadError";
 
 const DELIVERY_LABELS = {
   pending: "🟡 Enviando a Telegram…",
@@ -22,14 +23,22 @@ export default function NotificationDeliveryStatus({
   if (!status) return null;
 
   const attempts = notification.deliveryAttempts ?? 0;
+  const deliveryError = presentTelegramDeliveryFailure(
+    notification.deliveryError,
+  );
+  const statusLabel =
+    status === "skipped" &&
+    notification.deliverySkipReason === "sandbox"
+      ? "🟣 Telegram en sandbox — sin envío externo"
+      : DELIVERY_LABELS[status];
 
   return (
     <div style={styles.container}>
-      <span style={styles.status}>{DELIVERY_LABELS[status]}</span>
+      <span style={styles.status}>{statusLabel}</span>
 
-      {status === "failed" && notification.deliveryError ? (
+      {status === "failed" && deliveryError ? (
         <span style={styles.error}>
-          {notification.deliveryError}
+          {deliveryError}
         </span>
       ) : null}
 
