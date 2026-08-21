@@ -12,7 +12,8 @@ import {
   type TransactionIncident,
 } from "../transactions";
 import {getReviewCase} from "../store/reviewStore";
-import {ProgressBar, StepProgress, type FeedbackStep} from "../../components/feedback/VisualFeedback";
+import {GlobalFeedbackRegion, ProgressBar, StepProgress, type FeedbackStep} from "../../components/feedback/VisualFeedback";
+import {adaptReviewOperationFeedback} from "../../feedback";
 
 type Feedback = Readonly<{kind: "status" | "error"; message: string}>;
 
@@ -50,7 +51,7 @@ export default function TransactionOperationalCenter({reviewCase}: {reviewCase: 
   const [busy, setBusy] = useState(false);
   const [compensationOpen, setCompensationOpen] = useState(false);
   const abort = useRef<AbortController>();
-  const errorRef = useRef<HTMLParagraphElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
   const compensationRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -145,6 +146,9 @@ export default function TransactionOperationalCenter({reviewCase}: {reviewCase: 
     state: feedbackStepState(step.state),
     detail: STEP_LABELS[step.state],
   }));
+  const operationFeedback = busy
+    ? adaptReviewOperationFeedback({kind: "processing", message: "Los demás controles permanecen bloqueados hasta alcanzar un límite seguro."})
+    : feedback ? adaptReviewOperationFeedback(feedback) : null;
 
   return <section className="review-subsection transaction-center" aria-labelledby={`transaction-center-title-${reviewCase.id}`} aria-busy={busy}>
     <div className="review-row review-row-wrap">
@@ -186,8 +190,7 @@ export default function TransactionOperationalCenter({reviewCase}: {reviewCase: 
       {busy ? <button className="review-button review-button-danger" type="button" onClick={() => abort.current?.abort()}>Cancelar en límite seguro</button> : null}
     </div>
 
-    {busy ? <p className="review-feedback" role="status" aria-live="polite">Operación supervisada en curso. Los demás controles permanecen bloqueados.</p> : null}
-    {feedback ? <p ref={feedback.kind === "error" ? errorRef : undefined} tabIndex={feedback.kind === "error" ? -1 : undefined} className={feedback.kind === "error" ? "global-resolution-error" : "review-feedback"} role={feedback.kind === "error" ? "alert" : "status"} aria-live={feedback.kind === "error" ? "assertive" : "polite"}>{feedback.message}</p> : null}
+    {operationFeedback ? <div ref={feedback?.kind === "error" && !busy ? errorRef : undefined} tabIndex={feedback?.kind === "error" && !busy ? -1 : undefined} role={feedback?.kind === "error" && !busy ? "alert" : "status"} aria-live={feedback?.kind === "error" && !busy ? "assertive" : "polite"}><GlobalFeedbackRegion feedback={operationFeedback} announce={false} /></div> : null}
     {view.reasons.length ? <div className="global-resolution-alert" role="alert"><strong>Operación bloqueada.</strong><ul>{view.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div> : null}
     {incidents.length ? <div className="transaction-incidents" role="alert" aria-label="Incidencias transaccionales">{incidents.map((incident) => <article key={incident.incidentId}><strong>{incident.kind}</strong><span>{incident.safeSummary}</span><small>Acción: {incident.actionRequired} · {short(incident.fingerprint)}</small></article>)}</div> : null}
 

@@ -31,7 +31,7 @@ export default function LaboratoryMenu({activeRoute, onNavigate}: {activeRoute: 
   const pendingNotifications = notifications.filter((notification) => notification.deliveryStatus === "pending").length;
   const telegramStatus = useMemo(() => {
     const latest = notifications.filter((item) => item.deliveryStatus === "sent" || item.deliveryStatus === "failed").sort((left, right) => Date.parse(right.updatedAt ?? right.createdAt) - Date.parse(left.updatedAt ?? left.createdAt))[0];
-    return latest ? latest.deliveryStatus === "failed" ? "Con incidencias" : "Operativo" : "Sin datos";
+    return latest ? latest.deliveryStatus === "failed" ? "Fallo en historial" : "Historial sin fallos" : "Sin datos";
   }, [notifications]);
   const indicators: Record<LaboratoryRouteId, string> = {status: processActive ? "Proceso activo" : `${pendingNotifications} pendientes`, editorial: "Puesto de trabajo", revision: `${activeReviewCount} activos`, activity: `${pendingNotifications} pendientes`, telegram: telegramStatus};
   return <div className="laboratory-menu" ref={wrapperRef}>

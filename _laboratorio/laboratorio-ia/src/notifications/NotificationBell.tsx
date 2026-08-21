@@ -22,7 +22,8 @@ import type {
   LabNotification,
 } from "./types";
 import {presentHistoricalEditorialCopy} from "../lib/editorialReadError";
-import {FeedbackEmptyState} from "../components/feedback/VisualFeedback";
+import {adaptNotificationFeedback} from "../feedback";
+import {FeedbackEmptyState, FeedbackMeta} from "../components/feedback/VisualFeedback";
 
 const MAX_VISIBLE_NOTIFICATIONS = 20;
 
@@ -83,6 +84,7 @@ const NotificationItem = memo(function NotificationItem({
 }): ReactElement {
   const title = presentHistoricalEditorialCopy(notification.title);
   const message = presentHistoricalEditorialCopy(notification.message);
+  const feedback = adaptNotificationFeedback(notification, {title, message});
 
   function openLocation(): void {
     markNotificationAsRead(notification.id);
@@ -143,6 +145,8 @@ const NotificationItem = memo(function NotificationItem({
         <p style={styles.itemMessage}>
           {message}
         </p>
+
+        <FeedbackMeta feedback={feedback} />
 
         <NotificationGroupingMetadata
           notification={notification}

@@ -37,7 +37,8 @@ import {
   presentHistoricalEditorialCopy,
   presentTelegramDeliveryFailure,
 } from "../lib/editorialReadError";
-import {FeedbackEmptyState} from "../components/feedback/VisualFeedback";
+import {adaptNotificationFeedback, adaptTelegramHealthFeedback} from "../feedback";
+import {FeedbackEmptyState, GlobalFeedbackRegion} from "../components/feedback/VisualFeedback";
 
 type LevelFilter = "all" | NotificationLevel;
 type PriorityFilter =
@@ -129,10 +130,12 @@ function formatDeliveryDuration(milliseconds: number): string {
 }
 
 function getStateLabel(
-  errors: number,
+  hasLiveIncident: boolean,
+  historicalErrors: number,
   reviews: number,
 ): string {
-  if (errors > 0) return `${errors} error${errors === 1 ? "" : "es"}`;
+  if (hasLiveIncident) return "Incidencia activa";
+  if (historicalErrors > 0) return `${historicalErrors} registro${historicalErrors === 1 ? "" : "s"} histórico${historicalErrors === 1 ? "" : "s"} con error`;
   if (reviews > 0) {
     return `${reviews} revisión${reviews === 1 ? "" : "es"} pendiente${reviews === 1 ? "" : "s"}`;
   }
@@ -157,6 +160,7 @@ const ActivityItem = memo(function ActivityItem({
   );
   const title = presentHistoricalEditorialCopy(notification.title);
   const message = presentHistoricalEditorialCopy(notification.message);
+  const feedback = adaptNotificationFeedback(notification, {title, message});
 
   return (
     <article style={styles.activityItem}>
@@ -175,17 +179,11 @@ const ActivityItem = memo(function ActivityItem({
 
         <div style={styles.latestBody}>
           <div style={styles.activityTitleRow}>
-            <strong style={styles.latestTitle}>
-              {title}
-            </strong>
             <NotificationPriorityBadge
               priority={notification.priority}
             />
           </div>
-
-          <p style={styles.latestMessage}>
-            {message}
-          </p>
+          <GlobalFeedbackRegion feedback={feedback} announce={false} />
 
           <NotificationGroupingMetadata
             notification={notification}
@@ -328,6 +326,21 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
     }
   }
 
+  async function retryTelegramHealth(): Promise<void> {
+    setIsCheckingTelegram(true);
+    setLiveTelegramError(null);
+    try {
+      const health = await getTelegramHealth();
+      setLiveTelegramHealth(health);
+      setLiveTelegramError(health.error ? telegramEditorialError(health.error) : null);
+    } catch (error) {
+      console.warn("[FFN3] Error técnico reintentando Telegram", error);
+      setLiveTelegramError(telegramEditorialError(error));
+    } finally {
+      setIsCheckingTelegram(false);
+    }
+  }
+
   const availableSources = useMemo(() => {
     const sources = new Map<string, string>();
 
@@ -403,7 +416,11 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
   const telegramHealth = useMemo(() => {
     const calculated = calculateTelegramDeliveryHealth(notifications);
     return {
-      channelStatus: calculated.channelStatus,
+      channelStatus: calculated.channelStatus === "Con incidencias"
+        ? "Fallos registrados"
+        : calculated.channelStatus === "Operativo"
+          ? "Entregas correctas"
+          : "Sin datos",
       successRate:
         calculated.successRate === null
           ? "—"
@@ -446,24 +463,29 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
     [notifications],
   );
 
-  const liveStatus = !liveTelegramHealth
-    ? liveTelegramError
-      ? "Error"
-      : "Sin comprobar"
+  const liveStatus = liveTelegramError
+    ? "Error"
+    : !liveTelegramHealth
+      ? "Sin comprobar"
     : !liveTelegramHealth.enabled
       ? "Deshabilitado"
     : !liveTelegramHealth.configured
       ? "Configuración incompleta"
       : liveTelegramHealth.deliveryMode === "sandbox"
         ? "Sandbox seguro"
-        : liveTelegramError
-          ? "Error"
-          : liveTelegramHealth.ok
+        : liveTelegramHealth.ok
             ? "Disponible"
             : "Error";
   const liveCheckedAt = liveTelegramHealth?.checkedAt
     ? formatRelativeDate(liveTelegramHealth.checkedAt, now)
     : "Sin comprobar";
+  const liveTelegramFeedback = adaptTelegramHealthFeedback({
+    health: liveTelegramHealth,
+    error: liveTelegramError,
+    checking: isCheckingTelegram,
+    testRequested: lastCheckWasTest,
+  });
+  const hasLiveTelegramIncident = liveTelegramFeedback.state === "error" || liveTelegramFeedback.state === "blocked";
 
   return (
     <section id={view === "summary" ? "laboratory-status" : view === "telegram" ? "telegram-status" : "activity-center"} style={styles.card}>
@@ -481,15 +503,15 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
         <div
           style={{
             ...styles.healthBadge,
-            ...(errorCount > 0
+            ...(hasLiveTelegramIncident
               ? styles.healthError
-              : reviewCount > 0
+              : errorCount > 0 || reviewCount > 0
                 ? styles.healthReview
                 : styles.healthOk),
           }}
         >
           <span style={styles.healthDot} />
-          {getStateLabel(errorCount, reviewCount)}
+          {getStateLabel(hasLiveTelegramIncident, errorCount, reviewCount)}
         </div>
       </div>
 
@@ -497,8 +519,8 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
         <div className="laboratory-summary-grid" aria-label="Resumen del laboratorio">
           <div><strong>{deliveryMetrics.pending}</strong><span>Entregas pendientes</span></div>
           <div><strong>{reviewCount}</strong><span>Revisiones sin leer</span></div>
-          <div><strong>{errorCount}</strong><span>Errores activos</span></div>
-          <div><strong>{telegramHealth.channelStatus}</strong><span>Telegram</span></div>
+          <div><strong>{errorCount}</strong><span>Errores históricos sin leer</span></div>
+          <div><strong>{isCheckingTelegram ? "Comprobando" : liveStatus}</strong><span>Telegram en vivo</span></div>
           <div><strong>{notifications.length}</strong><span>Actividades registradas</span></div>
         </div>
       ) : null}
@@ -672,10 +694,10 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
         <div style={styles.telegramHealthHeader}>
           <div>
             <strong style={styles.telegramHealthTitle}>
-              Salud de Telegram
+              Historial de entregas Telegram
             </strong>
             <span style={styles.telegramHealthSubtitle}>
-              Calculada sobre el historial local actual
+              Métricas históricas; no representan por sí solas la salud actual
             </span>
           </div>
         </div>
@@ -683,14 +705,14 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
         <div style={styles.telegramHealthGrid}>
           <div style={styles.telegramHealthItem}>
             <span style={styles.telegramHealthLabel}>
-              Estado del canal
+              Estado del historial
             </span>
             <strong
               style={{
                 ...styles.telegramHealthValue,
-                ...(telegramHealth.channelStatus === "Operativo"
+                ...(telegramHealth.channelStatus === "Entregas correctas"
                   ? styles.telegramHealthOk
-                  : telegramHealth.channelStatus === "Con incidencias"
+                  : telegramHealth.channelStatus === "Fallos registrados"
                     ? styles.telegramHealthIssue
                     : styles.telegramHealthUnknown),
               }}
@@ -833,23 +855,7 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
             </div>
           </div>
 
-          {lastCheckWasTest &&
-          liveTelegramHealth?.ok &&
-          !liveTelegramHealth.skipped ? (
-            <span style={styles.liveTelegramSuccess}>
-              Prueba enviada correctamente a Telegram.
-            </span>
-          ) : null}
-
-          {lastCheckWasTest && liveTelegramHealth?.skipped ? (
-            <span style={styles.liveTelegramNotice}>
-              {liveTelegramHealth.deliveryMode === "sandbox"
-                ? "La prueba se registró en sandbox sin enviar mensajes externos."
-                : "La prueba se omitió porque Telegram está deshabilitado."}
-            </span>
-          ) : null}
-
-          {liveTelegramError ? <span style={styles.liveTelegramError} role="alert"><span>{liveTelegramError}</span><button type="button" onClick={() => { void getTelegramHealth().then((health) => { setLiveTelegramHealth(health); setLiveTelegramError(health.error ? telegramEditorialError(health.error) : null); }).catch((error: unknown) => { console.warn("[FFN3] Error técnico reintentando Telegram", error); setLiveTelegramError(telegramEditorialError(error)); }); }} disabled={isCheckingTelegram} aria-label="Reintentar la comprobación de Telegram">Reintentar</button></span> : null}
+          {liveTelegramError ? <div role="alert" aria-label="Reintentar la comprobación de Telegram"><GlobalFeedbackRegion feedback={liveTelegramFeedback} announce={false} onAction={() => { void retryTelegramHealth(); }} /></div> : <GlobalFeedbackRegion feedback={liveTelegramFeedback} onAction={() => { void retryTelegramHealth(); }} />}
         </div>
       </section>
       ) : null}

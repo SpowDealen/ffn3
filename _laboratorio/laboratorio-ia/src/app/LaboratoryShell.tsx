@@ -11,7 +11,7 @@ export default function LaboratoryShell({route, onNavigate, children}: {route: L
     <a className="laboratory-skip-link" href="#laboratory-main">Saltar al contenido</a>
     <header className="laboratory-navbar">
       <a className="laboratory-brand" href={import.meta.env.BASE_URL} onClick={(event) => {event.preventDefault(); onNavigate("/");}}><span>FFN3</span><strong>Laboratorio IA</strong></a>
-      <div className="review-nav-actions"><LaboratoryMenu activeRoute={route.id} onNavigate={onNavigate} /><NotificationBell /></div>
+      <div className="review-nav-actions"><LaboratoryMenu activeRoute={route.id} onNavigate={onNavigate} />{route.id !== "activity" ? <NotificationBell /> : null}</div>
     </header>
     <div className="laboratory-process"><ProcessBar /></div>
     <main id="laboratory-main" className={`laboratory-screen laboratory-screen-${route.id}`}>

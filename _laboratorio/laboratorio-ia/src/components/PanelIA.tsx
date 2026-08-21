@@ -10,7 +10,8 @@ import { saveDraft } from "../lib/saveDraft";
 import { getApiBaseUrl } from "../lib/apiUrl";
 import {classifyEditorialReadError, type EditorialReadError} from "../lib/editorialReadError";
 import {readEditorialJsonResponse} from "../lib/editorialJsonResponse";
-import {FeedbackBanner, InlineLoader} from "./feedback/VisualFeedback";
+import {adaptEditorialStatusFeedback} from "../feedback";
+import {FeedbackBanner, GlobalFeedbackRegion} from "./feedback/VisualFeedback";
 import {
   notifyAnalysisCompleted,
   notifyDraftBatchProcessed,
@@ -229,13 +230,18 @@ type SaveDraftStatus =
 function EditorialLoadFeedback({status, onRetry, retrying}: {status: OfficialSourceStatus; onRetry?: () => void; retrying?: boolean}): ReactElement | null {
   if (status.type === "idle") return null;
   const isError = status.type === "error";
-  return <FeedbackBanner
-    state={isError ? "error" : "success"}
-    title={status.message}
-    action={isError && status.retryable && onRetry ? {label: "Reintentar", onClick: onRetry, disabled: retrying} : undefined}
-  >
-    {retrying ? <InlineLoader label="Reintentando la carga…" /> : null}
-  </FeedbackBanner>;
+  const feedback = adaptEditorialStatusFeedback(status, {
+    source: "Panel Editorial",
+    operation: "official_source_load",
+    retrying,
+  });
+  return <div role={isError ? "alert" : "status"} aria-live={isError ? "assertive" : "polite"} data-retry-label={isError && status.retryable ? "Reintentar" : undefined}>
+    <GlobalFeedbackRegion
+      feedback={feedback}
+      announce={false}
+      onAction={isError && status.retryable && onRetry ? () => onRetry() : undefined}
+    />
+  </div>;
 }
 
 type ReferenceEntitiesApiResponse =
@@ -10877,7 +10883,7 @@ export default function PanelIA(): ReactElement {
 
             {isLoadingReferences ? (
               <FeedbackBanner state="loading" title="Actualizando referencias editoriales">
-                <InlineLoader label="Consultando las referencias disponibles…" />
+                Consultando las referencias disponibles…
               </FeedbackBanner>
             ) : null}
 

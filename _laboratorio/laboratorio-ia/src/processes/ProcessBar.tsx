@@ -3,18 +3,13 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import {ProgressBar} from "../components/feedback/VisualFeedback";
+import {FeedbackMeta, ProgressBar, toVisualFeedbackState} from "../components/feedback/VisualFeedback";
+import {adaptLabProcessFeedback} from "../feedback";
 import {
   getActiveProcess,
   subscribeToProcess,
 } from "./store";
 import type {LabProcess} from "./types";
-
-function toFeedbackState(process: LabProcess): "processing" | "success" | "error" {
-  if (process.status === "success") return "success";
-  if (process.status === "error") return "error";
-  return "processing";
-}
 
 export default function ProcessBar(): ReactElement | null {
   const [process, setProcess] = useState<LabProcess | null>(null);
@@ -26,20 +21,20 @@ export default function ProcessBar(): ReactElement | null {
   }, []);
 
   if (!process) return null;
+  const feedback = adaptLabProcessFeedback(process);
+  const progress = feedback.progress;
 
   return (
-    <ProgressBar
-      label={
-        process.status === "success"
-          ? "Proceso completado"
-          : process.status === "error"
-            ? "Proceso interrumpido"
-            : process.label
-      }
-      current={process.current}
-      total={process.total}
-      detail={process.detail}
-      state={toFeedbackState(process)}
-    />
+    <section className="global-feedback-region global-feedback-global" data-feedback-scope={feedback.scope} data-feedback-state={feedback.state} role={process.status === "error" ? "alert" : "status"} aria-live={process.status === "error" ? "assertive" : "polite"} aria-busy={process.status === "running"}>
+      <ProgressBar
+        label={feedback.title}
+        current={progress?.kind === "determinate" ? progress.current : undefined}
+        total={progress?.kind === "determinate" ? progress.total : undefined}
+        detail={feedback.detail}
+        state={toVisualFeedbackState(feedback.state)}
+        announce={false}
+      />
+      <FeedbackMeta feedback={feedback} />
+    </section>
   );
 }
