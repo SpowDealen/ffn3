@@ -172,6 +172,7 @@ const ActivityItem = memo(function ActivityItem({
 
   return (
     <article
+      className="motion-activity-item"
       style={{...styles.activityItem, ...(!notification.read ? styles.activityItemUnread : {})}}
       data-notification-tone={presentation.tone}
     >
@@ -224,7 +225,7 @@ const ActivityItem = memo(function ActivityItem({
       </div>
 
       {detailExpanded ? (
-        <div id={detailId} style={styles.detailPanel}>
+        <div id={detailId} className="motion-disclosure-content" style={styles.detailPanel}>
           <GlobalFeedbackRegion feedback={feedback} announce={false} />
           <NotificationGroupingMetadata notification={notification} now={now} />
           <section style={styles.deliverySection} aria-label="Resultado de entrega individual">
@@ -642,6 +643,7 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
 
             return (
               <button
+                className="motion-filter-chip"
                 key={metric.key}
                 type="button"
                 onClick={() => setMetricFilter(metric.key)}
@@ -1216,7 +1218,7 @@ const styles: Record<string, CSSProperties> = {
     textAlign: "center",
     cursor: "pointer",
     transition:
-      "border-color 140ms ease, background 140ms ease, transform 140ms ease",
+      "border-color var(--motion-duration-fast) var(--motion-ease-standard), background-color var(--motion-duration-fast) var(--motion-ease-standard), transform var(--motion-duration-fast) var(--motion-ease-standard)",
   },
 
   metricActive: {

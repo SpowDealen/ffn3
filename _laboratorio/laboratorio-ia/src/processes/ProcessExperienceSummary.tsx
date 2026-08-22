@@ -8,7 +8,7 @@ export default function ProcessExperienceSummary({process, compact = false, anno
   const badgeState = process.isLive ? process.feedbackState : process.feedbackState === "loading" || process.feedbackState === "processing" ? "idle" : process.feedbackState;
   const shouldAnnounce = announce && process.isLive;
   return (
-    <article className={`process-experience process-experience-${process.state}`} data-process-temporal={process.temporal} data-process-live={process.isLive ? "true" : "false"} role={shouldAnnounce ? "status" : undefined} aria-live={shouldAnnounce ? "polite" : undefined} aria-busy={shouldAnnounce ? true : undefined}>
+    <article className={`process-experience process-experience-${process.state}`} data-motion-intent="state-transition" data-process-temporal={process.temporal} data-process-live={process.isLive ? "true" : "false"} role={shouldAnnounce ? "status" : undefined} aria-live={shouldAnnounce ? "polite" : undefined} aria-busy={shouldAnnounce ? true : undefined}>
       <header className="process-experience-heading">
         <div>
           <span className="process-experience-source">{process.source}</span>

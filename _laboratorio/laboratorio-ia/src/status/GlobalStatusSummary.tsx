@@ -65,7 +65,7 @@ export default function GlobalStatusSummary({onNavigate}: {onNavigate: (path: st
   const refreshCapability = adaptRefreshInteraction({id: "global-status-refresh", label: "Actualizar estado", busyLabel: "Actualizando estado…", busy: refreshing, source: "LES 4 · Global Status"});
 
   return (
-    <section className={`global-status global-status-${model.state}`} aria-labelledby="global-status-title">
+    <section className={`global-status global-status-${model.state}`} data-motion-intent="status-transition" aria-labelledby="global-status-title">
       <header className="global-status-heading">
         <div className="global-status-announcement" role={urgent ? "alert" : "status"} aria-live={urgent ? "assertive" : "polite"} aria-atomic="true">
           <p className="review-kicker">LES 4 · ESTADO GLOBAL</p>

@@ -54,7 +54,7 @@ const NotificationItem = memo(function NotificationItem({notification}: {notific
   const visual = getNotificationVisual(notification.kind, notification.level);
 
   return (
-    <article style={{...styles.item, ...(!notification.read ? styles.itemUnread : {})}} data-notification-tone={presentation.tone}>
+    <article className="motion-notification-item" style={{...styles.item, ...(!notification.read ? styles.itemUnread : {})}} data-notification-tone={presentation.tone}>
       <div style={{...styles.statusIcon, ...visual}} aria-hidden="true">
         <span style={styles.emojiIcon}>{visual.emoji}</span>
       </div>
@@ -120,12 +120,12 @@ export default function NotificationBell(): ReactElement {
 
   return (
     <div ref={wrapperRef} style={styles.wrapper}>
-      <button ref={buttonRef} type="button" onClick={() => setIsOpen((current) => !current)} style={{...styles.bellButton, ...(isOpen ? styles.bellButtonActive : {})}} aria-expanded={isOpen} aria-controls={PANEL_ID} aria-label={`Actividad del laboratorio. ${unreadCount} sin leer`} title="Actividad del laboratorio">
+      <button className="motion-interaction" ref={buttonRef} type="button" onClick={() => setIsOpen((current) => !current)} style={{...styles.bellButton, ...(isOpen ? styles.bellButtonActive : {})}} aria-expanded={isOpen} aria-controls={PANEL_ID} aria-label={`Actividad del laboratorio. ${unreadCount} sin leer`} title="Actividad del laboratorio">
         <BellIcon />
         {unreadCount > 0 ? <span style={styles.badge}>{unreadCount > 9 ? "9+" : unreadCount}</span> : null}
       </button>
       {isOpen ? (
-        <section id={PANEL_ID} style={styles.panel} aria-label="Resumen de actividad histórica">
+        <section className="motion-popover" id={PANEL_ID} style={styles.panel} aria-label="Resumen de actividad histórica">
           <header style={styles.panelHeader}>
             <div>
               <strong style={styles.panelTitle}>Actividad reciente</strong>
@@ -150,7 +150,7 @@ export default function NotificationBell(): ReactElement {
 const styles: Record<string, CSSProperties> = {
   wrapper: {position: "relative", display: "inline-flex", justifyContent: "flex-end"},
   bellButton: {position: "relative", display: "grid", placeItems: "center", width: 40, height: 40, padding: 0, border: "1px solid rgba(255,255,255,0.11)", borderRadius: 12, background: "rgba(255,255,255,0.045)", color: "#dce3ea", cursor: "pointer"},
-  bellButtonActive: {background: "rgba(255,255,255,0.09)", borderColor: "rgba(255,255,255,0.2)", color: "#fff"},
+  bellButtonActive: {background: "rgba(255,255,255,0.09)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff"},
   badge: {position: "absolute", top: -5, right: -5, display: "grid", placeItems: "center", minWidth: 18, height: 18, padding: "0 4px", border: "2px solid #0b0f14", borderRadius: 999, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 800},
   panel: {position: "absolute", top: 48, right: 0, zIndex: 1000, width: "min(360px, calc(100vw - 32px))", maxHeight: "min(520px, calc(100vh - 90px))", overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, background: "#12171d", color: "#f5f7fa", boxShadow: "0 18px 45px rgba(0,0,0,0.34)"},
   panelHeader: {display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, padding: "15px 16px 13px", borderBottom: "1px solid rgba(255,255,255,0.075)"},
