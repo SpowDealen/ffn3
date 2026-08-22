@@ -11,11 +11,10 @@ import {getNotificationVisual} from "./icons";
 import NotificationDeliveryStatus from "./NotificationDeliveryStatus";
 import NotificationAuditDetails from "./NotificationAuditDetails";
 import NotificationGroupingMetadata from "./NotificationGroupingMetadata";
-import NotificationPriorityBadge, {
-  getNotificationPriorityPresentation,
-} from "./NotificationPriorityBadge";
+import NotificationPriorityBadge from "./NotificationPriorityBadge";
 import {
   getNotifications,
+  markNotificationAsRead,
   subscribeToNotifications,
 } from "./store";
 import {
@@ -39,6 +38,7 @@ import {
 } from "../lib/editorialReadError";
 import {adaptNotificationFeedback, adaptTelegramHealthFeedback} from "../feedback";
 import {FeedbackEmptyState, GlobalFeedbackRegion} from "../components/feedback/VisualFeedback";
+import {buildNotificationPresentation} from "./presentation";
 
 type LevelFilter = "all" | NotificationLevel;
 type PriorityFilter =
@@ -62,16 +62,6 @@ const METRIC_CARDS: Array<{
   {key: "pending", icon: "🟡", label: "Pendientes"},
   {key: "skipped", icon: "⚪", label: "Omitidas"},
   {key: "grouped", icon: "🔄", label: "Agrupadas"},
-];
-
-const PRIORITY_METRIC_CARDS: Array<{
-  key: NotificationPriority;
-  label: string;
-}> = [
-  {key: "critical", label: "Críticas"},
-  {key: "high", label: "Altas"},
-  {key: "normal", label: "Normales"},
-  {key: "low", label: "Bajas"},
 ];
 
 function normalizeSource(value: string): string {
@@ -146,11 +136,15 @@ function getStateLabel(
 const ActivityItem = memo(function ActivityItem({
   notification,
   now,
+  detailExpanded,
+  onToggleDetail,
   auditExpanded,
   onToggleAudit,
 }: {
   notification: LabNotification;
   now: number;
+  detailExpanded: boolean;
+  onToggleDetail: (id: string) => void;
   auditExpanded: boolean;
   onToggleAudit: (id: string) => void;
 }): ReactElement {
@@ -161,9 +155,25 @@ const ActivityItem = memo(function ActivityItem({
   const title = presentHistoricalEditorialCopy(notification.title);
   const message = presentHistoricalEditorialCopy(notification.message);
   const feedback = adaptNotificationFeedback(notification, {title, message});
+  const presentation = buildNotificationPresentation(notification, {title, message});
+  const detailId = `notification-detail-${notification.id}`;
+
+  function openLocation(): void {
+    markNotificationAsRead(notification.id);
+    const url = notification.location?.url;
+    if (!url) return;
+    if (/^https?:\/\//i.test(url)) {
+      window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    window.location.assign(url);
+  }
 
   return (
-    <article style={styles.activityItem}>
+    <article
+      style={{...styles.activityItem, ...(!notification.read ? styles.activityItemUnread : {})}}
+      data-notification-tone={presentation.tone}
+    >
       <div style={styles.latestActivity}>
         <div
           style={{
@@ -179,40 +189,55 @@ const ActivityItem = memo(function ActivityItem({
 
         <div style={styles.latestBody}>
           <div style={styles.activityTitleRow}>
+            <strong style={styles.latestTitle}>{title}</strong>
             <NotificationPriorityBadge
               priority={notification.priority}
             />
+            {!notification.read ? <span style={styles.unreadLabel}>Sin leer</span> : null}
           </div>
-          <GlobalFeedbackRegion feedback={feedback} announce={false} />
-
-          <NotificationGroupingMetadata
-            notification={notification}
-            now={now}
-          />
-
-          <NotificationDeliveryStatus
-            notification={notification}
-          />
+          <p style={styles.latestMessage}>{message}</p>
+          <div style={styles.summaryLine}>
+            <span>{presentation.source}</span>
+            <span>{formatRelativeDate(notification.createdAt, now)}</span>
+            {presentation.group.label ? <span>{presentation.group.label}</span> : null}
+            {presentation.delivery.retryable ? <strong style={styles.actionRequired}>Requiere acción</strong> : null}
+          </div>
         </div>
       </div>
 
-      <div style={styles.latestMeta}>
-        <span>
-          {notification.source
-            ? `Origen: ${notification.source}`
-            : "Origen: Laboratorio"}
-        </span>
-
-        <span>
-          {formatRelativeDate(notification.createdAt, now)}
-        </span>
+      <div style={styles.itemActions}>
+        {!notification.read ? (
+          <button type="button" onClick={() => markNotificationAsRead(notification.id)} style={styles.itemAction}>
+            Marcar como leída
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => onToggleDetail(notification.id)}
+          style={styles.itemAction}
+          aria-expanded={detailExpanded}
+          aria-controls={detailId}
+        >
+          {detailExpanded ? "Ocultar detalle" : "Ver detalle"}
+        </button>
       </div>
 
-      <NotificationAuditDetails
-        notification={notification}
-        expanded={auditExpanded}
-        onToggle={onToggleAudit}
-      />
+      {detailExpanded ? (
+        <div id={detailId} style={styles.detailPanel}>
+          <GlobalFeedbackRegion feedback={feedback} announce={false} />
+          <NotificationGroupingMetadata notification={notification} now={now} />
+          <section style={styles.deliverySection} aria-label="Resultado de entrega individual">
+            <span style={styles.detailEyebrow}>Entrega individual</span>
+            <NotificationDeliveryStatus notification={notification} />
+          </section>
+          {notification.location ? (
+            <button type="button" onClick={openLocation} style={styles.locationAction}>
+              {notification.location.label} <span aria-hidden="true">→</span>
+            </button>
+          ) : null}
+          <NotificationAuditDetails notification={notification} expanded={auditExpanded} onToggle={onToggleAudit} />
+        </div>
+      ) : null}
     </article>
   );
 });
@@ -239,8 +264,19 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
     useState(false);
   const [lastCheckWasTest, setLastCheckWasTest] =
     useState(false);
+  const [expandedDetailIds, setExpandedDetailIds] =
+    useState<Set<string>>(() => new Set());
   const [expandedAuditIds, setExpandedAuditIds] =
     useState<Set<string>>(() => new Set());
+
+  const toggleNotificationDetail = useCallback((id: string) => {
+    setExpandedDetailIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const toggleNotificationAudit = useCallback((id: string) => {
     setExpandedAuditIds((current) => {
@@ -299,6 +335,16 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
     );
 
     setExpandedAuditIds((current) => {
+      const remainingIds = new Set(
+        [...current].filter((id) => availableIds.has(id)),
+      );
+
+      return remainingIds.size === current.size
+        ? current
+        : remainingIds;
+    });
+
+    setExpandedDetailIds((current) => {
       const remainingIds = new Set(
         [...current].filter((id) => availableIds.has(id)),
       );
@@ -401,12 +447,11 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
     ],
   );
 
-  const hasBaseFilters =
+  const hasActiveFilters =
     levelFilter !== "all" ||
     sourceFilter !== "all" ||
-    priorityFilter !== "all";
-  const hasActiveFilters =
-    hasBaseFilters || metricFilter !== null;
+    priorityFilter !== "all" ||
+    metricFilter !== null;
 
   const deliveryMetrics = useMemo(
     () => calculateDeliveryMetrics(notifications),
@@ -589,13 +634,14 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
             : "notificaciones"}
         </span>
 
-        {hasBaseFilters ? (
+        {hasActiveFilters ? (
           <button
             type="button"
             onClick={() => {
               setLevelFilter("all");
               setSourceFilter("all");
               setPriorityFilter("all");
+              setMetricFilter(null);
             }}
             style={styles.clearFilters}
           >
@@ -634,58 +680,7 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
           })}
         </div>
 
-        {metricFilter ? (
-          <button
-            type="button"
-            onClick={() => setMetricFilter(null)}
-            style={styles.resetMetrics}
-          >
-            Restablecer vista
-          </button>
-        ) : null}
       </div>
-
-      <section style={styles.priorityMetricsSection}>
-        <span style={styles.priorityMetricsTitle}>
-          Prioridades
-        </span>
-        <div style={styles.priorityMetrics}>
-          {PRIORITY_METRIC_CARDS.map((metric) => {
-            const presentation =
-              getNotificationPriorityPresentation(metric.key);
-            const isActive = priorityFilter === metric.key;
-
-            return (
-              <button
-                key={metric.key}
-                type="button"
-                onClick={() => {
-                  setPriorityFilter((current) =>
-                    current === metric.key ? "all" : metric.key,
-                  );
-                }}
-                style={{
-                  ...styles.priorityMetric,
-                  ...(isActive
-                    ? styles.priorityMetricActive
-                    : {}),
-                }}
-                aria-pressed={isActive}
-              >
-                <span aria-hidden="true">
-                  {presentation.icon}
-                </span>
-                <strong style={styles.priorityMetricValue}>
-                  {deliveryMetrics[metric.key]}
-                </strong>
-                <span style={styles.priorityMetricLabel}>
-                  {metric.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
       </>
       ) : null}
 
@@ -870,6 +865,10 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
                   key={notification.id}
                   notification={notification}
                   now={now}
+                  detailExpanded={expandedDetailIds.has(
+                    notification.id,
+                  )}
+                  onToggleDetail={toggleNotificationDetail}
                   auditExpanded={expandedAuditIds.has(
                     notification.id,
                   )}
@@ -1041,8 +1040,15 @@ const styles: Record<string, CSSProperties> = {
   },
 
   activityItem: {
-    padding: "12px 0",
+    padding: 12,
     borderBottom: "1px solid rgba(255,255,255,0.06)",
+    borderLeft: "2px solid transparent",
+    borderRadius: 10,
+  },
+
+  activityItemUnread: {
+    borderLeftColor: "#60a5fa",
+    background: "rgba(96,165,250,0.045)",
   },
 
   latestActivity: {
@@ -1104,6 +1110,83 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.45,
     WebkitBoxOrient: "vertical",
     WebkitLineClamp: 2,
+  },
+
+  unreadLabel: {
+    padding: "2px 6px",
+    borderRadius: 999,
+    background: "rgba(96,165,250,0.12)",
+    color: "#93c5fd",
+    fontSize: 9,
+    fontWeight: 750,
+  },
+
+  summaryLine: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 8,
+    color: "#6f7a86",
+    fontSize: 9,
+  },
+
+  actionRequired: {
+    color: "#fca5a5",
+    fontWeight: 800,
+  },
+
+  itemActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 12,
+    marginTop: 10,
+  },
+
+  itemAction: {
+    padding: 0,
+    border: 0,
+    background: "transparent",
+    color: "#8dbcf5",
+    fontSize: 10,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+
+  detailPanel: {
+    display: "grid",
+    gap: 10,
+    marginTop: 11,
+    padding: 12,
+    border: "1px solid rgba(255,255,255,0.07)",
+    borderRadius: 10,
+    background: "rgba(2,6,10,0.32)",
+  },
+
+  deliverySection: {
+    display: "grid",
+    gap: 2,
+    paddingTop: 8,
+    borderTop: "1px solid rgba(255,255,255,0.06)",
+  },
+
+  detailEyebrow: {
+    color: "#727e8a",
+    fontSize: 9,
+    fontWeight: 800,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+  },
+
+  locationAction: {
+    justifySelf: "start",
+    padding: 0,
+    border: 0,
+    background: "transparent",
+    color: "#8dbcf5",
+    fontSize: 10,
+    fontWeight: 700,
+    cursor: "pointer",
   },
 
   latestMeta: {
@@ -1173,72 +1256,6 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 750,
     letterSpacing: "0.07em",
     textTransform: "uppercase",
-  },
-
-  resetMetrics: {
-    padding: 0,
-    border: 0,
-    background: "transparent",
-    color: "#8dbcf5",
-    fontSize: 10,
-    fontWeight: 650,
-    cursor: "pointer",
-  },
-
-  priorityMetricsSection: {
-    display: "grid",
-    gap: 8,
-  },
-
-  priorityMetricsTitle: {
-    color: "#7d8894",
-    fontSize: 9,
-    fontWeight: 750,
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
-  },
-
-  priorityMetrics: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(auto-fit, minmax(min(100%, 110px), 1fr))",
-    gap: 8,
-  },
-
-  priorityMetric: {
-    display: "grid",
-    gridTemplateColumns: "auto auto minmax(0, 1fr)",
-    alignItems: "center",
-    gap: 7,
-    minHeight: 43,
-    padding: "7px 10px",
-    border: "1px solid rgba(255,255,255,0.07)",
-    borderRadius: 11,
-    background: "rgba(5,8,12,0.26)",
-    color: "#e2e7ec",
-    textAlign: "left",
-    cursor: "pointer",
-  },
-
-  priorityMetricActive: {
-    borderColor: "rgba(96,165,250,0.5)",
-    background: "rgba(59,130,246,0.12)",
-    boxShadow: "inset 0 0 0 1px rgba(96,165,250,0.1)",
-  },
-
-  priorityMetricValue: {
-    fontSize: 16,
-    lineHeight: 1,
-  },
-
-  priorityMetricLabel: {
-    overflow: "hidden",
-    color: "#8994a0",
-    fontSize: 9,
-    fontWeight: 700,
-    textOverflow: "ellipsis",
-    textTransform: "uppercase",
-    whiteSpace: "nowrap",
   },
 
   telegramHealth: {
