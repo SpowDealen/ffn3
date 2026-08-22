@@ -5,6 +5,8 @@ import type {
 import {retryNotificationDelivery} from "./store";
 import type {LabNotification} from "./types";
 import {presentTelegramDeliveryFailure} from "../lib/editorialReadError";
+import {adaptRetryInteraction} from "../interactions/adapters";
+import {InteractionButton} from "../interactions/InteractionPrimitives";
 
 const DELIVERY_LABELS = {
   pending: "🟡 Enviando a Telegram…",
@@ -31,6 +33,7 @@ export default function NotificationDeliveryStatus({
     notification.deliverySkipReason === "sandbox"
       ? "🟣 Telegram en sandbox — sin envío externo"
       : DELIVERY_LABELS[status];
+  const retryCapability = adaptRetryInteraction({id: `retry-notification-${notification.id}`, label: "Reintentar", authorized: status === "failed", source: "Notification Store · Telegram delivery"});
 
   return (
     <div style={styles.container}>
@@ -47,16 +50,12 @@ export default function NotificationDeliveryStatus({
       ) : null}
 
       {status === "failed" ? (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.currentTarget.disabled = true;
-            void retryNotificationDelivery(notification.id);
-          }}
+        <InteractionButton
+          capability={retryCapability}
+          onInvoke={() => { void retryNotificationDelivery(notification.id); }}
           style={styles.retryButton}
-        >
-          Reintentar
-        </button>
+          showReason={false}
+        />
       ) : null}
     </div>
   );

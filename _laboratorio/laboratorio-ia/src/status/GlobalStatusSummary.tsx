@@ -6,6 +6,8 @@ import {buildLabProcessPresentation} from "../processes/presentation";
 import {getProcesses, subscribeToProcess} from "../processes/store";
 import type {LabProcess} from "../processes/types";
 import {useReviewCases} from "../review/hooks/useReviewCases";
+import {adaptNavigationInteraction, adaptRefreshInteraction} from "../interactions/adapters";
+import {InteractionButton, InteractionLink} from "../interactions/InteractionPrimitives";
 import {
   adaptNotificationsStatus,
   adaptProcessesStatus,
@@ -59,6 +61,8 @@ export default function GlobalStatusSummary({onNavigate}: {onNavigate: (path: st
     adaptReviewStatus(reviewCases),
   ]), [checks, notifications, processes, reviewCases]);
   const urgent = model.state === "unavailable" || model.state === "blocked";
+  const refreshing = checks.runtime.state === "checking";
+  const refreshCapability = adaptRefreshInteraction({id: "global-status-refresh", label: "Actualizar estado", busyLabel: "Actualizando estado…", busy: refreshing, source: "LES 4 · Global Status"});
 
   return (
     <section className={`global-status global-status-${model.state}`} aria-labelledby="global-status-title">
@@ -70,7 +74,7 @@ export default function GlobalStatusSummary({onNavigate}: {onNavigate: (path: st
         </div>
         <div className="global-status-actions">
           <ProcessingBadge state={FEEDBACK_STATE[model.state]} label={model.label} announce={false} />
-          <button type="button" className="review-button review-button-secondary" onClick={() => { setChecks(INITIAL_GLOBAL_LIVE_CHECKS); setCheckVersion((version) => version + 1); }}>Actualizar estado</button>
+          <InteractionButton capability={refreshCapability} onInvoke={() => { setChecks(INITIAL_GLOBAL_LIVE_CHECKS); setCheckVersion((version) => version + 1); }} />
         </div>
       </header>
 
@@ -88,7 +92,7 @@ export default function GlobalStatusSummary({onNavigate}: {onNavigate: (path: st
             <header><strong>{subsystem.label}</strong><span>{subsystem.state}</span></header>
             <p>{subsystem.summary}</p>
             {subsystem.detail ? <small>{subsystem.detail}</small> : null}
-            {subsystem.route ? <a href={subsystem.route} onClick={(event) => {event.preventDefault(); onNavigate(subsystem.route!);}}>Ver detalle <span aria-hidden="true">→</span></a> : null}
+            {subsystem.route ? <InteractionLink capability={adaptNavigationInteraction({id: `global-status-${subsystem.id}-detail`, label: "Ver detalle", href: subsystem.route, source: subsystem.label})} onNavigate={onNavigate} /> : null}
           </article>
         ))}
       </div>

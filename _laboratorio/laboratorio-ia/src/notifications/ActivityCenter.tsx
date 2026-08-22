@@ -19,7 +19,6 @@ import {
 } from "./store";
 import {
   getTelegramHealth,
-  testTelegramHealth,
   type TelegramHealthResponse,
 } from "./telegramHealth";
 import type {
@@ -39,6 +38,8 @@ import {
 import {adaptNotificationFeedback, adaptTelegramHealthFeedback} from "../feedback";
 import {FeedbackEmptyState, GlobalFeedbackRegion} from "../components/feedback/VisualFeedback";
 import {buildNotificationPresentation} from "./presentation";
+import {adaptRefreshInteraction} from "../interactions/adapters";
+import {InteractionButton} from "../interactions/InteractionPrimitives";
 
 type LevelFilter = "all" | NotificationLevel;
 type PriorityFilter =
@@ -262,8 +263,6 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
     useState<string | null>(null);
   const [isCheckingTelegram, setIsCheckingTelegram] =
     useState(false);
-  const [lastCheckWasTest, setLastCheckWasTest] =
-    useState(false);
   const [expandedDetailIds, setExpandedDetailIds] =
     useState<Set<string>>(() => new Set());
   const [expandedAuditIds, setExpandedAuditIds] =
@@ -308,6 +307,7 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
       30_000,
     );
 
+    setIsCheckingTelegram(true);
     void getTelegramHealth()
       .then((health) => {
         if (!isActive) return;
@@ -320,7 +320,8 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
 
         console.warn("[FFN3] Error técnico comprobando Telegram", error);
         setLiveTelegramError(telegramEditorialError(error));
-      });
+      })
+      .finally(() => { if (isActive) setIsCheckingTelegram(false); });
 
     return () => {
       isActive = false;
@@ -356,23 +357,7 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
   }, [notifications]);
 
   async function checkTelegram(): Promise<void> {
-    setIsCheckingTelegram(true);
-    setLiveTelegramError(null);
-    setLastCheckWasTest(true);
-
-    try {
-      const health = await testTelegramHealth();
-      setLiveTelegramHealth(health);
-      setLiveTelegramError(health.error ? telegramEditorialError(health.error) : null);
-    } catch (error) {
-      console.warn("[FFN3] Error técnico comprobando Telegram", error);
-      setLiveTelegramError(telegramEditorialError(error));
-    } finally {
-      setIsCheckingTelegram(false);
-    }
-  }
-
-  async function retryTelegramHealth(): Promise<void> {
+    if (isCheckingTelegram) return;
     setIsCheckingTelegram(true);
     setLiveTelegramError(null);
     try {
@@ -380,7 +365,7 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
       setLiveTelegramHealth(health);
       setLiveTelegramError(health.error ? telegramEditorialError(health.error) : null);
     } catch (error) {
-      console.warn("[FFN3] Error técnico reintentando Telegram", error);
+      console.warn("[FFN3] Error técnico comprobando Telegram", error);
       setLiveTelegramError(telegramEditorialError(error));
     } finally {
       setIsCheckingTelegram(false);
@@ -528,9 +513,9 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
     health: liveTelegramHealth,
     error: liveTelegramError,
     checking: isCheckingTelegram,
-    testRequested: lastCheckWasTest,
   });
   const hasLiveTelegramIncident = liveTelegramFeedback.state === "error" || liveTelegramFeedback.state === "blocked";
+  const telegramCheckCapability = adaptRefreshInteraction({id: "telegram-health-check", label: "Actualizar diagnóstico", busyLabel: "Actualizando diagnóstico…", busy: isCheckingTelegram, source: "Telegram Health/Sandbox"});
 
   return (
     <section id={view === "summary" ? "laboratory-status" : view === "telegram" ? "telegram-status" : "activity-center"} style={styles.card}>
@@ -773,23 +758,17 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
               </span>
             </div>
 
-            <button
-              type="button"
-              disabled={isCheckingTelegram}
-              onClick={() => {
-                void checkTelegram();
-              }}
+            <InteractionButton
+              capability={telegramCheckCapability}
+              onInvoke={() => { void checkTelegram(); }}
+              showReason={false}
               style={{
                 ...styles.checkTelegramButton,
                 ...(isCheckingTelegram
                   ? styles.checkTelegramButtonDisabled
                   : {}),
               }}
-            >
-              {isCheckingTelegram
-                ? "Comprobando..."
-                : "Comprobar Telegram"}
-            </button>
+            />
           </div>
 
           <div style={styles.liveTelegramGrid}>
@@ -850,7 +829,7 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
             </div>
           </div>
 
-          {liveTelegramError ? <div role="alert" aria-label="Reintentar la comprobación de Telegram"><GlobalFeedbackRegion feedback={liveTelegramFeedback} announce={false} onAction={() => { void retryTelegramHealth(); }} /></div> : <GlobalFeedbackRegion feedback={liveTelegramFeedback} onAction={() => { void retryTelegramHealth(); }} />}
+          {liveTelegramError ? <div role="alert"><GlobalFeedbackRegion feedback={liveTelegramFeedback} announce={false} /></div> : <GlobalFeedbackRegion feedback={liveTelegramFeedback} />}
         </div>
       </section>
       ) : null}
@@ -1006,9 +985,13 @@ const styles: Record<string, CSSProperties> = {
   },
 
   clearFilters: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
     flex: "0 0 auto",
-    marginBottom: 7,
-    padding: 0,
+    minHeight: 44,
+    marginBottom: 0,
+    padding: "8px 10px",
     border: 0,
     background: "transparent",
     color: "#8dbcf5",
@@ -1139,12 +1122,17 @@ const styles: Record<string, CSSProperties> = {
   itemActions: {
     display: "flex",
     justifyContent: "flex-end",
+    flexWrap: "wrap",
     gap: 12,
     marginTop: 10,
   },
 
   itemAction: {
-    padding: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+    padding: "8px 10px",
     border: 0,
     background: "transparent",
     color: "#8dbcf5",
@@ -1363,8 +1351,8 @@ const styles: Record<string, CSSProperties> = {
   },
 
   checkTelegramButton: {
-    minHeight: 30,
-    padding: "0 10px",
+    minHeight: 44,
+    padding: "8px 12px",
     border: "1px solid rgba(96,165,250,0.28)",
     borderRadius: 9,
     background: "rgba(59,130,246,0.1)",
@@ -1375,7 +1363,7 @@ const styles: Record<string, CSSProperties> = {
   },
 
   checkTelegramButtonDisabled: {
-    borderColor: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.08)",
     background: "rgba(255,255,255,0.035)",
     color: "#68737f",
     cursor: "default",
