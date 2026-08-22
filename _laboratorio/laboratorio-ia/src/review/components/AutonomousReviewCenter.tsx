@@ -15,6 +15,8 @@ import {
 } from "../editorialDecision";
 import {getReviewCase} from "../store/reviewStore";
 import type {ReviewCase} from "../types";
+import ProcessExperienceSummary from "../../processes/ProcessExperienceSummary";
+import {buildAutonomousProcessPresentation} from "../../processes/presentation";
 
 type Feedback = Readonly<{kind: "status" | "error"; message: string}>;
 const STATE_LABELS: Readonly<Record<AutonomousReviewCenterModel["state"], string>> = Object.freeze({not_initialized: "No iniciado", evaluating: "Evaluando", investigating: "Investigando", planning: "Planificando", preparing_transaction: "Preparando transacción", executing_supervised: "Ejecutando supervisado", observing: "Observando", paused: "Pausado", authorization_required: "Autorización requerida", reconciliation_required: "Reconciliación requerida", compensation_required: "Compensación requerida", human_review: "Revisión humana", blocked: "Bloqueado", completed: "Completado", stale: "Stale"});
@@ -80,6 +82,7 @@ export default function AutonomousReviewCenter({reviewCase}: {reviewCase: Review
   }
 
   const cta = model.actionRequired;
+  const processPresentation = buildAutonomousProcessPresentation(model, busy);
   return <section className="review-subsection autonomous-operational-center" aria-labelledby={`autonomous-center-title-${reviewCase.id}`} aria-busy={busy}>
     <div className="review-row review-row-wrap">
       <div><p className="review-kicker">AU8 · CENTRO AUTÓNOMO</p><h4 className="review-subtitle" id={`autonomous-center-title-${reviewCase.id}`}>Centro Autónomo</h4><p className="review-muted">Recupera y explica. Abrir el caso no inicia evaluaciones, transacciones ni efectos.</p></div>
@@ -92,6 +95,8 @@ export default function AutonomousReviewCenter({reviewCase}: {reviewCase: Review
       <div><dt>Autonomía</dt><dd>{model.autonomy?.level ?? "—"}</dd></div><div><dt>Estrategia</dt><dd>{model.strategy?.status ?? "—"}</dd></div>
       <div><dt>Transacción</dt><dd>{model.transaction.completed}/{model.transaction.total}</dd></div><div><dt>Iteración</dt><dd>{model.loop?.iteration ?? "—"}</dd></div>
     </dl>
+
+    <ProcessExperienceSummary process={processPresentation} />
 
     <div className="review-actions autonomous-center-actions" aria-label="Controles explícitos del Centro Autónomo">
       {model.state === "not_initialized" ? <button className="review-button" type="button" disabled={busy} onClick={regenerate}>Iniciar evaluación</button> : null}

@@ -62,15 +62,15 @@ export function adaptLabProcessFeedback(process: LabProcess): GlobalFeedback {
     scope: "process",
     hierarchy: "global",
     title: process.status === "success" ? "Proceso completado" : process.status === "error" ? "Proceso interrumpido" : process.label,
-    detail: process.detail,
-    source: "Process Store",
+    detail: process.status === "success" ? undefined : process.detail,
+    source: process.origin ?? "Panel IA · Process Store",
     operation: process.label,
     retryable: false,
     progress: process.status === "running"
       ? measured ? {kind: "determinate", current: process.current!, total: process.total!} : {kind: "indeterminate"}
       : measured ? {kind: "determinate", current: process.current!, total: process.total!} : undefined,
-    timestamp: process.startedAt,
-    isHistorical: false,
+    timestamp: process.updatedAt ?? process.startedAt,
+    isHistorical: process.status !== "running",
   });
 }
 

@@ -2713,6 +2713,12 @@ export default function PanelIA(): ReactElement {
         id: processId,
         label: `Analizando noticias de ${processSourceName}`,
         detail: `${externalNewsItems.length} noticias en preparación`,
+        origin: "Panel IA · Fuentes externas",
+        purpose: "Preparar el análisis editorial por lote.",
+        subject: processSourceName,
+        kind: "batch",
+        current: 0,
+        total: externalNewsItems.length,
       });
 
       setExternalNewsBatchStatus({
@@ -4127,6 +4133,10 @@ export default function PanelIA(): ReactElement {
         id: processId,
         label: "Preparando noticias UFC",
         detail: `${eligibleNews.length} noticias pendientes`,
+        origin: "Panel IA · UFC",
+        purpose: "Transformar y guardar borradores de noticias por lote.",
+        subject: "Noticias UFC",
+        kind: "batch",
         current: 0,
         total: eligibleNews.length,
       });
@@ -4634,6 +4644,10 @@ export default function PanelIA(): ReactElement {
         id: processId,
         label: "Preparando noticias BKFC",
         detail: `${eligibleNews.length} noticias pendientes`,
+        origin: "Panel IA · BKFC",
+        purpose: "Transformar y guardar borradores de noticias por lote.",
+        subject: "Noticias BKFC",
+        kind: "batch",
         current: 0,
         total: eligibleNews.length,
       });
