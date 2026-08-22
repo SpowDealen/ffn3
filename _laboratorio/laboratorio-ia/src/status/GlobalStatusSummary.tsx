@@ -8,6 +8,8 @@ import type {LabProcess} from "../processes/types";
 import {useReviewCases} from "../review/hooks/useReviewCases";
 import {adaptNavigationInteraction, adaptRefreshInteraction} from "../interactions/adapters";
 import {InteractionButton, InteractionLink} from "../interactions/InteractionPrimitives";
+import {buildOperatorExperienceModel} from "../operator/adapters";
+import OperatorSummary from "../operator/OperatorSummary";
 import {
   adaptNotificationsStatus,
   adaptProcessesStatus,
@@ -52,14 +54,16 @@ export default function GlobalStatusSummary({onNavigate}: {onNavigate: (path: st
     return () => { mounted = false; };
   }, [checkVersion]);
 
+  const processPresentations = useMemo(() => processes.map((process) => buildLabProcessPresentation(process)), [processes]);
   const model = useMemo(() => buildGlobalStatusModel([
     adaptRuntimeStatus(checks.runtime),
     adaptReferenceEntitiesStatus(checks.references),
     adaptTelegramStatus(checks.telegram),
     adaptNotificationsStatus(notifications),
-    adaptProcessesStatus(processes.map((process) => buildLabProcessPresentation(process))),
+    adaptProcessesStatus(processPresentations),
     adaptReviewStatus(reviewCases),
-  ]), [checks, notifications, processes, reviewCases]);
+  ]), [checks, notifications, processPresentations, reviewCases]);
+  const operatorModel = useMemo(() => buildOperatorExperienceModel({globalStatus: model, notifications, processes: processPresentations, reviewCases}), [model, notifications, processPresentations, reviewCases]);
   const urgent = model.state === "unavailable" || model.state === "blocked";
   const refreshing = checks.runtime.state === "checking";
   const refreshCapability = adaptRefreshInteraction({id: "global-status-refresh", label: "Actualizar estado", busyLabel: "Actualizando estado…", busy: refreshing, source: "LES 4 · Global Status"});
@@ -96,6 +100,7 @@ export default function GlobalStatusSummary({onNavigate}: {onNavigate: (path: st
           </article>
         ))}
       </div>
+      <OperatorSummary model={operatorModel} onNavigate={onNavigate} />
     </section>
   );
 }
