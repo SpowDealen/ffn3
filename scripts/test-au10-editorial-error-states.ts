@@ -6,6 +6,7 @@ let assertions = 0;
 const equal = <T>(actual: T, expected: T): void => { assert.equal(actual, expected); assertions += 1; };
 const check = (value: unknown, message?: string): void => { assert.ok(value, message); assertions += 1; };
 const source = (path: string): string => readFileSync(path, "utf8");
+const occurrences = (value: string, token: string): number => value.split(token).length - 1;
 
 function main(): void {
   const network = classifyEditorialReadError(new TypeError("Failed to fetch"));
@@ -37,11 +38,13 @@ function main(): void {
 
   const panel = source("_laboratorio/laboratorio-ia/src/components/PanelIA.tsx");
   const activity = source("_laboratorio/laboratorio-ia/src/notifications/ActivityCenter.tsx");
+  const delivery = source("_laboratorio/laboratorio-ia/src/notifications/NotificationDeliveryStatus.tsx");
   const classifier = source("_laboratorio/laboratorio-ia/src/lib/editorialReadError.ts");
   check(panel.includes("classifyEditorialReadError"));
   check(panel.includes("function EditorialLoadFeedback"));
   check(panel.includes('role={isError ? "alert" : "status"}'));
   check(panel.includes('"Reintentar"'));
+  check(panel.includes("onAction={isError && status.retryable && onRetry"), "Panel sólo ofrece retry si el error y su origen lo autorizan");
   check(panel.includes("reloadReferenceEntities"));
   check(panel.includes("reloadExternalNews"));
   check(panel.includes("reloadOfficialUfcNews"));
@@ -55,7 +58,17 @@ function main(): void {
   check(panel.includes("console.warn(\"[FFN3] Error técnico"));
   check(activity.includes("telegramEditorialError"));
   check(activity.includes('role="alert"'));
-  check(activity.includes("Reintentar"));
+  check(activity.includes("adaptRefreshInteraction"));
+  check(activity.includes("telegramCheckCapability"));
+  check(activity.includes("<InteractionButton"));
+  check(activity.includes("<NotificationDeliveryStatus notification={notification} />"), "Activity delega el retry de entrega en una sola superficie");
+  check(!activity.includes("retryNotificationDelivery"), "Activity no duplica la autoridad del Notification Store");
+  check(!activity.includes('"Reintentar"'), "Activity no reintroduce un retry paralelo de diagnóstico");
+  check(!activity.includes("retryTelegramHealth"), "el diagnóstico vivo reutiliza refresh LES5");
+  equal(occurrences(delivery, 'label: "Reintentar"'), 1);
+  check(delivery.includes('authorized: status === "failed"'), "sólo una entrega fallida autoriza retry");
+  check(delivery.includes("adaptRetryInteraction"), "retry se presenta mediante LES5");
+  check(delivery.includes("retryNotificationDelivery(notification.id)"), "la ejecución permanece en Notification Store");
   check(classifier.includes("failed to fetch"));
   check(classifier.includes("service_unavailable"));
   check(!classifier.includes("fetch("));
