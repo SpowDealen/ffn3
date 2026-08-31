@@ -27,6 +27,7 @@ export * from "./store/migrations";
 export * from "./store/reviewStore";
 export * from "./store/selectors";
 export * from "./fighterResolutionIntake";
+export * from "./intake";
 export * from "./entityReconciliation";
 export * from "./entityResolution";
 export * from "./transactions";

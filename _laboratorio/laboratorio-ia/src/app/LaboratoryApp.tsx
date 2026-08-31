@@ -9,11 +9,11 @@ import LaboratoryShell from "./LaboratoryShell";
 import {useLaboratoryRouter} from "./useLaboratoryRouter";
 
 export default function LaboratoryApp(): ReactElement {
-  const {route, navigate} = useLaboratoryRouter();
+  const {route, search, navigate} = useLaboratoryRouter();
   return <LaboratoryShell route={route} onNavigate={navigate}>
     {route.id === "status" ? <LaboratoryStatusScreen onNavigate={navigate} /> : null}
     <div hidden={route.id !== "editorial"}><EditorialWorkspaceScreen><PanelIA /></EditorialWorkspaceScreen></div>
-    {route.id === "revision" ? <ReviewCenterScreen /> : null}
+    {route.id === "revision" ? <ReviewCenterScreen caseId={search.get("case")} /> : null}
     {route.id === "activity" ? <ActivityScreen /> : null}
     {route.id === "telegram" ? <TelegramStatusScreen /> : null}
   </LaboratoryShell>;

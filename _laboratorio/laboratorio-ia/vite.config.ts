@@ -7,6 +7,9 @@ export default defineConfig(({mode}) => {
 
   return {
     plugins: [react()],
+    resolve: {
+      dedupe: ["react", "react-dom"],
+    },
     // Development only: production keeps the configured/same-origin API base.
     server: {
       proxy: {

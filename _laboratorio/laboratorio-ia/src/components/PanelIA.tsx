@@ -63,6 +63,11 @@ import type {ExternalNewsResumeExecutor} from "../review/resume/externalNews";
 import type {ReviewJsonObject} from "../review/types";
 import {registerExternalNewsGlobalResolutionRuntime} from "../review/globalResolution";
 import {registerFighterResolutionProposals, type FighterResolutionIntakeResponse} from "../review/fighterResolutionIntake";
+import {
+  registerOfficialEventBatchReviewIntake,
+  registerOfficialEventReviewIntake,
+  registerOfficialNewsReviewIntake,
+} from "../review/intake";
 
 
 type ExternalEditorialAnalysisResponse =
@@ -3993,6 +3998,7 @@ export default function PanelIA(): ReactElement {
         );
       }
 
+      registerOfficialNewsReviewIntake("ufc", payload.items);
       setUfcNewsBatchAnalysis(payload);
       setUfcNewsBatchStatus({
         type: "success",
@@ -4504,6 +4510,7 @@ export default function PanelIA(): ReactElement {
         );
       }
 
+      registerOfficialNewsReviewIntake("bkfc", payload.items);
       setBkfcNewsBatchAnalysis(payload);
       setBkfcNewsBatchStatus({
         type: "success",
@@ -5288,6 +5295,7 @@ export default function PanelIA(): ReactElement {
         );
       }
 
+      registerOfficialNewsReviewIntake("one", payload.items);
       setOneNewsBatchAnalysis(payload);
       setOneNewsBatchStatus({
         type: "success",
@@ -6725,6 +6733,7 @@ export default function PanelIA(): ReactElement {
         );
       }
 
+      registerOfficialEventBatchReviewIntake("ufc", payload.items);
       setUfcBatchAnalysis(payload);
       setUfcBatchStatus({
         type: "success",
@@ -6825,6 +6834,11 @@ export default function PanelIA(): ReactElement {
           );
         }
 
+        registerOfficialEventReviewIntake({
+          source: "ufc",
+          event: targetEvent,
+          resolution: payload,
+        });
         setUfcEventResolution(payload);
 
         setUfcAutomationStatus({
@@ -7834,6 +7848,11 @@ export default function PanelIA(): ReactElement {
 
         const resolution = await requestBkfcEventResolution(targetEvent);
 
+        registerOfficialEventReviewIntake({
+          source: "bkfc",
+          event: targetEvent,
+          resolution,
+        });
         setBkfcEventResolution(resolution);
         setBkfcSourceStatus({
           type: "success",
@@ -8787,6 +8806,11 @@ export default function PanelIA(): ReactElement {
         const resolution =
           await requestOneEventResolution(targetEvent);
 
+        registerOfficialEventReviewIntake({
+          source: "one",
+          event: targetEvent,
+          resolution,
+        });
         setOneEventResolution(resolution);
 
         setOneEventSourceStatus({

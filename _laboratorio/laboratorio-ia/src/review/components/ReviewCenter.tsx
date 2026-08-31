@@ -1,4 +1,4 @@
-import {useMemo, useState, type ReactElement} from "react";
+import {useEffect, useMemo, useRef, useState, type ReactElement} from "react";
 import "../../styles.css";
 import {REVIEW_STATUS_LABELS} from "../formatters";
 import {useReviewCases} from "../hooks/useReviewCases";
@@ -20,20 +20,41 @@ import {FeedbackEmptyState} from "../../components/feedback/VisualFeedback";
 import NucleusGlobalDashboard from "./NucleusGlobalDashboard";
 import OperatorExperienceNavigation from "./OperatorExperienceNavigation";
 import KnowledgeCenter from "./KnowledgeCenter";
+import {resolveReviewCaseDeepLink} from "../intake";
 
 const STATUS_OPTIONS = Object.entries(REVIEW_STATUS_LABELS) as [ReviewCaseStatus, string][];
 const ACTIVE_STATUSES = new Set<ReviewCaseStatus>([
   "open", "in_review", "resolved", "resuming", "resume_failed", "stale",
 ]);
 
-export default function ReviewCenter(): ReactElement {
+export default function ReviewCenter({initialCaseId}: {initialCaseId?: string | null}): ReactElement {
   const reviewCases = useReviewCases();
   const now = useReviewClock();
+  const initialDeepLink = resolveReviewCaseDeepLink(reviewCases, initialCaseId);
   const [operatorFilters, setOperatorFilters] = useState<OperatorFilters>({status: "all", severity: "all", producer: "all", entityType: "all", autonomy: "all", risk: "all", capability: "all", knowledgeState: "all", actionRequired: "all", query: "", page: 1, pageSize: 8});
-  const [activeSection, setActiveSection] = useState<OperatorWorkspaceSection>("dashboard");
+  const [activeSection, setActiveSection] = useState<OperatorWorkspaceSection>(initialDeepLink.section);
   const [feedback, setFeedback] = useState<string>();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialDeepLink.caseId ?? null);
   const [caseContext, setCaseContext] = useState<OperatorCaseContext>("overview");
+  const handledDeepLink = useRef<string>();
+
+  useEffect(() => {
+    const requested = initialCaseId?.trim() ?? "";
+    if (!requested || handledDeepLink.current === requested) return;
+    handledDeepLink.current = requested;
+    const resolved = resolveReviewCaseDeepLink(reviewCases, requested);
+    if (resolved.found && resolved.caseId) {
+      setSelectedId(resolved.caseId);
+      setActiveSection("case");
+      setCaseContext("overview");
+      setFeedback("Caso abierto desde el enlace directo; no se ejecutó ninguna operación.");
+      return;
+    }
+    setSelectedId(null);
+    setActiveSection("dashboard");
+    setCaseContext("overview");
+    setFeedback("El caso indicado no existe o ya no está disponible. Se mantiene la navegación normal.");
+  }, [initialCaseId, reviewCases]);
 
   const metrics = useMemo(() => {
     const counts: Record<ReviewCaseStatus, number> = {
