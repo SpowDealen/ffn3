@@ -8,6 +8,12 @@ export {
   rx3VisualReviewFixtureSecurity,
 } from "./development/rx3VisualFixture";
 
+export {
+  buildRx2ReviewInboxFixtures,
+  RX2_REVIEW_INBOX_FIXTURE_QUERY,
+  rx2ReviewInboxFixtureSecurity,
+} from "./development/rx2InboxFixture";
+
 export function createTestReviewCase(): ReviewCase {
   return createReviewCase({
     dedupeKey: "dev:external-news:editorial-review",
