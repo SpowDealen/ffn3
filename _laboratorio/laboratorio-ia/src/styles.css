@@ -287,6 +287,37 @@ textarea {
 .review-filters :focus-visible { outline: 3px solid rgba(96,165,250,.75); outline-offset: 2px; }
 .review-details { max-height: 960px; overflow-y: auto; background: rgba(5,9,13,.45); }
 .review-details-header { align-items: flex-start; }
+.review-details-simplified { gap: 16px; }
+.review-human-case-flow { display: grid; gap: 12px; }
+.review-human-question { display: grid; gap: 7px; padding: 15px; border: 1px solid var(--panel-border); border-radius: 14px; background: rgba(255,255,255,.025); }
+.review-human-question h4,
+.review-human-actions h4 { margin: 0; font-size: 17px; line-height: 1.3; }
+.review-human-answer,
+.review-human-support,
+.review-action-unavailable { margin: 0; line-height: 1.55; overflow-wrap: anywhere; }
+.review-human-answer-lead { color: var(--panel-text); font-size: 16px; }
+.review-human-support,
+.review-action-unavailable { color: var(--panel-text-soft); font-size: 13px; }
+.review-human-evidence { display: grid; gap: 5px; margin: 0; padding-left: 20px; color: var(--panel-text-soft); line-height: 1.45; }
+.review-human-candidates { display: grid; gap: 7px; margin: 2px 0; padding: 0; list-style: none; }
+.review-human-candidates li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; padding: 9px 10px; border: 1px solid var(--panel-border); border-radius: 10px; color: var(--panel-text); }
+.review-candidate-role { flex: 0 0 auto; color: var(--panel-text-soft); font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
+.review-candidate-role-recommended { color: #bfdbfe; }
+.review-human-actions { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--panel-border); }
+.review-human-actions .review-button { min-height: 44px; }
+.review-human-actions .review-button:disabled { border-style: dashed; cursor: not-allowed; opacity: .68; }
+.review-human-choices { display: grid; gap: 10px; }
+.review-human-choice { display: grid; gap: 10px; min-width: 0; padding: 13px; border: 1px solid var(--panel-border); border-radius: 13px; background: rgba(255,255,255,.025); overflow-wrap: anywhere; }
+.review-human-choice h5,
+.review-human-choice p { margin: 0; }
+.review-human-choice h5 { font-size: 15px; }
+.review-human-choice p { margin-top: 4px; color: var(--panel-text-soft); line-height: 1.45; }
+.review-technical-details { min-width: 0; border-top: 1px solid var(--panel-border); }
+.review-technical-details > summary { min-height: 44px; padding: 12px 4px; color: var(--panel-text-soft); font-weight: 800; cursor: pointer; }
+.review-technical-details > summary:focus-visible { border-radius: 8px; outline: 3px solid rgba(96,165,250,.75); outline-offset: 2px; }
+.review-technical-content { display: grid; gap: 14px; min-width: 0; padding-top: 6px; }
+.review-technical-content > * { min-width: 0; }
+.review-technical-content .review-subsection > details > summary { min-height: 44px; padding: 10px 0; font-weight: 750; cursor: pointer; }
 .review-definition-grid { display: grid; grid-template-columns: minmax(130px, .35fr) minmax(0, 1fr); gap: 6px 12px; margin: 0; }
 .review-definition-grid dt { color: var(--panel-text-muted); font-size: 12px; font-weight: 700; }
 .review-definition-grid dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
@@ -339,6 +370,9 @@ textarea {
   .review-definition-grid dt { margin-top: 5px; }
   .review-nav-link { max-width: 118px; line-height: 1.15; text-align: center; }
   .review-actions > * { width: 100%; }
+  .review-human-question,
+  .review-human-choice { padding: 12px; }
+  .review-details-simplified { padding: 12px; }
 }
 
 .laboratory-menu { position: relative; }

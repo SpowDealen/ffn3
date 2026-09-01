@@ -1,10 +1,9 @@
-import {useState, type ReactElement} from "react";
+import {useState, type ReactElement, type ReactNode, type SyntheticEvent} from "react";
 import {
   formatReviewDate,
   REVIEW_MODULE_LABELS,
-  REVIEW_PRIORITY_LABELS,
-  REVIEW_STATUS_LABELS,
 } from "../formatters";
+import {buildSimplifiedReviewCasePresentation} from "../presentation";
 import type {ReviewCase, ReviewJsonValue, ReviewResolution} from "../types";
 import ReviewIssueDetails from "./ReviewIssueDetails";
 import ReviewIssueEditor from "./ReviewIssueEditor";
@@ -28,6 +27,8 @@ type ReviewCaseDetailsProps = {
   onRemoveResolution(issueId: string): void;
   onMarkResolved(): void;
   onNucleusContextChange?(context: NucleusContextView): void;
+  technicalExtras?: ReactNode;
+  readOnly?: boolean;
 };
 
 const SECRET_KEY_PATTERN = /(token|secret|authorization|cookie|password|api[_-]?key)/i;
@@ -61,8 +62,7 @@ function resolutionSummary(resolution: ReviewResolution): string {
   };
 
   switch (resolution.type) {
-    case "set_value":
-      return `Valor: ${compactValue(resolution.value)}`;
+    case "set_value": return `Valor: ${compactValue(resolution.value)}`;
     case "select_candidate": return `Candidato: ${resolution.candidateId}`;
     case "link_reference": return `Referencia Sanity: ${resolution.sanityId}`;
     case "create_entity": return `Crear entidad: ${resolution.entityType}`;
@@ -90,115 +90,161 @@ export default function ReviewCaseDetails({
   onRemoveResolution,
   onMarkResolved,
   onNucleusContextChange,
+  technicalExtras,
+  readOnly = false,
 }: ReviewCaseDetailsProps): ReactElement {
-  const [contextOpen, setContextOpen] = useState(false);
-  const [resumeOpen, setResumeOpen] = useState(false);
+  const [technicalOpen, setTechnicalOpen] = useState(false);
+  const [choicesOpen, setChoicesOpen] = useState(false);
   const [openIssueId, setOpenIssueId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const canEdit = ["open", "in_review", "stale", "resume_failed"].includes(reviewCase.status);
-  const canMarkResolved = ["open", "in_review"].includes(reviewCase.status);
-  const canReopen = ["in_review", "stale", "resume_failed", "resolved"].includes(reviewCase.status);
-  const canDismiss = ["open", "in_review", "resolved", "resume_failed", "stale"].includes(reviewCase.status);
-  const canRemove = ["resumed", "dismissed"].includes(reviewCase.status);
+  const presentation = buildSimplifiedReviewCasePresentation(reviewCase);
+  const canEdit = presentation.actions.change;
   const readOnlyReason = reviewCase.status === "resolved"
-    ? "El caso está resuelto. Vuelve a abierto para cambiar sus resoluciones."
+    ? "El caso está resuelto. Vuelve a abrirlo para cambiar sus decisiones."
     : reviewCase.status === "resuming"
-      ? "El caso está en reanudación y sus resoluciones están bloqueadas."
+      ? "El caso está en proceso y sus decisiones están bloqueadas."
       : reviewCase.status === "resumed"
-        ? "El caso ya fue reanudado y se muestra en modo lectura."
+        ? "El flujo ya continuó y este caso se muestra en modo lectura."
         : reviewCase.status === "dismissed"
           ? "El caso está descartado y se muestra en modo lectura."
           : null;
+  const technicalId = `review-technical-${reviewCase.id}`;
+  const choicesId = `review-choices-${reviewCase.id}`;
 
   function saveResolution(nextResolution: ReviewResolution, previous?: ReviewResolution): void {
     if (previous && !window.confirm("La resolución actual se sustituirá por la nueva. ¿Quieres continuar?")) return;
     try {
       onSaveResolution(nextResolution);
-      setFeedback(previous ? "Resolución actualizada" : "Corrección guardada");
+      setFeedback(previous ? "Decisión actualizada" : "Decisión guardada");
       setOpenIssueId(null);
     } catch (error) {
-      setFeedback("No se pudo guardar");
+      setFeedback("No se pudo guardar la decisión");
       throw error;
     }
   }
 
   function deleteResolution(issueId: string): void {
-    if (!window.confirm("¿Quieres eliminar esta resolución? La incidencia volverá a quedar pendiente.")) return;
+    if (!window.confirm("¿Quieres eliminar esta decisión? La incidencia volverá a quedar pendiente.")) return;
     try {
       onRemoveResolution(issueId);
-      setFeedback("Resolución eliminada");
+      setFeedback("Decisión eliminada");
       setOpenIssueId(null);
     } catch {
-      setFeedback("No se pudo guardar");
+      setFeedback("No se pudo guardar la decisión");
     }
   }
 
+  function syncTechnicalState(event: SyntheticEvent<HTMLDetailsElement>): void {
+    setTechnicalOpen(event.currentTarget.open);
+  }
+
   return (
-    <article className="review-details" aria-label={`Detalle de ${reviewCase.title}`}>
-      <div className="review-row review-row-wrap review-details-header">
+    <article className="review-details review-details-simplified" aria-label={`Caso de revisión: ${presentation.problem.title}`}>
+      <header className="review-row review-row-wrap review-details-header">
         <div>
-          <p className="review-kicker">Detalle del caso</p>
-          <h3 className="review-details-title">{reviewCase.title}</h3>
+          <p className="review-kicker">Caso de revisión</p>
+          <h3 className="review-details-title">{presentation.problem.title}</h3>
         </div>
-        <div className="review-badges">
-          <span className={`review-priority review-priority-${reviewCase.priority}`}>{REVIEW_PRIORITY_LABELS[reviewCase.priority]}</span>
-          <span className="review-badge">{REVIEW_STATUS_LABELS[reviewCase.status]}</span>
+        <div className="review-badges" aria-label="Fuente, entidad, prioridad y estado">
+          {readOnly ? <span className="review-badge">Fixture DEV · solo lectura</span> : null}
+          <span className="review-badge">{presentation.sourceLabel}</span>
+          <span className="review-badge">{presentation.entityLabel}</span>
+          <span className={`review-priority review-priority-${reviewCase.priority}`}>{presentation.priorityLabel}</span>
+          <span className="review-badge">{presentation.statusLabel}</span>
         </div>
+      </header>
+
+      <div className="review-human-case-flow">
+        <section className="review-human-question" aria-labelledby={`review-what-${reviewCase.id}`}>
+          <h4 id={`review-what-${reviewCase.id}`}>¿Qué pasa?</h4>
+          <p className="review-human-answer review-human-answer-lead">{presentation.problem.summary}</p>
+        </section>
+
+        <section className="review-human-question" aria-labelledby={`review-why-${reviewCase.id}`}>
+          <h4 id={`review-why-${reviewCase.id}`}>¿Por qué?</h4>
+          <p className="review-human-answer">{presentation.why.summary}</p>
+          {presentation.why.candidates.length ? (
+            <ul className="review-human-candidates" aria-label="Candidatos considerados">
+              {presentation.why.candidates.map((candidate) => (
+                <li key={candidate.id}>
+                  <span><strong>{candidate.label}</strong>{candidate.confidence ? ` — ${candidate.confidence.value.toFixed(0)}%` : ""}</span>
+                  <span className={`review-candidate-role review-candidate-role-${candidate.role}`}>
+                    {candidate.role === "recommended" ? "Recomendado" : candidate.role === "alternative" ? "Alternativa" : "Posible"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {presentation.why.evidence.length ? (
+            <ul className="review-human-evidence">
+              {presentation.why.evidence.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          ) : null}
+        </section>
+
+        <section className="review-human-question" aria-labelledby={`review-recommendation-${reviewCase.id}`}>
+          <h4 id={`review-recommendation-${reviewCase.id}`}>¿Qué recomienda el Lab?</h4>
+          <p className="review-human-answer">{presentation.recommendation.summary}</p>
+          {presentation.recommendation.confidence ? <p className="review-human-support">Confianza: {presentation.recommendation.confidence.label.toLocaleLowerCase("es-ES")} ({presentation.recommendation.confidence.value.toFixed(0)}%).</p> : null}
+          {presentation.recommendation.alternative ? <p className="review-human-support">{presentation.recommendation.alternative}</p> : null}
+        </section>
+
+        <section className="review-human-question" aria-labelledby={`review-effect-${reviewCase.id}`}>
+          <h4 id={`review-effect-${reviewCase.id}`}>¿Qué ocurrirá si apruebo?</h4>
+          <p className="review-human-answer">{presentation.expectedEffect.summary}</p>
+        </section>
       </div>
 
-      <dl className="review-definition-grid">
-        <DetailField label="ID" value={reviewCase.id} />
-        <DetailField label="Clave de deduplicación" value={reviewCase.dedupeKey} />
-        <DetailField label="Módulo" value={REVIEW_MODULE_LABELS[reviewCase.module]} />
-        <DetailField label="Fuente" value={reviewCase.source} />
-        <DetailField label="Creado" value={formatReviewDate(reviewCase.createdAt)} />
-        <DetailField label="Actualizado" value={formatReviewDate(reviewCase.updatedAt)} />
-        <DetailField label="Versión" value={reviewCase.version} />
-        <DetailField label="Intentos de reanudación" value={reviewCase.resumeAttempts} />
-        <DetailField label="Último error" value={reviewCase.lastResumeError} />
-        <DetailField label="Motivo de descarte" value={reviewCase.dismissReason} />
-      </dl>
-
-      <section className="review-subsection">
-        <h4 className="review-subtitle">Sujeto</h4>
-        <dl className="review-definition-grid">
-          <DetailField label="Tipo" value={reviewCase.subject.type} />
-          <DetailField label="ID de origen" value={reviewCase.subject.id} />
-          <DetailField label="Etiqueta" value={reviewCase.subject.label} />
-          <DetailField label="URL de origen" value={reviewCase.subject.sourceUrl} />
-          <DetailField label="Sanity ID" value={reviewCase.subject.sanityId} />
-          <DetailField label="Revisión Sanity" value={reviewCase.subject.sanityRevision} />
-        </dl>
-      </section>
-
-      <section className="review-subsection" id={`review-issues-${reviewCase.id}`}>
-        <h4 className="review-subtitle">Incidencias ({reviewCase.issues.length})</h4>
-        <ReviewCaseResolutionStatus reviewCase={reviewCase} onMarkResolved={canMarkResolved ? onMarkResolved : undefined} />
-        {readOnlyReason ? <p className="review-readonly-message" role="status">{readOnlyReason}</p> : null}
+      <section className="review-human-actions" aria-labelledby={`review-actions-${reviewCase.id}`}>
+        <h4 id={`review-actions-${reviewCase.id}`}>Tu decisión</h4>
+        {readOnlyReason ? <p className="review-readonly-message">{readOnlyReason}</p> : null}
         {feedback ? <p className="review-feedback" role="status">{feedback}</p> : null}
-        <div className="review-issues">
-          {reviewCase.issues.map((issue) => {
-            const resolution = reviewCase.resolutions.find((item) => item.issueId === issue.id);
-            return (
-              <div className="review-issue-wrapper" key={issue.id}>
-                <ReviewIssueDetails issue={issue} resolution={resolution} />
-                <div className="review-issue-controls">
-                  {resolution ? <ReviewResolutionSummary resolution={resolution} updatedAt={reviewCase.updatedAt} /> : <span className="review-badge">Pendiente</span>}
-                  {canEdit ? (
-                    <div className="review-actions">
-                      <button
-                        className="review-button review-button-secondary"
-                        type="button"
-                        aria-expanded={openIssueId === issue.id}
-                        aria-controls={`review-issue-editor-${issue.id}`}
-                        onClick={() => { setOpenIssueId((current) => current === issue.id ? null : issue.id); setFeedback(null); }}
-                      >
-                        {openIssueId === issue.id ? "Cerrar editor" : resolution ? "Cambiar resolución" : "Corregir"}
-                      </button>
-                      {resolution ? <button className="review-button review-button-danger" type="button" onClick={() => deleteResolution(issue.id)}>Eliminar resolución</button> : null}
-                    </div>
-                  ) : null}
-                  {openIssueId === issue.id && canEdit ? (
+        <div className="review-actions" aria-label="Acciones autorizadas del caso">
+          {readOnly ? <button className="review-button" type="button" disabled aria-describedby={"review-readonly-" + reviewCase.id}>Aprobar resolución</button> : null}
+          {!readOnly && presentation.actions.approve ? <button className="review-button" type="button" onClick={onMarkResolved}>Aprobar resolución</button> : null}
+          {!readOnly && presentation.actions.change ? (
+            <button
+              className="review-button review-button-secondary"
+              type="button"
+              aria-expanded={choicesOpen}
+              aria-controls={choicesId}
+              onClick={() => { setChoicesOpen((current) => !current); setFeedback(null); }}
+            >
+              {choicesOpen ? "Cerrar opciones" : reviewCase.resolutions.length ? "Cambiar / elegir otra opción" : "Elegir una opción"}
+            </button>
+          ) : null}
+          {!readOnly && presentation.actions.beginReview ? <button className="review-button review-button-secondary" type="button" onClick={onMarkInReview}>Empezar revisión</button> : null}
+          {!readOnly && presentation.actions.reopen ? <button className="review-button review-button-secondary" type="button" onClick={onReopen}>Volver a abrir</button> : null}
+          {!readOnly && presentation.actions.dismiss ? <button className="review-button review-button-danger" type="button" onClick={onDismiss}>Descartar caso</button> : null}
+          {!readOnly && presentation.actions.remove ? <button className="review-button review-button-danger" type="button" onClick={onRemove}>Eliminar definitivamente</button> : null}
+        </div>
+        {readOnly ? <p className="review-action-unavailable" id={"review-readonly-" + reviewCase.id}>Acciones desactivadas: este fixture es solo para validación visual y no guarda cambios.</p> : null}
+        {!readOnly && !presentation.actions.approve && presentation.actions.unavailableReason ? <p className="review-action-unavailable">No se puede aprobar todavía: {presentation.actions.unavailableReason}</p> : null}
+
+        {choicesOpen && canEdit && !readOnly ? (
+          <div className="review-human-choices" id={choicesId}>
+            {reviewCase.issues.map((issue) => {
+              const resolution = reviewCase.resolutions.find((item) => item.issueId === issue.id);
+              return (
+                <article className="review-human-choice" key={issue.id}>
+                  <div>
+                    <h5>{issue.label}</h5>
+                    <p>{issue.message}</p>
+                  </div>
+                  {resolution ? <ReviewResolutionSummary resolution={resolution} updatedAt={reviewCase.updatedAt} /> : <span className="review-badge">Decisión pendiente</span>}
+                  <div className="review-actions">
+                    <button
+                      className="review-button review-button-secondary"
+                      type="button"
+                      aria-expanded={openIssueId === issue.id}
+                      aria-controls={`review-issue-editor-${issue.id}`}
+                      onClick={() => { setOpenIssueId((current) => current === issue.id ? null : issue.id); setFeedback(null); }}
+                    >
+                      {openIssueId === issue.id ? "Cerrar editor" : resolution ? "Cambiar decisión" : "Resolver"}
+                    </button>
+                    {resolution ? <button className="review-button review-button-danger" type="button" onClick={() => deleteResolution(issue.id)}>Eliminar decisión</button> : null}
+                  </div>
+                  {openIssueId === issue.id ? (
                     <div id={`review-issue-editor-${issue.id}`}>
                       <ReviewIssueEditor
                         key={`${JSON.stringify(issue)}-${JSON.stringify(resolution ?? null)}`}
@@ -208,64 +254,93 @@ export default function ReviewCaseDetails({
                       />
                     </div>
                   ) : null}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      <AIResolutionNucleus key={`${reviewCase.id}:${reviewCase.version}`} reviewCase={reviewCase} canEdit={canEdit} canFinalize={canMarkResolved} onFinalize={onMarkResolved} onContextChange={onNucleusContextChange} />
-
-      {reviewCase.resolutions.length ? (
-        <section className="review-subsection">
-          <h4 className="review-subtitle">Resoluciones registradas</h4>
-          <div className="review-resolution-list">
-            {reviewCase.resolutions.map((resolution) => (
-              <div className="review-resolution" key={resolution.issueId}>
-                <strong>{resolution.type}</strong>
-                <span>Incidencia: {resolution.issueId}</span>
-                <span>{resolutionSummary(resolution)}</span>
-              </div>
-            ))}
+                </article>
+              );
+            })}
           </div>
-        </section>
-      ) : null}
-
-      <section className="review-subsection">
-        <button
-          className="review-disclosure"
-          type="button"
-          aria-expanded={contextOpen}
-          aria-controls={`review-context-${reviewCase.id}`}
-          onClick={() => setContextOpen((current) => !current)}
-        >
-          {contextOpen ? "Ocultar contexto técnico" : "Ver contexto técnico"}
-        </button>
-        {contextOpen ? <pre className="review-json" id={`review-context-${reviewCase.id}`}>{safeJson(reviewCase.context)}</pre> : null}
+        ) : null}
       </section>
 
-      {reviewCase.resumeAction ? (
-        <section className="review-subsection">
-          <button
-            className="review-disclosure"
-            type="button"
-            aria-expanded={resumeOpen}
-            aria-controls={`review-resume-${reviewCase.id}`}
-            onClick={() => setResumeOpen((current) => !current)}
-          >
-            {resumeOpen ? "Ocultar acción prevista" : "Acción de reanudación prevista"}
-          </button>
-          {resumeOpen ? <pre className="review-json" id={`review-resume-${reviewCase.id}`}>{safeJson(reviewCase.resumeAction as unknown as ReviewJsonValue)}</pre> : null}
-        </section>
-      ) : null}
+      <details className="review-technical-details" onToggle={syncTechnicalState}>
+        <summary aria-expanded={technicalOpen} aria-controls={technicalId}>Detalles técnicos</summary>
+        <div className="review-technical-content" id={technicalId}>
+          <p className="review-muted">Autoridades existentes: AU7, AU8 y AU9. Aquí permanecen checkpoints, fingerprints, reconciliación, compensación y diagnóstico sin cambiar su autoridad.</p>
+          <p className="review-muted">La confianza de candidatos informa la recomendación humana; la suficiencia del Núcleo representa la readiness autónoma canónica.</p>
+          <section className="review-subsection">
+            <h4 className="review-subtitle">Identidad y estado interno</h4>
+            <dl className="review-definition-grid">
+              <DetailField label="ID" value={reviewCase.id} />
+              <DetailField label="Clave de deduplicación" value={reviewCase.dedupeKey} />
+              <DetailField label="Módulo" value={REVIEW_MODULE_LABELS[reviewCase.module]} />
+              <DetailField label="Fuente" value={reviewCase.source} />
+              <DetailField label="Estado técnico" value={reviewCase.status} />
+              <DetailField label="Creado" value={formatReviewDate(reviewCase.createdAt)} />
+              <DetailField label="Actualizado" value={formatReviewDate(reviewCase.updatedAt)} />
+              <DetailField label="Versión / checkpoint" value={reviewCase.version} />
+              <DetailField label="Intentos de reanudación" value={reviewCase.resumeAttempts} />
+              <DetailField label="Último error" value={reviewCase.lastResumeError} />
+              <DetailField label="Motivo de descarte" value={reviewCase.dismissReason} />
+            </dl>
+          </section>
 
-      <div className="review-actions" aria-label="Acciones del caso">
-        {reviewCase.status === "open" ? <button className="review-button" type="button" onClick={onMarkInReview}>Marcar en revisión</button> : null}
-        {canReopen ? <button className="review-button review-button-secondary" type="button" onClick={onReopen}>Volver a abierto</button> : null}
-        {canDismiss ? <button className="review-button review-button-danger" type="button" onClick={onDismiss}>Descartar</button> : null}
-        {canRemove ? <button className="review-button review-button-danger" type="button" onClick={onRemove}>Eliminar definitivamente</button> : null}
-      </div>
+          <section className="review-subsection">
+            <h4 className="review-subtitle">Sujeto técnico</h4>
+            <dl className="review-definition-grid">
+              <DetailField label="Tipo" value={reviewCase.subject.type} />
+              <DetailField label="ID de origen" value={reviewCase.subject.id} />
+              <DetailField label="Etiqueta" value={reviewCase.subject.label} />
+              <DetailField label="URL de origen" value={reviewCase.subject.sourceUrl} />
+              <DetailField label="Sanity ID" value={reviewCase.subject.sanityId} />
+              <DetailField label="Revisión Sanity" value={reviewCase.subject.sanityRevision} />
+            </dl>
+          </section>
+
+          <section className="review-subsection" id={`review-issues-${reviewCase.id}`}>
+            <h4 className="review-subtitle">Incidencias técnicas ({reviewCase.issues.length})</h4>
+            <ReviewCaseResolutionStatus reviewCase={reviewCase} />
+            <div className="review-issues">
+              {reviewCase.issues.map((issue) => {
+                const resolution = reviewCase.resolutions.find((item) => item.issueId === issue.id);
+                return <ReviewIssueDetails key={issue.id} issue={issue} resolution={resolution} />;
+              })}
+            </div>
+          </section>
+
+          {reviewCase.resolutions.length ? (
+            <section className="review-subsection">
+              <h4 className="review-subtitle">Resoluciones registradas</h4>
+              <div className="review-resolution-list">
+                {reviewCase.resolutions.map((resolution) => (
+                  <div className="review-resolution" key={resolution.issueId}>
+                    <strong>{resolution.type}</strong>
+                    <span>Incidencia: {resolution.issueId}</span>
+                    <span>{resolutionSummary(resolution)}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="review-subsection">
+            <details>
+              <summary>Contexto y diagnóstico</summary>
+              <pre className="review-json">{safeJson(reviewCase.context)}</pre>
+            </details>
+          </section>
+
+          {reviewCase.resumeAction ? (
+            <section className="review-subsection">
+              <details>
+                <summary>Acción de reanudación prevista</summary>
+                <pre className="review-json">{safeJson(reviewCase.resumeAction as unknown as ReviewJsonValue)}</pre>
+              </details>
+            </section>
+          ) : null}
+
+          <AIResolutionNucleus key={`${reviewCase.id}:${reviewCase.version}`} reviewCase={reviewCase} canEdit={canEdit && !readOnly} canFinalize={presentation.actions.approve && !readOnly} onFinalize={onMarkResolved} onContextChange={onNucleusContextChange} />
+          {technicalExtras}
+        </div>
+      </details>
     </article>
   );
 }

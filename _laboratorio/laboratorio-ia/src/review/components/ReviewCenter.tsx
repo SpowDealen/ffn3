@@ -10,7 +10,7 @@ import {
   removeReviewCase,
   transitionReviewCase,
 } from "../store/reviewStore";
-import type {ReviewCaseStatus} from "../types";
+import type {ReviewCase, ReviewCaseStatus} from "../types";
 import {buildGlobalResolutionDashboard, buildOperatorExperience, type OperatorCaseContext, type OperatorFilters, type OperatorWorkspaceSection} from "../nucleus";
 import ReviewCaseDetails from "./ReviewCaseDetails";
 import ReviewCaseList from "./ReviewCaseList";
@@ -27,8 +27,14 @@ const ACTIVE_STATUSES = new Set<ReviewCaseStatus>([
   "open", "in_review", "resolved", "resuming", "resume_failed", "stale",
 ]);
 
-export default function ReviewCenter({initialCaseId}: {initialCaseId?: string | null}): ReactElement {
-  const reviewCases = useReviewCases();
+export default function ReviewCenter({initialCaseId, developmentFixture}: {initialCaseId?: string | null; developmentFixture?: ReviewCase}): ReactElement {
+  const persistedReviewCases = useReviewCases();
+  const reviewCases = useMemo(
+    () => developmentFixture
+      ? [developmentFixture, ...persistedReviewCases.filter((reviewCase) => reviewCase.id !== developmentFixture.id)]
+      : persistedReviewCases,
+    [developmentFixture, persistedReviewCases],
+  );
   const now = useReviewClock();
   const initialDeepLink = resolveReviewCaseDeepLink(reviewCases, initialCaseId);
   const [operatorFilters, setOperatorFilters] = useState<OperatorFilters>({status: "all", severity: "all", producer: "all", entityType: "all", autonomy: "all", risk: "all", capability: "all", knowledgeState: "all", actionRequired: "all", query: "", page: 1, pageSize: 8});
@@ -134,7 +140,7 @@ export default function ReviewCenter({initialCaseId}: {initialCaseId?: string | 
           {reviewCases.length === 0 ? <FeedbackEmptyState title="No hay casos prioritarios" detail="Cuando llegue un caso, aparecerá aquí con su acción requerida." /> : filteredCases.length === 0 ? <FeedbackEmptyState title="Sin coincidencias" detail="No hay casos que coincidan con los filtros actuales." action={{label: "Limpiar filtros", onClick: clearFilters}} /> : <div className="review-workspace"><div className="operator-pagination" role="status">{operator.filtered} casos · página {operator.page}/{operator.pageCount}<button type="button" className="review-button review-button-secondary" disabled={operator.page <= 1} onClick={() => setOperatorFilters((current) => ({...current, page: operator.page - 1}))}>Anterior</button><button type="button" className="review-button review-button-secondary" disabled={operator.page >= operator.pageCount} onClick={() => setOperatorFilters((current) => ({...current, page: operator.page + 1}))}>Siguiente</button></div><ReviewCaseList reviewCases={filteredCases} selectedId={selectedCase ? selectedId : null} now={now} onSelect={openCase} /></div>}
         </section> : null}
 
-        {activeSection === "case" ? <section aria-labelledby="review-nucleus-title">{selectedCase ? <><h3 id="review-nucleus-title" className="sr-only">Núcleo Resolutivo IA</h3><ReviewCaseDetails key={selectedCase.id} reviewCase={selectedCase} onMarkInReview={() => transitionReviewCase(selectedCase.id, "in_review")} onReopen={() => transitionReviewCase(selectedCase.id, "open")} onDismiss={dismissSelected} onRemove={removeSelected} onSaveResolution={(resolution) => addReviewResolution(selectedCase.id, resolution)} onRemoveResolution={(issueId) => removeReviewResolution(selectedCase.id, issueId)} onMarkResolved={() => transitionReviewCase(selectedCase.id, "resolved")} onNucleusContextChange={setCaseContext} /><EntityIdentityLookupControls /><ReconciliationScanControls /></> : <div><h3 id="review-nucleus-title" className="sr-only">Workspace resolutivo</h3><FeedbackEmptyState title="Selecciona un caso para abrir el workspace resolutivo." detail="El Núcleo muestra el workspace del caso elegido; no inventa contexto ni ejecuta acciones al abrirse." />{operator.rows.length ? <div className="review-actions">{operator.rows.slice(0, 5).map((row) => <button key={row.caseId} type="button" className="review-button review-button-secondary" onClick={() => openCase(row.caseId)}>{row.title}</button>)}</div> : null}</div>}</section> : null}
+        {activeSection === "case" ? <section aria-labelledby="review-nucleus-title">{selectedCase ? <><h3 id="review-nucleus-title" className="sr-only">Núcleo Resolutivo IA</h3><ReviewCaseDetails key={selectedCase.id} reviewCase={selectedCase} readOnly={selectedCase.id === developmentFixture?.id} onMarkInReview={() => transitionReviewCase(selectedCase.id, "in_review")} onReopen={() => transitionReviewCase(selectedCase.id, "open")} onDismiss={dismissSelected} onRemove={removeSelected} onSaveResolution={(resolution) => addReviewResolution(selectedCase.id, resolution)} onRemoveResolution={(issueId) => removeReviewResolution(selectedCase.id, issueId)} onMarkResolved={() => transitionReviewCase(selectedCase.id, "resolved")} onNucleusContextChange={setCaseContext} technicalExtras={selectedCase.id === developmentFixture?.id ? undefined : <><EntityIdentityLookupControls /><ReconciliationScanControls /></>} /></> : <div><h3 id="review-nucleus-title" className="sr-only">Workspace resolutivo</h3><FeedbackEmptyState title="Selecciona un caso para abrir el workspace resolutivo." detail="El Núcleo muestra el workspace del caso elegido; no inventa contexto ni ejecuta acciones al abrirse." />{operator.rows.length ? <div className="review-actions">{operator.rows.slice(0, 5).map((row) => <button key={row.caseId} type="button" className="review-button review-button-secondary" onClick={() => openCase(row.caseId)}>{row.title}</button>)}</div> : null}</div>}</section> : null}
 
         {activeSection === "activity" ? <section className="review-subsection" aria-labelledby="review-activity-title"><header><p className="review-kicker">ACTIVIDAD DERIVADA</p><h3 id="review-activity-title">Actividad, procesos e incidencias</h3><p className="review-muted">Timeline existente derivado de snapshots; no es un segundo log.</p></header><dl className="global-dashboard-mini-metrics">{Object.entries(globalDashboard.activity.counts).map(([kind, count]) => <div key={kind}><dt>{kind.replace(/_/g, " ")}</dt><dd>{count}</dd></div>)}</dl>{globalDashboard.timeline.length ? <ol className="global-dashboard-timeline">{globalDashboard.timeline.map((entry) => <li key={entry.eventId}><strong>{entry.caseTitle}</strong><span>{entry.safeSummary}</span><small>{new Date(entry.occurredAt).toLocaleString("es-ES")} · {entry.kind.replace(/_/g, " ")}</small><button type="button" className="review-button review-button-secondary" onClick={() => openCase(entry.caseId)}>Abrir caso</button></li>)}</ol> : <p className="review-empty">Todavía no hay actividad registrada.</p>}</section> : null}
 

@@ -1,6 +1,13 @@
 import type {CreateReviewCaseInput, ReviewCase} from "./types";
 import {createReviewCase} from "./store/reviewStore";
 
+export {
+  buildRx3VisualReviewFixture,
+  RX3_VISUAL_REVIEW_FIXTURE_ID,
+  RX3_VISUAL_REVIEW_FIXTURE_QUERY,
+  rx3VisualReviewFixtureSecurity,
+} from "./development/rx3VisualFixture";
+
 export function createTestReviewCase(): ReviewCase {
   return createReviewCase({
     dedupeKey: "dev:external-news:editorial-review",
