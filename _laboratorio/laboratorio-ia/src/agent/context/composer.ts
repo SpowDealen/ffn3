@@ -121,6 +121,19 @@ function presentationConfidence(presentation: SimplifiedReviewCasePresentation):
   return Object.freeze({source: "review_presentation" as const, level, value: confidence.value});
 }
 
+function presentationDecisionOptions(presentation: SimplifiedReviewCasePresentation): NonNullable<AgentContextItem["decisionOptions"]> {
+  return Object.freeze([...presentation.why.candidates].sort((left, right) => left.id.localeCompare(right.id)).map((candidate) => Object.freeze({
+    id: candidate.id,
+    label: candidate.label,
+    role: candidate.role,
+    confidence: candidate.confidence ? Object.freeze({
+      source: "review_presentation" as const,
+      level: candidate.confidence.label === "Alta" ? "high" as const : candidate.confidence.label === "Media" ? "medium" as const : "low" as const,
+      value: candidate.confidence.value,
+    }) : undefined,
+  })));
+}
+
 function insightConfidence(insight: EditorialInsight): AgentContextConfidence {
   return Object.freeze({source: "ag2_editorial" as const, level: insight.confidence});
 }
@@ -247,6 +260,8 @@ function buildReviewItems(input: AgentContextInput, recommendations: readonly Ag
       durable: true,
       title: presentation.problem.title,
       summary: presentation.problem.summary,
+      issueCodes: unique(reviewCase.issues.map((issue) => issue.kind)),
+      decisionOptions: presentationDecisionOptions(presentation),
       source: Object.freeze({id: sourceId(reviewCase), label: presentation.sourceLabel}),
       entity: Object.freeze({type: reviewCase.subject.type || "unknown", label: presentation.entityLabel, id: reviewCase.subject.id}),
       state,
@@ -278,6 +293,8 @@ function buildEditorialItems(input: AgentContextInput, recommendations: readonly
       durable: false,
       title: insight.entity ? `${insight.entity.kind}: ${insight.entity.id}` : "Señal editorial",
       summary: safe(insight.summary, "Existe una recomendación editorial pendiente de revisión."),
+      issueCodes: Object.freeze([insight.category]),
+      decisionOptions: Object.freeze([]),
       source: Object.freeze({id: "ag2_editorial_intelligence", label: "Inteligencia editorial"}),
       entity: Object.freeze({type: insight.entity?.kind ?? "unknown", label: insight.entity?.kind ?? "Entidad desconocida", id: insight.entity?.id}),
       state,
@@ -308,6 +325,8 @@ function buildDiagnosisItems(input: AgentContextInput, diagnosisItemIds: Readonl
       durable: false,
       title: safe(diagnosis.title, "Diagnóstico observado"),
       summary: safe(diagnosis.summary, "El diagnóstico no dispone de un resumen seguro."),
+      issueCodes: Object.freeze([diagnosis.category]),
+      decisionOptions: Object.freeze([]),
       source: Object.freeze({id: "ag1_reasoning", label: "Observación y razonamiento"}),
       entity: Object.freeze({type: "unknown", label: "Contexto operativo"}),
       state,
@@ -330,16 +349,21 @@ function buildOperationalItems(input: AgentContextInput): AgentContextItem[] {
   const processes: AgentContextItem[] = input.snapshot.processes.map((process) => {
     const blocked = process.state === "blocked" || process.state === "error";
     const state: AgentContextState = blocked ? "blocked" : process.active ? "in_progress" : process.temporal === "historical" || process.temporal === "recent" ? "resolved" : "no_action";
-    return Object.freeze({id: `process:${process.id}`, kind: "process" as const, durable: false, title: process.title, summary: safe(process.reason?.text, process.active ? "Proceso actualmente en curso." : "Proceso sin actividad pendiente."), source: Object.freeze({id: operationalSourceId(process.source), label: process.source}), entity: Object.freeze({type: "process", label: "Proceso", id: process.id}), state, stateLabel: STATE_LABELS[state], domainPriority: "unavailable" as const, blocked, decisionNeed: blocked ? "blocked" as const : "none" as const, confidences: Object.freeze([]), risk: Object.freeze({level: "unavailable" as const, source: "unavailable" as const}), sufficiency: Object.freeze([{status: "unknown" as const, source: "unknown" as const, determinesReadiness: false as const}]), recommendationIds: Object.freeze([]), authorityHint: authorityHint(ownerTarget(process.authority.owner), process.authority.source, process.destination), freshness: Object.freeze({status: process.temporal === "historical" ? "stale" as const : "fresh" as const, updatedAt: process.updatedAt}), references: references({observationIds: [process.id]})});
+    return Object.freeze({id: `process:${process.id}`, kind: "process" as const, durable: false, title: process.title, summary: safe(process.reason?.text, process.active ? "Proceso actualmente en curso." : "Proceso sin actividad pendiente."), issueCodes: Object.freeze([`process_${process.state}`]), decisionOptions: Object.freeze([]), source: Object.freeze({id: operationalSourceId(process.source), label: process.source}), entity: Object.freeze({type: "process", label: "Proceso", id: process.id}), state, stateLabel: STATE_LABELS[state], domainPriority: "unavailable" as const, blocked, decisionNeed: blocked ? "blocked" as const : "none" as const, confidences: Object.freeze([]), risk: Object.freeze({level: "unavailable" as const, source: "unavailable" as const}), sufficiency: Object.freeze([{status: "unknown" as const, source: "unknown" as const, determinesReadiness: false as const}]), recommendationIds: Object.freeze([]), authorityHint: authorityHint(ownerTarget(process.authority.owner), process.authority.source, process.destination), freshness: Object.freeze({status: process.temporal === "historical" ? "stale" as const : "fresh" as const, updatedAt: process.updatedAt}), references: references({observationIds: [process.id]})});
   });
-  const dependencies: AgentContextItem[] = input.snapshot.dependencies.filter((dependency) => dependency.current && ["unavailable", "blocked", "degraded"].includes(dependency.state)).map((dependency) => Object.freeze({id: `dependency:${dependency.id}`, kind: "dependency" as const, durable: false, title: dependency.label, summary: safe(dependency.reason?.text, "La dependencia necesita atención antes de continuar."), source: Object.freeze({id: dependency.id, label: dependency.label}), entity: Object.freeze({type: "dependency", label: "Dependencia", id: dependency.id}), state: "blocked" as const, stateLabel: STATE_LABELS.blocked, domainPriority: dependency.state === "degraded" ? "high" as const : "critical" as const, blocked: true, decisionNeed: "blocked" as const, confidences: Object.freeze([]), risk: Object.freeze({level: "unavailable" as const, source: "unavailable" as const}), sufficiency: Object.freeze([{status: "unknown" as const, source: "unknown" as const, determinesReadiness: false as const}]), recommendationIds: Object.freeze([]), authorityHint: authorityHint("unknown", "LES 4 live checks", dependency.destination), freshness: Object.freeze({status: dependency.checkedAt ? "fresh" as const : "unknown" as const, updatedAt: dependency.checkedAt}), references: references({observationIds: [dependency.id], evidenceIds: unique([dependency.reason?.code])})}));
+  const dependencies: AgentContextItem[] = input.snapshot.dependencies.filter((dependency) => dependency.current && ["unavailable", "blocked", "degraded"].includes(dependency.state)).map((dependency) => Object.freeze({id: `dependency:${dependency.id}`, kind: "dependency" as const, durable: false, title: dependency.label, summary: safe(dependency.reason?.text, "La dependencia necesita atención antes de continuar."), issueCodes: Object.freeze([`dependency_${dependency.state}`]), decisionOptions: Object.freeze([]), source: Object.freeze({id: dependency.id, label: dependency.label}), entity: Object.freeze({type: "dependency", label: "Dependencia", id: dependency.id}), state: "blocked" as const, stateLabel: STATE_LABELS.blocked, domainPriority: dependency.state === "degraded" ? "high" as const : "critical" as const, blocked: true, decisionNeed: "blocked" as const, confidences: Object.freeze([]), risk: Object.freeze({level: "unavailable" as const, source: "unavailable" as const}), sufficiency: Object.freeze([{status: "unknown" as const, source: "unknown" as const, determinesReadiness: false as const}]), recommendationIds: Object.freeze([]), authorityHint: authorityHint("unknown", "LES 4 live checks", dependency.destination), freshness: Object.freeze({status: dependency.checkedAt ? "fresh" as const : "unknown" as const, updatedAt: dependency.checkedAt}), references: references({observationIds: [dependency.id], evidenceIds: unique([dependency.reason?.code])})}));
   return [...processes, ...dependencies];
 }
 
 function statements(input: AgentContextInput, insightReviewIds: ReadonlyMap<string, string | undefined>, diagnosisItemIds: ReadonlyMap<string, string | undefined>): readonly AgentContextStatement[] {
   const result: AgentContextStatement[] = [];
   for (const fact of input.reasoning.facts) result.push(Object.freeze({id: `ag3-statement:fact:${fact.id}`, epistemicStatus: "fact" as const, summary: `${fact.subjectId}: ${fact.predicate} = ${fact.value}`, source: fact.source, relatedItemId: fact.subject === "review" ? `review:${fact.subjectId}` : fact.subject === "process" ? `process:${fact.subjectId}` : fact.subject === "dependency" ? `dependency:${fact.subjectId}` : undefined, evidenceIds: unique(fact.evidenceIds)}));
-  for (const observation of input.editorial.context.observations) result.push(Object.freeze({id: `ag3-statement:fact:${observation.id}`, epistemicStatus: "fact" as const, summary: `${observation.dimension}: ${observation.assessment}`, source: "AG2 evidence", relatedItemId: observation.reviewId ? `review:${observation.reviewId}` : undefined, evidenceIds: unique(observation.evidence.map((entry) => entry.id))}));
+  for (const observation of input.editorial.context.observations) {
+    const signal = input.editorial.signals.find((entry) => entry.id.endsWith(`:${observation.id}`));
+    const insight = signal ? input.editorial.insights.find((entry) => entry.sourceSignalId === signal.id) : undefined;
+    const reviewId = observation.reviewId ?? (insight ? insightReviewIds.get(insight.id) : undefined);
+    result.push(Object.freeze({id: `ag3-statement:fact:${observation.id}`, epistemicStatus: "fact" as const, summary: `${observation.dimension}: ${observation.assessment}`, source: "AG2 evidence", relatedItemId: reviewId ? `review:${reviewId}` : insight ? `editorial:${insight.id}` : undefined, evidenceIds: unique(observation.evidence.map((entry) => entry.id))}));
+  }
   for (const signal of input.editorial.signals) {
     const reviewId = reviewIdForSignal(signal, input);
     const insight = input.editorial.insights.find((entry) => entry.sourceSignalId === signal.id);

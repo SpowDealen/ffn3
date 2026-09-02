@@ -159,7 +159,7 @@ function main(): void {
   check(context.items.filter((item) => item.kind !== "review_case").every((item) => !item.durable), "68 proyecciones no se convierten en dominio");
 
   const contextPath = "_laboratorio/laboratorio-ia/src/agent/context";
-  const files = readdirSync(contextPath).sort();
+  const files = readdirSync(contextPath).filter((name) => name.endsWith(".ts")).sort();
   const allSource = files.map((name) => source(`${contextPath}/${name}`)).join("\n");
   for (const forbidden of ["store", "executor", "planner", "authority", "memory", "watcher", "scheduler"]) equal(files.some((name) => name.toLowerCase().includes(forbidden)), false, `69 no ${forbidden} file`);
   check(!/\b(fetch|axios|XMLHttpRequest)\s*\(/.test(allSource), "70 no network");

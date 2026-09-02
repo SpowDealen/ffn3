@@ -37,6 +37,13 @@ export type AgentContextAuthorityHint = Readonly<{
   invokes: false;
 }>;
 
+export type AgentContextDecisionOption = Readonly<{
+  id: string;
+  label: string;
+  role: "recommended" | "alternative" | "possible";
+  confidence?: AgentContextConfidence;
+}>;
+
 export type AgentContextReferences = Readonly<{
   reviewCaseId?: string;
   observationIds: readonly string[];
@@ -53,6 +60,8 @@ export type AgentContextItem = Readonly<{
   durable: boolean;
   title: string;
   summary: string;
+  issueCodes?: readonly string[];
+  decisionOptions?: readonly AgentContextDecisionOption[];
   source: Readonly<{id: string; label: string}>;
   entity: Readonly<{type: string; label: string; id?: string}>;
   state: AgentContextState;

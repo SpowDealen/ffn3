@@ -7,6 +7,7 @@ import ReviewCenterScreen from "./screens/ReviewCenterScreen";
 import TelegramStatusScreen from "./screens/TelegramStatusScreen";
 import LaboratoryShell from "./LaboratoryShell";
 import {removeLaboratoryQueryParam, useLaboratoryRouter} from "./useLaboratoryRouter";
+import {AGENT_WORKSPACE_FIXTURE_QUERY, buildAgentWorkspaceFixture} from "../agent/workspace";
 import {buildReviewContextSearch} from "../review/navigation";
 import {
   buildRx2ReviewInboxFixtures,
@@ -29,18 +30,23 @@ export default function LaboratoryApp(): ReactElement {
     requestedCaseId === RX3_VISUAL_REVIEW_FIXTURE_ID
       ? buildRx3VisualReviewFixture()
       : undefined;
+  const agentWorkspaceFixture = import.meta.env.DEV && search.get("fixture") === AGENT_WORKSPACE_FIXTURE_QUERY
+    ? buildAgentWorkspaceFixture()
+    : undefined;
   const developmentFixtures = import.meta.env.DEV && search.get("fixture") === RX2_REVIEW_INBOX_FIXTURE_QUERY
     ? buildRx2ReviewInboxFixtures()
-    : undefined;
+    : agentWorkspaceFixture?.reviewCases;
   const searchKey = search.toString();
   const rx5Fixture = import.meta.env.DEV ? readRx5BrowserFixtureDescriptor(searchKey) : undefined;
-  const fixtureQuery = developmentFixtures
-    ? RX2_REVIEW_INBOX_FIXTURE_QUERY
-    : developmentFixture
-      ? RX3_VISUAL_REVIEW_FIXTURE_QUERY
-      : rx5Fixture
-        ? buildReviewContextSearch(search)
-        : undefined;
+  const fixtureQuery = agentWorkspaceFixture
+    ? buildReviewContextSearch(search)
+    : developmentFixtures
+      ? RX2_REVIEW_INBOX_FIXTURE_QUERY
+      : developmentFixture
+        ? RX3_VISUAL_REVIEW_FIXTURE_QUERY
+        : rx5Fixture
+          ? buildReviewContextSearch(search)
+          : undefined;
   const previousRx5FixtureCaseId = useRef<string>();
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -64,7 +70,7 @@ export default function LaboratoryApp(): ReactElement {
   }, [searchKey]);
   const reviewInboxSearch = removeLaboratoryQueryParam(search, "case");
   return <LaboratoryShell route={route} onNavigate={navigate}>
-    {route.id === "status" ? <LaboratoryStatusScreen onNavigate={navigate} /> : null}
+    {route.id === "status" ? <LaboratoryStatusScreen onNavigate={navigate} agentDecisions={agentWorkspaceFixture?.decisions} agentReviewSearch={agentWorkspaceFixture ? buildReviewContextSearch(search) : ""} /> : null}
     <div hidden={route.id !== "editorial"}><EditorialWorkspaceScreen><PanelIA /></EditorialWorkspaceScreen></div>
     {route.id === "revision" ? <ReviewCenterScreen caseId={requestedCaseId} developmentFixture={developmentFixture} developmentFixtures={developmentFixtures} fixtureQuery={fixtureQuery} onReturnToInbox={() => navigate("/revision", reviewInboxSearch)} /> : null}
     {route.id === "activity" ? <ActivityScreen /> : null}

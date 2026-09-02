@@ -8,3 +8,4 @@ export * from "./editorial-signals";
 export * from "./model";
 export * from "./proposals";
 export * from "./reasoning";
+export * from "./workspace";
