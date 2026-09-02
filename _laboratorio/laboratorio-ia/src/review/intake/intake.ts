@@ -203,7 +203,9 @@ export function createOrUpdateReviewCaseFromIntake(
   };
   const context: ReviewJsonObject = {
     ...(existing?.context ?? {}),
-    producer: `${input.source}_${input.entityType}`,
+    producer: typeof input.resumeContext?.producer === "string" && input.resumeContext.producer.trim()
+      ? input.resumeContext.producer.trim().slice(0, 120)
+      : `${input.source}_${input.entityType}`,
     unifiedReviewIntake,
   };
   const subject = {

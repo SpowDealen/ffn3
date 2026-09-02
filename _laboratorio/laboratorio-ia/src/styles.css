@@ -323,6 +323,7 @@ textarea {
 .review-disclosure,
 .review-nav-link { border-color: var(--panel-border); background: var(--panel-surface-strong); color: var(--panel-text); }
 .review-button.review-back-to-inbox { min-height: 44px; }
+.review-button.review-origin-resume-action { min-height: 44px; }
 .review-button-danger { border-color: rgba(239,68,68,.4); background: var(--panel-error-bg); color: #fecaca; }
 .interaction-control { display: inline-grid; gap: 4px; min-width: 0; }.interaction-control .review-button { min-height: 44px; overflow-wrap: anywhere; }.interaction-control .review-button:disabled { border-style: dashed; cursor: not-allowed; filter: saturate(.55); }.interaction-button-busy:disabled { cursor: progress; }.interaction-button-subtle { min-height: 34px; padding: 5px 8px; background: transparent; }.interaction-reason { max-width: 260px; color: var(--panel-text-muted); font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }.interaction-link { display: inline-flex; align-items: center; min-height: 36px; color: #8dbcf5; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; }.interaction-link::after { content: "→"; margin-left: 5px; }.interaction-link-disabled { color: var(--panel-text-muted); text-decoration: none; cursor: not-allowed; }.interaction-link-disabled::after { content: none; }
 .review-button:focus-visible,

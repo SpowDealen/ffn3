@@ -21,8 +21,16 @@ function isInboxExcluded(reviewCase: ReviewCase): boolean {
     reviewCase.context.readOnlyDiagnostic === true;
 }
 
+function awaitsOriginResume(reviewCase: ReviewCase): boolean {
+  if (reviewCase.status !== "resolved" || reviewCase.resumeExecution?.status === "succeeded") return false;
+  const intake = reviewCase.context.unifiedReviewIntake;
+  const intakeResume = intake && typeof intake === "object" && !Array.isArray(intake) ? intake.resume : undefined;
+  return reviewCase.context.producer === "external_news" || Boolean(intakeResume && typeof intakeResume === "object" && !Array.isArray(intakeResume));
+}
+
 function bucketFor(reviewCase: ReviewCase, needsAttentionIds: ReadonlySet<string>): ReviewInboxBucket | undefined {
   if (needsAttentionIds.has(reviewCase.id)) return "needs_attention";
+  if (awaitsOriginResume(reviewCase)) return "in_process";
   if (RESOLVED_STATUSES.has(reviewCase.status)) return "resolved";
   if (PROCESS_STATUSES.has(reviewCase.status)) return "in_process";
   return undefined;

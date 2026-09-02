@@ -22,6 +22,7 @@ import {executePreparedEntityMaterialization, previewPreparedEntityMaterializati
 import {applyPreparedEntityEnrichment, createSchemaRequirementTestCase, inspectPreparedEntityRequirements, previewPreparedEntityEnrichment, runPreparedEntityRequirementAgent} from "./review/schemaRequirements";
 import {createExternalNewsReviewTestCase, createOrUpdateExternalNewsReviewCase, detectExternalNewsIssues, runExternalNewsReviewPilot} from "./review/producers/externalNews";
 import {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeExecutionTestCase, createExternalNewsResumeTestCase, executeExternalNewsResumeWithRegisteredExecutor, registerMockExternalNewsResumeExecutor, unregisterMockExternalNewsResumeExecutor} from "./review/resume/externalNews";
+import {cleanupRx5BrowserFixtureFromLocation, dispatchReviewResume, prepareRx5BrowserFixture} from "./review/resume/origin";
 import {
   addReviewResolution,
   clearAllReviewCases,
@@ -71,6 +72,9 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     registerMockExternalNewsResumeExecutor,
     unregisterMockExternalNewsResumeExecutor,
     createExternalNewsResumeExecutionTestCase,
+    prepareRx5BrowserFixture,
+    cleanupRx5BrowserFixture: cleanupRx5BrowserFixtureFromLocation,
+    dispatchReviewResume,
     runAutonomousInvestigation,
     previewAutonomousInvestigation,
     applyAutonomousInvestigation,

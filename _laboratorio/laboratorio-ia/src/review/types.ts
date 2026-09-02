@@ -191,7 +191,7 @@ export type ReviewResumeExecution = {
   draftId?: string;
   documentId?: string;
   error?: {code: string; message: string};
-  summary?: {appliedResolutionCount: number; changeCount: number; sourceName?: string; title?: string};
+  summary?: {appliedResolutionCount: number; changeCount: number; sourceName?: string; title?: string; producer?: string; operation?: string; resultId?: string};
 };
 
 export type CreateReviewCaseInput = Pick<

@@ -54,7 +54,9 @@ function main(): void {
   check("23 RX3 intacto", reviewCenter.includes("<ReviewCaseDetails") && source("_laboratorio/laboratorio-ia/src/review/components/ReviewCaseDetails.tsx").includes("¿Qué ocurrirá si apruebo?"));
   check("24 sin store nuevo", humanLanguageSecurity.presentationOnly && !/\b(?:Store|createStore|localStorage|sessionStorage|indexedDB)\b/.test(humanLanguage));
   check("25 sin writes", !humanLanguageSecurity.writes && !humanLanguageSecurity.persists && !humanLanguageSecurity.executes && !/\b(?:fetch|POST|PUT|PATCH|DELETE|save|persist)\b/.test(humanLanguage));
-  check("26 sin cambios AU", !/_laboratorio\/laboratorio-ia\/src\/review\/(?:globalResolution|transactions|autonomous|resume|store|materialization)/.test(changedFiles));
+  const changedPaths = changedFiles.split("\n").filter(Boolean);
+  const rx5ResumeFile = (path: string): boolean => path.includes("/review/resume/origin/") || path.endsWith("/review/resume/index.ts");
+  check("26 autoridades AU intactas", !changedPaths.some((path) => /_laboratorio\/laboratorio-ia\/src\/review\/(?:globalResolution|transactions|autonomous|store|materialization)/.test(path) || path.includes("/review/resume/") && !rx5ResumeFile(path)));
   check("27 presentación determinista", humanLanguageSecurity.deterministic && presentHumanState("operational") === presentHumanState("operational") && presentHumanState("unknown") === "Estado pendiente");
   check("28 estructura accesible", shell.includes("<main") && menu.includes("<nav") && reviewInbox.includes('role="tablist"') && reviewInbox.includes('role="tabpanel"') && reviewInbox.includes("aria-controls") && reviewCenter.includes("<details"));
   check("29 sin headings duplicados", (shell.match(/<h1\b/g) ?? []).length === 1 && !reviewCenter.includes(">Review Inbox<") && !reviewInbox.includes(">Review Inbox<") && reviewCenter.includes('aria-label="Bandeja de casos de revisión"'));

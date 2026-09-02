@@ -359,13 +359,15 @@ export function buildSimplifiedReviewCasePresentation(reviewCase: ReviewCase): S
     : reviewCase.resolutions[0];
   const canEdit = ["open", "in_review", "stale", "resume_failed"].includes(reviewCase.status);
   const approve = ["open", "in_review"].includes(reviewCase.status) && canResolveReviewCase(reviewCase);
+  const intake = reviewCase.context.unifiedReviewIntake;
+  const awaitingOriginResume = reviewCase.status === "resolved" && (reviewCase.context.producer === "external_news" || Boolean(intake && typeof intake === "object" && !Array.isArray(intake) && intake.resume && typeof intake.resume === "object" && !Array.isArray(intake.resume)));
 
   return Object.freeze({
     version: SIMPLIFIED_REVIEW_CASE_VERSION,
     sourceLabel: safeHumanText(labels.sourceLabel) ?? REVIEW_MODULE_LABELS[reviewCase.module],
     entityLabel: safeHumanText(labels.entityLabel) ?? "Entidad editorial",
     priorityLabel: REVIEW_PRIORITY_LABELS[reviewCase.priority],
-    statusLabel: translateReviewTechnicalState(reviewCase.status),
+    statusLabel: awaitingOriginResume ? "Decisión aprobada · pendiente de continuar" : translateReviewTechnicalState(reviewCase.status),
     problem: Object.freeze({
       title: safeHumanText(labels.problemTitle) ?? "Caso pendiente de revisión",
       summary: safeHumanText(labels.problemSummary) ?? (issue ? ISSUE_REASONS[issue.kind] : "Este caso necesita una decisión humana."),

@@ -144,6 +144,7 @@ export function registerOfficialNewsReviewIntake(
         matchStrategy: item.matchStrategy ?? "",
       },
       resumeContext: {
+        schemaVersion: 1,
         producer: `${source}_news`,
         originId: item.sourceId,
         operation: "analyze_official_news",
@@ -171,6 +172,7 @@ export function registerOfficialEventBatchReviewIntake(
       evidenceRefs: [{id: `official-event-batch:${source}:${item.eventId}`, source: `${LABELS[source]} official events`}],
       originContext: {route: "/editorial", eventId: item.eventId, startDate: item.startDate ?? ""},
       resumeContext: {
+        schemaVersion: 1,
         producer: `${source}_events`,
         originId: item.eventId,
         operation: "analyze_official_events",
@@ -194,6 +196,7 @@ function sharedContext(
       canonicalUrl: event.canonicalUrl ?? "",
     },
     resumeContext: {
+      schemaVersion: 1,
       producer: `${source}_events`,
       originId: event.id,
       operation,

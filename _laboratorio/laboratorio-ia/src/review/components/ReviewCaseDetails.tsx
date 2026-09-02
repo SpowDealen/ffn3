@@ -10,6 +10,7 @@ import ReviewIssueEditor from "./ReviewIssueEditor";
 import ReviewCaseResolutionStatus from "./ReviewCaseResolutionStatus";
 import ReviewResolutionSummary from "./ReviewResolutionSummary";
 import AIResolutionNucleus, {type NucleusContextView} from "./AIResolutionNucleus";
+import ReviewOriginResumePanel from "./ReviewOriginResumePanel";
 
 /*
  * AU10 mantiene los contratos UI previos dentro del Núcleo, bajo demanda:
@@ -262,6 +263,8 @@ export default function ReviewCaseDetails({
           </div>
         ) : null}
       </section>
+
+      {!readOnly ? <ReviewOriginResumePanel reviewCase={reviewCase} /> : null}
 
       <details className="review-technical-details" onToggle={syncTechnicalState}>
         <summary aria-expanded={technicalOpen} aria-controls={technicalId}>Detalles técnicos</summary>

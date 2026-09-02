@@ -52,7 +52,7 @@ import type {
 } from "../sources/types";
 import { getEnabledExternalNewsSources } from "../sources/sourceRegistry";
 import {runExternalNewsReviewPilot, type ExternalNewsPilotReview} from "../review/producers/externalNews";
-import {registerReviewResumeExecutor} from "../integrations/reviewResumeExecutors";
+import {registerReviewOriginResumeAuthority, registerReviewResumeExecutor} from "../integrations/reviewResumeExecutors";
 import {registerPanelSanityInvestigationSource} from "../integrations/reviewInvestigationSources";
 import {registerReviewEditorialAgentCapabilities} from "../integrations/reviewEditorialAgentCapabilities";
 import {editorialEntityCreationExecutor} from "../integrations/editorialEntityCreationExecutor";
@@ -68,6 +68,7 @@ import {
   registerOfficialEventReviewIntake,
   registerOfficialNewsReviewIntake,
 } from "../review/intake";
+import {createOfficialEventRuntimeAuthority, createOfficialNewsRuntimeAuthority} from "../review/resume/origin";
 
 
 type ExternalEditorialAnalysisResponse =
@@ -448,6 +449,26 @@ type OneNewsBatchResolveApiResponse =
       error?: string;
     };
 
+function mergeOfficialNewsBatchAnalysis<T extends UfcNewsBatchItem>(
+  current: Readonly<{ok: true; count: number; summary: {existing: number; ready: number; withoutContent: number; requiresReview: number}; items: T[]}>,
+  next: Readonly<{ok: true; count: number; summary: {existing: number; ready: number; withoutContent: number; requiresReview: number}; items: T[]}>,
+): {ok: true; count: number; summary: {existing: number; ready: number; withoutContent: number; requiresReview: number}; items: T[]} {
+  const replacements = new Map(next.items.map((item) => [item.sourceId, item]));
+  const items = current.items.map((item) => replacements.get(item.sourceId) ?? item);
+  for (const item of next.items) if (!items.some((candidate) => candidate.sourceId === item.sourceId)) items.push(item);
+  return {
+    ok: true,
+    count: items.length,
+    summary: {
+      existing: items.filter((item) => item.status === "existente").length,
+      ready: items.filter((item) => item.status === "nueva_apta").length,
+      withoutContent: items.filter((item) => item.status === "sin_contenido").length,
+      requiresReview: items.filter((item) => item.status === "requiere_revision").length,
+    },
+    items,
+  };
+}
+
 type OneOfficialNewsApiResponse =
   | {
       ok: true;
@@ -774,6 +795,28 @@ type UfcBatchResolveApiResponse =
       ok: false;
       error?: string;
     };
+
+function mergeUfcEventBatchAnalysis(
+  current: Extract<UfcBatchResolveApiResponse, {ok: true}>,
+  next: Extract<UfcBatchResolveApiResponse, {ok: true}>,
+): Extract<UfcBatchResolveApiResponse, {ok: true}> {
+  const replacements = new Map(next.items.map((item) => [item.eventId, item]));
+  const items = current.items.map((item) => replacements.get(item.eventId) ?? item);
+  for (const item of next.items) if (!items.some((candidate) => candidate.eventId === item.eventId)) items.push(item);
+  return {
+    ok: true,
+    count: items.length,
+    summary: {
+      completed: items.filter((item) => item.status === "completo").length,
+      eventPending: items.filter((item) => item.status === "evento_pendiente").length,
+      readyToPrepare: items.filter((item) => item.status === "listo_para_preparar").length,
+      requiresReview: items.filter((item) => item.status === "requiere_revision").length,
+      totalMissingFighters: items.reduce((total, item) => total + item.missingFighters, 0),
+      totalPendingFights: items.reduce((total, item) => total + item.pendingFights, 0),
+    },
+    items,
+  };
+}
 
 
 type BkfcFightCardItem = {
@@ -3948,8 +3991,13 @@ export default function PanelIA(): ReactElement {
     }
   }, []);
 
-  const analyzeOfficialUfcNews = useCallback(async (): Promise<void> => {
-    if (officialNewsItems.length === 0) {
+  const analyzeOfficialUfcNews = useCallback(async (
+    itemsOverride?: readonly UfcOfficialNewsItem[],
+    signal?: AbortSignal,
+    preserveBatch = false,
+  ): Promise<Extract<UfcNewsBatchResolveApiResponse, {ok: true}> | undefined> => {
+    const items = itemsOverride ?? officialNewsItems;
+    if (items.length === 0) {
       setUfcNewsBatchStatus({
         type: "error",
         message: "Carga primero las noticias oficiales de UFC.",
@@ -3965,7 +4013,7 @@ export default function PanelIA(): ReactElement {
       startProcess({
         id: processId,
         label: "Analizando noticias UFC",
-        detail: `${officialNewsItems.length} noticias en preparación`,
+        detail: `${items.length} noticias en preparación`,
       });
 
       setUfcNewsBatchStatus({
@@ -3982,8 +4030,9 @@ export default function PanelIA(): ReactElement {
             Accept: "application/json",
           },
           body: JSON.stringify({
-            items: officialNewsItems,
+            items,
           }),
+          signal,
         }
       );
 
@@ -3999,7 +4048,7 @@ export default function PanelIA(): ReactElement {
       }
 
       registerOfficialNewsReviewIntake("ufc", payload.items);
-      setUfcNewsBatchAnalysis(payload);
+      setUfcNewsBatchAnalysis((current) => preserveBatch && current?.ok ? mergeOfficialNewsBatchAnalysis(current, payload) : payload);
       setUfcNewsBatchStatus({
         type: "success",
         message: `${payload.count} noticias analizadas: ${payload.summary.existing} existentes, ${payload.summary.ready} nuevas aptas, ${payload.summary.withoutContent} sin contenido suficiente y ${payload.summary.requiresReview} para revisión.`,
@@ -4023,6 +4072,7 @@ export default function PanelIA(): ReactElement {
       });
 
       completeProcess(processId);
+      return payload;
     } catch (error) {
       const message =
         error instanceof Error
@@ -4046,6 +4096,7 @@ export default function PanelIA(): ReactElement {
       });
 
       failProcess(processId, message);
+      return undefined;
     } finally {
       setIsAnalyzingUfcNewsBatch(false);
     }
@@ -4460,8 +4511,13 @@ export default function PanelIA(): ReactElement {
     }
   }, []);
 
-  const analyzeOfficialBkfcNews = useCallback(async (): Promise<void> => {
-    if (bkfcNewsItems.length === 0) {
+  const analyzeOfficialBkfcNews = useCallback(async (
+    itemsOverride?: readonly BkfcOfficialNewsItem[],
+    signal?: AbortSignal,
+    preserveBatch = false,
+  ): Promise<Extract<BkfcNewsBatchResolveApiResponse, {ok: true}> | undefined> => {
+    const items = itemsOverride ?? bkfcNewsItems;
+    if (items.length === 0) {
       setBkfcNewsBatchStatus({
         type: "error",
         message: "Carga primero las noticias oficiales de BKFC.",
@@ -4477,7 +4533,7 @@ export default function PanelIA(): ReactElement {
       startProcess({
         id: processId,
         label: "Analizando noticias BKFC",
-        detail: `${bkfcNewsItems.length} noticias en preparación`,
+        detail: `${items.length} noticias en preparación`,
       });
 
       setBkfcNewsBatchStatus({
@@ -4494,8 +4550,9 @@ export default function PanelIA(): ReactElement {
             Accept: "application/json",
           },
           body: JSON.stringify({
-            items: bkfcNewsItems,
+            items,
           }),
+          signal,
         }
       );
 
@@ -4511,7 +4568,7 @@ export default function PanelIA(): ReactElement {
       }
 
       registerOfficialNewsReviewIntake("bkfc", payload.items);
-      setBkfcNewsBatchAnalysis(payload);
+      setBkfcNewsBatchAnalysis((current) => preserveBatch && current?.ok ? mergeOfficialNewsBatchAnalysis(current, payload) : payload);
       setBkfcNewsBatchStatus({
         type: "success",
         message: `${payload.count} noticias analizadas: ${payload.summary.existing} existentes, ${payload.summary.ready} nuevas aptas, ${payload.summary.withoutContent} sin contenido suficiente y ${payload.summary.requiresReview} para revisión.`,
@@ -4535,6 +4592,7 @@ export default function PanelIA(): ReactElement {
       });
 
       completeProcess(processId);
+      return payload;
     } catch (error) {
       const message =
         error instanceof Error
@@ -4558,6 +4616,7 @@ export default function PanelIA(): ReactElement {
       });
 
       failProcess(processId, message);
+      return undefined;
     } finally {
       setIsAnalyzingBkfcNewsBatch(false);
     }
@@ -5245,8 +5304,13 @@ export default function PanelIA(): ReactElement {
     }
   }, []);
 
-  const analyzeOfficialOneNews = useCallback(async (): Promise<void> => {
-    if (oneNewsItems.length === 0) {
+  const analyzeOfficialOneNews = useCallback(async (
+    itemsOverride?: readonly OneOfficialNewsItem[],
+    signal?: AbortSignal,
+    preserveBatch = false,
+  ): Promise<Extract<OneNewsBatchResolveApiResponse, {ok: true}> | undefined> => {
+    const items = itemsOverride ?? oneNewsItems;
+    if (items.length === 0) {
       setOneNewsBatchStatus({
         type: "error",
         message: "Carga primero las noticias oficiales de ONE Championship.",
@@ -5262,7 +5326,7 @@ export default function PanelIA(): ReactElement {
       startProcess({
         id: processId,
         label: "Analizando noticias ONE Championship",
-        detail: `${oneNewsItems.length} noticias en preparación`,
+        detail: `${items.length} noticias en preparación`,
       });
 
       setOneNewsBatchStatus({
@@ -5279,8 +5343,9 @@ export default function PanelIA(): ReactElement {
             Accept: "application/json",
           },
           body: JSON.stringify({
-            items: oneNewsItems,
+            items,
           }),
+          signal,
         }
       );
 
@@ -5296,7 +5361,7 @@ export default function PanelIA(): ReactElement {
       }
 
       registerOfficialNewsReviewIntake("one", payload.items);
-      setOneNewsBatchAnalysis(payload);
+      setOneNewsBatchAnalysis((current) => preserveBatch && current?.ok ? mergeOfficialNewsBatchAnalysis(current, payload) : payload);
       setOneNewsBatchStatus({
         type: "success",
         message: `${payload.count} noticias analizadas: ${payload.summary.existing} existentes, ${payload.summary.ready} nuevas aptas, ${payload.summary.withoutContent} sin contenido suficiente y ${payload.summary.requiresReview} para revisión.`,
@@ -5320,6 +5385,7 @@ export default function PanelIA(): ReactElement {
       });
 
       completeProcess(processId);
+      return payload;
     } catch (error) {
       const message =
         error instanceof Error
@@ -5343,6 +5409,7 @@ export default function PanelIA(): ReactElement {
       });
 
       failProcess(processId, message);
+      return undefined;
     } finally {
       setIsAnalyzingOneNewsBatch(false);
     }
@@ -6679,8 +6746,12 @@ export default function PanelIA(): ReactElement {
     }
   }, []);
 
-  const analyzeUpcomingUfcEvents = useCallback(async (): Promise<void> => {
-    const upcomingEvents = officialEventItems.filter(
+  const analyzeUpcomingUfcEvents = useCallback(async (
+    eventsOverride?: readonly UfcOfficialEventItem[],
+    signal?: AbortSignal,
+    preserveBatch = false,
+  ): Promise<Extract<UfcBatchResolveApiResponse, {ok: true}> | undefined> => {
+    const upcomingEvents = (eventsOverride ?? officialEventItems).filter(
       (item) => item.status === "proximo" && (item.fightCard?.length ?? 0) > 0
     );
 
@@ -6720,6 +6791,7 @@ export default function PanelIA(): ReactElement {
           body: JSON.stringify({
             events: upcomingEvents,
           }),
+          signal,
         }
       );
 
@@ -6734,7 +6806,7 @@ export default function PanelIA(): ReactElement {
       }
 
       registerOfficialEventBatchReviewIntake("ufc", payload.items);
-      setUfcBatchAnalysis(payload);
+      setUfcBatchAnalysis((current) => preserveBatch && current?.ok ? mergeUfcEventBatchAnalysis(current, payload) : payload);
       setUfcBatchStatus({
         type: "success",
         message: `${payload.count} eventos analizados: ${payload.summary.completed} completos, ${payload.summary.readyToPrepare} listos para preparar, ${payload.summary.eventPending} con evento pendiente y ${payload.summary.requiresReview} para revisión.`,
@@ -6754,6 +6826,7 @@ export default function PanelIA(): ReactElement {
       });
 
       completeProcess(processId);
+      return payload;
     } catch (error) {
       const message =
         error instanceof Error
@@ -6777,13 +6850,17 @@ export default function PanelIA(): ReactElement {
       });
 
       failProcess(processId, message);
+      return undefined;
     } finally {
       setIsAnalyzingUfcBatch(false);
     }
   }, [officialEventItems]);
 
   const resolveSelectedUfcEvent = useCallback(
-    async (eventOverride?: UfcOfficialEventItem): Promise<void> => {
+    async (
+      eventOverride?: UfcOfficialEventItem,
+      signal?: AbortSignal,
+    ): Promise<UfcEventResolutionSuccess | null> => {
       const targetEvent = eventOverride ?? selectedOfficialEvent;
 
       if (!targetEvent) {
@@ -6791,7 +6868,7 @@ export default function PanelIA(): ReactElement {
           type: "error",
           message: "Selecciona primero un evento oficial de UFC.",
         });
-        return;
+        return null;
       }
 
       const processId = "ufc-event-resolution";
@@ -6821,6 +6898,7 @@ export default function PanelIA(): ReactElement {
             body: JSON.stringify({
               event: targetEvent,
             }),
+            signal,
           }
         );
 
@@ -6863,6 +6941,7 @@ export default function PanelIA(): ReactElement {
         });
 
         completeProcess(processId);
+        return payload;
       } catch (error) {
         const message =
           error instanceof Error
@@ -6886,6 +6965,7 @@ export default function PanelIA(): ReactElement {
         });
 
         failProcess(processId, message);
+        return null;
       } finally {
         setIsResolvingUfcEvent(false);
       }
@@ -7787,7 +7867,8 @@ export default function PanelIA(): ReactElement {
 
   const requestBkfcEventResolution = useCallback(
     async (
-      targetEvent: BkfcOfficialEventItem
+      targetEvent: BkfcOfficialEventItem,
+      signal?: AbortSignal,
     ): Promise<BkfcEventResolutionSuccess> => {
       const response = await fetch(
         `${API_BASE_URL}/api/sources/bkfc/events/resolve`,
@@ -7798,6 +7879,7 @@ export default function PanelIA(): ReactElement {
             Accept: "application/json",
           },
           body: JSON.stringify({ event: targetEvent }),
+          signal,
         }
       );
 
@@ -7818,7 +7900,8 @@ export default function PanelIA(): ReactElement {
 
   const resolveSelectedBkfcEvent = useCallback(
     async (
-      eventOverride?: BkfcOfficialEventItem
+      eventOverride?: BkfcOfficialEventItem,
+      signal?: AbortSignal,
     ): Promise<BkfcEventResolutionSuccess | null> => {
       const targetEvent = eventOverride ?? selectedBkfcEvent;
 
@@ -7846,7 +7929,7 @@ export default function PanelIA(): ReactElement {
           message: "",
         });
 
-        const resolution = await requestBkfcEventResolution(targetEvent);
+        const resolution = await requestBkfcEventResolution(targetEvent, signal);
 
         registerOfficialEventReviewIntake({
           source: "bkfc",
@@ -8744,7 +8827,8 @@ export default function PanelIA(): ReactElement {
 
   const requestOneEventResolution = useCallback(
     async (
-      targetEvent: OneOfficialEventItem
+      targetEvent: OneOfficialEventItem,
+      signal?: AbortSignal,
     ): Promise<OneEventResolutionSuccess> => {
       const response = await fetch(
         `${API_BASE_URL}/api/sources/one/events/resolve`,
@@ -8755,6 +8839,7 @@ export default function PanelIA(): ReactElement {
             Accept: "application/json",
           },
           body: JSON.stringify({ event: targetEvent }),
+          signal,
         }
       );
 
@@ -8775,7 +8860,8 @@ export default function PanelIA(): ReactElement {
 
   const resolveSelectedOneEvent = useCallback(
     async (
-      eventOverride?: OneOfficialEventItem
+      eventOverride?: OneOfficialEventItem,
+      signal?: AbortSignal,
     ): Promise<OneEventResolutionSuccess | null> => {
       const targetEvent = eventOverride ?? selectedOneEvent;
 
@@ -8804,7 +8890,7 @@ export default function PanelIA(): ReactElement {
         });
 
         const resolution =
-          await requestOneEventResolution(targetEvent);
+          await requestOneEventResolution(targetEvent, signal);
 
         registerOfficialEventReviewIntake({
           source: "one",
@@ -10235,6 +10321,69 @@ export default function PanelIA(): ReactElement {
     referenceData,
     resetDerivedUiState,
   ]);
+
+  const officialResumeRuntime = useRef({
+    officialNewsItems,
+    bkfcNewsItems,
+    oneNewsItems,
+    officialEventItems,
+    bkfcEventItems,
+    oneEventItems,
+    analyzeOfficialUfcNews,
+    analyzeOfficialBkfcNews,
+    analyzeOfficialOneNews,
+    analyzeUpcomingUfcEvents,
+    resolveSelectedUfcEvent,
+    resolveSelectedBkfcEvent,
+    resolveSelectedOneEvent,
+  });
+  officialResumeRuntime.current = {
+    officialNewsItems,
+    bkfcNewsItems,
+    oneNewsItems,
+    officialEventItems,
+    bkfcEventItems,
+    oneEventItems,
+    analyzeOfficialUfcNews,
+    analyzeOfficialBkfcNews,
+    analyzeOfficialOneNews,
+    analyzeUpcomingUfcEvents,
+    resolveSelectedUfcEvent,
+    resolveSelectedBkfcEvent,
+    resolveSelectedOneEvent,
+  };
+
+  useEffect(() => {
+    const authorities = [
+      createOfficialNewsRuntimeAuthority("ufc_news", {
+        getItem: (originId) => officialResumeRuntime.current.officialNewsItems.find((item) => item.id === originId),
+        analyze: async (item, signal) => (await officialResumeRuntime.current.analyzeOfficialUfcNews([item], signal, true))?.items.find((result) => result.sourceId === item.id),
+      }),
+      createOfficialEventRuntimeAuthority("ufc_events", {
+        getEvent: (originId) => officialResumeRuntime.current.officialEventItems.find((event) => event.id === originId),
+        resolve: (event, signal) => officialResumeRuntime.current.resolveSelectedUfcEvent(event, signal).then((result) => result ?? undefined),
+        analyzeBatch: async (event, signal) => (await officialResumeRuntime.current.analyzeUpcomingUfcEvents([event], signal, true))?.items.find((result) => result.eventId === event.id),
+      }),
+      createOfficialNewsRuntimeAuthority("one_news", {
+        getItem: (originId) => officialResumeRuntime.current.oneNewsItems.find((item) => item.id === originId),
+        analyze: async (item, signal) => (await officialResumeRuntime.current.analyzeOfficialOneNews([item], signal, true))?.items.find((result) => result.sourceId === item.id),
+      }),
+      createOfficialEventRuntimeAuthority("one_events", {
+        getEvent: (originId) => officialResumeRuntime.current.oneEventItems.find((event) => event.id === originId),
+        resolve: (event, signal) => officialResumeRuntime.current.resolveSelectedOneEvent(event, signal).then((result) => result ?? undefined),
+      }),
+      createOfficialNewsRuntimeAuthority("bkfc_news", {
+        getItem: (originId) => officialResumeRuntime.current.bkfcNewsItems.find((item) => item.id === originId),
+        analyze: async (item, signal) => (await officialResumeRuntime.current.analyzeOfficialBkfcNews([item], signal, true))?.items.find((result) => result.sourceId === item.id),
+      }),
+      createOfficialEventRuntimeAuthority("bkfc_events", {
+        getEvent: (originId) => officialResumeRuntime.current.bkfcEventItems.find((event) => event.id === originId),
+        resolve: (event, signal) => officialResumeRuntime.current.resolveSelectedBkfcEvent(event, signal).then((result) => result ?? undefined),
+      }),
+    ] as const;
+    const unregister = authorities.map((authority) => registerReviewOriginResumeAuthority(authority.producer, authority));
+    return () => unregister.reverse().forEach((dispose) => dispose());
+  }, []);
 
   useEffect(() => {
     const nextState = getInitialFormState(contentType);

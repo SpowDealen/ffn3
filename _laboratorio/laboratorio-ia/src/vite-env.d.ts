@@ -21,6 +21,7 @@ import type {executePreparedEntityMaterialization, previewPreparedEntityMaterial
 import type {applyPreparedEntityEnrichment, createSchemaRequirementTestCase, inspectPreparedEntityRequirements, previewPreparedEntityEnrichment, runPreparedEntityRequirementAgent} from "./review/schemaRequirements";
 import type {createExternalNewsReviewTestCase, createOrUpdateExternalNewsReviewCase, detectExternalNewsIssues, runExternalNewsReviewPilot} from "./review/producers/externalNews";
 import type {applyExternalNewsResolutionsPreview, buildExternalNewsResumePreview, createExternalNewsResumeExecutionTestCase, createExternalNewsResumeTestCase, executeExternalNewsResumeWithRegisteredExecutor, registerMockExternalNewsResumeExecutor, unregisterMockExternalNewsResumeExecutor} from "./review/resume/externalNews";
+import type {cleanupRx5BrowserFixtureFromLocation, dispatchReviewResume, prepareRx5BrowserFixture} from "./review/resume/origin";
 import type {
   addReviewResolution,
   clearAllReviewCases,
@@ -71,6 +72,9 @@ declare global {
       registerMockExternalNewsResumeExecutor: typeof registerMockExternalNewsResumeExecutor;
       unregisterMockExternalNewsResumeExecutor: typeof unregisterMockExternalNewsResumeExecutor;
       createExternalNewsResumeExecutionTestCase: typeof createExternalNewsResumeExecutionTestCase;
+      prepareRx5BrowserFixture: typeof prepareRx5BrowserFixture;
+      cleanupRx5BrowserFixture: typeof cleanupRx5BrowserFixtureFromLocation;
+      dispatchReviewResume: typeof dispatchReviewResume;
       runAutonomousInvestigation: typeof runAutonomousInvestigation;
       previewAutonomousInvestigation: typeof previewAutonomousInvestigation;
       applyAutonomousInvestigation: typeof applyAutonomousInvestigation;

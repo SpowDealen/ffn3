@@ -30,6 +30,7 @@ export * from "./fighterResolutionIntake";
 export * from "./intake";
 export * from "./presentation";
 export * from "./inbox";
+export * from "./resume";
 export * from "./entityReconciliation";
 export * from "./entityResolution";
 export * from "./transactions";

@@ -1,5 +1,6 @@
 import {useMemo, useRef, useState, type KeyboardEvent, type ReactElement} from "react";
 import {selectReviewInbox, type ReviewInboxBucket, type ReviewInboxFilters, type ReviewInboxItem} from "../inbox";
+import {buildReviewContextHref} from "../navigation";
 import type {ReviewCase, ReviewPriority} from "../types";
 
 const TABS: readonly Readonly<{id: ReviewInboxBucket; label: string}>[] = Object.freeze([
@@ -21,6 +22,7 @@ const BUCKET_DESCRIPTIONS: Readonly<Record<ReviewInboxBucket, string>> = Object.
 });
 
 function fixtureHref(item: ReviewInboxItem, fixtureQuery?: string): string {
+  if (fixtureQuery?.startsWith("?")) return buildReviewContextHref(fixtureQuery, item.caseId);
   return fixtureQuery
     ? `/revision?fixture=${encodeURIComponent(fixtureQuery)}&case=${encodeURIComponent(item.caseId)}`
     : item.primaryAction.href;

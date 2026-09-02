@@ -37,7 +37,9 @@ function main(): void {
   check("9 Inbox intacta", inbox.includes("selectReviewInbox") && ["Necesitan atención", "En proceso", "Resueltos"].every((label) => inbox.includes(label)) && inbox.includes("review-inbox-primary-action"));
   check("10 RX3 intacto", ["¿Qué pasa?", "¿Por qué?", "¿Qué recomienda el Lab?", "¿Qué ocurrirá si apruebo?", "Detalles técnicos"].every((label) => details.includes(label)));
   check("11 técnica sigue accesible", technicalSource.includes("AU7") && technicalSource.includes("AU8") && technicalSource.includes("AU9") && technicalSource.includes("checkpoint") && technicalSource.includes("fingerprints") && technicalSource.includes("reconciliación") && technicalSource.includes("compensación"));
-  check("12 autoridades AU intactas", !/_laboratorio\/laboratorio-ia\/src\/review\/(?:globalResolution|transactions|autonomous|resume|store|materialization)/.test(changedFiles));
+  const changedPaths = changedFiles.split("\n").map((line) => line.slice(3)).filter(Boolean);
+  const rx5ResumeFile = (path: string): boolean => path.includes("/review/resume/origin/") || path.endsWith("/review/resume/index.ts");
+  check("12 autoridades AU intactas", !changedPaths.some((path) => /_laboratorio\/laboratorio-ia\/src\/review\/(?:globalResolution|transactions|autonomous|store|materialization)/.test(path) || path.includes("/review/resume/") && !rx5ResumeFile(path)));
   check("13 cero writes", !/\b(?:fetch|localStorage|sessionStorage|indexedDB|POST|PUT|PATCH|DELETE)\b/.test(navigation + styles) && !center.includes("createStore"));
 
   assert.equal(checks.length, 13);
