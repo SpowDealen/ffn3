@@ -1,3 +1,5 @@
+import {presentHumanState} from "../presentation/humanLanguage";
+
 export type GlobalStatusState =
   | "unavailable"
   | "blocked"
@@ -61,14 +63,14 @@ export const GLOBAL_STATUS_PRECEDENCE = Object.freeze([
 ] as const);
 
 const LABELS: Readonly<Record<GlobalStatusState, string>> = Object.freeze({
-  unavailable: "No disponible",
-  blocked: "Bloqueado",
-  degraded: "Degradado",
-  recovering: "Comprobando",
-  active: "Actividad en curso",
-  attention: "Requiere atención",
-  operational: "Operativo",
-  idle: "En reposo",
+  unavailable: presentHumanState("unavailable"),
+  blocked: presentHumanState("blocked"),
+  degraded: presentHumanState("degraded"),
+  recovering: presentHumanState("recovering"),
+  active: presentHumanState("active"),
+  attention: presentHumanState("attention"),
+  operational: presentHumanState("operational"),
+  idle: presentHumanState("idle"),
 });
 
 const SUMMARIES: Readonly<Record<GlobalStatusState, string>> = Object.freeze({

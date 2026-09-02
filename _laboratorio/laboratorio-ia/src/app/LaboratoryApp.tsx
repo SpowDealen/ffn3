@@ -6,7 +6,7 @@ import LaboratoryStatusScreen from "./screens/LaboratoryStatusScreen";
 import ReviewCenterScreen from "./screens/ReviewCenterScreen";
 import TelegramStatusScreen from "./screens/TelegramStatusScreen";
 import LaboratoryShell from "./LaboratoryShell";
-import {useLaboratoryRouter} from "./useLaboratoryRouter";
+import {removeLaboratoryQueryParam, useLaboratoryRouter} from "./useLaboratoryRouter";
 import {
   buildRx2ReviewInboxFixtures,
   buildRx3VisualReviewFixture,
@@ -31,10 +31,11 @@ export default function LaboratoryApp(): ReactElement {
     : developmentFixture
       ? RX3_VISUAL_REVIEW_FIXTURE_QUERY
       : undefined;
+  const reviewInboxSearch = removeLaboratoryQueryParam(search, "case");
   return <LaboratoryShell route={route} onNavigate={navigate}>
     {route.id === "status" ? <LaboratoryStatusScreen onNavigate={navigate} /> : null}
     <div hidden={route.id !== "editorial"}><EditorialWorkspaceScreen><PanelIA /></EditorialWorkspaceScreen></div>
-    {route.id === "revision" ? <ReviewCenterScreen caseId={requestedCaseId} developmentFixture={developmentFixture} developmentFixtures={developmentFixtures} fixtureQuery={fixtureQuery} /> : null}
+    {route.id === "revision" ? <ReviewCenterScreen caseId={requestedCaseId} developmentFixture={developmentFixture} developmentFixtures={developmentFixtures} fixtureQuery={fixtureQuery} onReturnToInbox={() => navigate("/revision", reviewInboxSearch)} /> : null}
     {route.id === "activity" ? <ActivityScreen /> : null}
     {route.id === "telegram" ? <TelegramStatusScreen /> : null}
   </LaboratoryShell>;

@@ -10,6 +10,7 @@ import {adaptNavigationInteraction, adaptRefreshInteraction} from "../interactio
 import {InteractionButton, InteractionLink} from "../interactions/InteractionPrimitives";
 import {buildOperatorExperienceModel} from "../operator/adapters";
 import OperatorSummary from "../operator/OperatorSummary";
+import {presentHumanState} from "../presentation/humanLanguage";
 import {
   adaptNotificationsStatus,
   adaptProcessesStatus,
@@ -72,8 +73,8 @@ export default function GlobalStatusSummary({onNavigate}: {onNavigate: (path: st
     <section className={`global-status global-status-${model.state}`} data-motion-intent="status-transition" aria-labelledby="global-status-title">
       <header className="global-status-heading">
         <div className="global-status-announcement" role={urgent ? "alert" : "status"} aria-live={urgent ? "assertive" : "polite"} aria-atomic="true">
-          <p className="review-kicker">LES 4 · ESTADO GLOBAL</p>
-          <h2 id="global-status-title">Estado operativo del Laboratorio</h2>
+          <p className="review-kicker">Visión general</p>
+          <h2 id="global-status-title">Resumen de hoy</h2>
           <p><span className="sr-only">{model.label}. </span>{model.summary}</p>
         </div>
         <div className="global-status-actions">
@@ -88,12 +89,12 @@ export default function GlobalStatusSummary({onNavigate}: {onNavigate: (path: st
         <div><dt>Registros históricos</dt><dd>{model.historicalRecordCount}</dd></div>
       </dl>
 
-      {model.reasons.length ? <ul className="global-status-reasons" aria-label="Razones del estado global">{model.reasons.slice(0, 4).map((reason) => <li key={`${reason.subsystemId}:${reason.reason}`}><strong>{reason.label}</strong><span>{reason.reason.replaceAll("_", " ")}</span></li>)}</ul> : null}
+      {model.reasons.length ? <ul className="global-status-reasons" aria-label="Razones del estado global">{model.reasons.slice(0, 4).map((reason) => <li key={`${reason.subsystemId}:${reason.reason}`}><strong>{reason.label}</strong><span>Necesita revisión. Consulta el detalle para continuar.</span></li>)}</ul> : null}
 
       <div className="global-status-grid" aria-label="Estado actual por subsistema">
         {model.subsystems.map((subsystem) => (
           <article className={`global-status-card global-status-card-${subsystem.state}`} data-global-status-subsystem={subsystem.id} key={subsystem.id}>
-            <header><strong>{subsystem.label}</strong><span>{subsystem.state}</span></header>
+            <header><strong>{subsystem.label}</strong><span>{presentHumanState(subsystem.state)}</span></header>
             <p>{subsystem.summary}</p>
             {subsystem.detail ? <small>{subsystem.detail}</small> : null}
             {subsystem.route ? <InteractionLink capability={adaptNavigationInteraction({id: `global-status-${subsystem.id}-detail`, label: "Ver detalle", href: subsystem.route, source: subsystem.label})} onNavigate={onNavigate} /> : null}

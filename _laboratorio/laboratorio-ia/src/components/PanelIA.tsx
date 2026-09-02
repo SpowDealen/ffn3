@@ -10904,7 +10904,7 @@ export default function PanelIA(): ReactElement {
 
             <div style={styles.actionButtons}>
               <button type="button" onClick={handleBuild} style={styles.button}>
-                Generar output
+                Preparar resultado
               </button>
 
               <button
@@ -15095,7 +15095,7 @@ export default function PanelIA(): ReactElement {
 
         <div className="panel-editorial-form-grid" style={styles.grid}>
           <section style={styles.card}>
-            <h2 style={styles.sectionTitle}>Campos reales de schema</h2>
+            <h2 style={styles.sectionTitle}>Campos del contenido</h2>
 
             <div style={styles.formGrid}>
               {visibleSchemaFields.map((field) => (
@@ -15117,7 +15117,7 @@ export default function PanelIA(): ReactElement {
           </section>
 
           <section style={styles.card}>
-            <h2 style={styles.sectionTitle}>Inputs auxiliares</h2>
+            <h2 style={styles.sectionTitle}>Información adicional</h2>
 
             <div style={styles.formGrid}>
               {definition.auxiliaryInputs.map((input) => (
@@ -15186,7 +15186,7 @@ export default function PanelIA(): ReactElement {
 
         <section style={styles.card}>
           <div style={styles.resultHeader}>
-            <h2 style={styles.sectionTitle}>Resultado</h2>
+            <h2 style={styles.sectionTitle}>Resultado preparado</h2>
             {result ? (
               <div style={styles.badges}>
                 <span style={styles.badgeNeutral}>
@@ -15196,7 +15196,7 @@ export default function PanelIA(): ReactElement {
                   {getIssueCount(result.issues, "warning")} avisos
                 </span>
                 <span style={result.ok ? styles.badgeOk : styles.badgeError}>
-                  {result.ok ? "Output válido" : "Output bloqueado"}
+                  {result.ok ? "Contenido listo" : "Necesita correcciones"}
                 </span>
               </div>
             ) : null}
@@ -15204,13 +15204,13 @@ export default function PanelIA(): ReactElement {
 
           {!result ? (
             <p style={styles.emptyText}>
-              Aún no has generado ningún output. Rellena el formulario y pulsa
-              “Generar output”.
+              Todavía no has preparado ningún resultado. Completa el formulario y pulsa
+              “Preparar resultado”.
             </p>
           ) : (
             <div style={styles.resultGrid}>
               <div style={styles.resultPanel}>
-                <h3 style={styles.subTitle}>Issues</h3>
+                <h3 style={styles.subTitle}>Avisos de validación</h3>
                 {result.issues.length === 0 ? (
                   <p style={styles.emptyText}>Sin errores ni avisos.</p>
                 ) : (
@@ -15230,10 +15230,10 @@ export default function PanelIA(): ReactElement {
                 )}
               </div>
 
-              <div style={styles.resultPanel}>
-                <h3 style={styles.subTitle}>Preview JSON</h3>
+              <details style={styles.resultPanel}>
+                <summary style={styles.technicalSummary}>Vista previa técnica</summary>
                 <pre style={styles.pre}>{prettyJson(result.output)}</pre>
-              </div>
+              </details>
             </div>
           )}
         </section>
@@ -15392,6 +15392,7 @@ const styles: Record<string, CSSProperties> = {
   },
   input: {
     width: "100%",
+    minHeight: 44,
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.12)",
     background: "rgba(0,0,0,0.2)",
@@ -15435,6 +15436,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 500,
   },
   button: {
+    minHeight: 44,
     border: 0,
     borderRadius: 14,
     padding: "12px 16px",
@@ -15444,6 +15446,7 @@ const styles: Record<string, CSSProperties> = {
     cursor: "pointer",
   },
   secondaryButton: {
+    minHeight: 44,
     border: "1px solid rgba(255,255,255,0.14)",
     borderRadius: 14,
     padding: "12px 16px",
@@ -15453,6 +15456,7 @@ const styles: Record<string, CSSProperties> = {
     cursor: "pointer",
   },
   buttonDisabled: {
+    minHeight: 44,
     border: "1px solid rgba(255,255,255,0.08)",
     borderRadius: 14,
     padding: "12px 16px",
@@ -15921,6 +15925,15 @@ const styles: Record<string, CSSProperties> = {
   resultPanel: {
     display: "grid",
     gap: 12,
+  },
+  technicalSummary: {
+    display: "flex",
+    alignItems: "center",
+    minHeight: 44,
+    color: "#aeb7c0",
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
   },
   issueList: {
     margin: 0,

@@ -28,7 +28,7 @@ const ACTIVE_STATUSES = new Set<ReviewCaseStatus>([
   "open", "in_review", "resolved", "resuming", "resume_failed", "stale",
 ]);
 
-export default function ReviewCenter({initialCaseId, developmentFixture, developmentFixtures, fixtureQuery}: {initialCaseId?: string | null; developmentFixture?: ReviewCase; developmentFixtures?: readonly ReviewCase[]; fixtureQuery?: string}): ReactElement {
+export default function ReviewCenter({initialCaseId, developmentFixture, developmentFixtures, fixtureQuery, onReturnToInbox}: {initialCaseId?: string | null; developmentFixture?: ReviewCase; developmentFixtures?: readonly ReviewCase[]; fixtureQuery?: string; onReturnToInbox(): void}): ReactElement {
   const persistedReviewCases = useReviewCases();
   const reviewCases = useMemo(
     () => developmentFixtures?.length
@@ -49,7 +49,14 @@ export default function ReviewCenter({initialCaseId, developmentFixture, develop
 
   useEffect(() => {
     const requested = initialCaseId?.trim() ?? "";
-    if (!requested || handledDeepLink.current === requested) return;
+    if (!requested) {
+      handledDeepLink.current = undefined;
+      setSelectedId(null);
+      setActiveSection("dashboard");
+      setCaseContext("overview");
+      return;
+    }
+    if (handledDeepLink.current === requested) return;
     handledDeepLink.current = requested;
     const resolved = resolveReviewCaseDeepLink(reviewCases, requested);
     if (resolved.found && resolved.caseId) {
@@ -114,21 +121,18 @@ export default function ReviewCenter({initialCaseId, developmentFixture, develop
     if (section !== "case") setCaseContext("overview");
   }
 
-  return (
-    <section className="review-center" id="review-center" aria-labelledby="review-center-title">
-      <header className="review-center-header">
-        <div>
-          <p className="review-kicker">Revisión editorial</p>
-          <h2 id="review-center-title">Review Inbox</h2>
-          <p>Encuentra rápidamente qué necesita tu atención, qué sigue en proceso y qué ya está resuelto.</p>
-        </div>
-      </header>
+  function returnToInbox(): void {
+    navigate("dashboard");
+    onReturnToInbox();
+  }
 
-      {activeSection !== "dashboard" ? <OperatorExperienceNavigation model={operator} onNavigate={navigate} onOpenCase={(caseId) => openCase(caseId)} onFeedback={setFeedback} /> : null}
+  return (
+    <section className="review-center" id="review-center" aria-label="Bandeja de casos de revisión">
+      {activeSection !== "dashboard" && activeSection !== "case" ? <OperatorExperienceNavigation model={operator} onNavigate={navigate} onOpenCase={(caseId) => openCase(caseId)} onFeedback={setFeedback} /> : null}
       {feedback ? <p className="review-feedback" role="status">{feedback}</p> : null}
 
-      <div id={`review-panel-${activeSection}`} role="tabpanel" aria-labelledby={`review-tab-${activeSection}`} tabIndex={-1} className="review-section-panel">
-        {activeSection === "dashboard" ? <><ReviewInbox reviewCases={reviewCases} fixtureQuery={fixtureQuery} /><details className="review-inbox-technical"><summary>Herramientas avanzadas</summary><div><OperatorExperienceNavigation model={operator} onNavigate={navigate} onOpenCase={(caseId) => openCase(caseId)} onFeedback={setFeedback} /><NucleusGlobalDashboard cases={reviewCases} evaluatedAt={new Date(now).toISOString()} onOpenCase={(caseId) => openCase(caseId, "Caso abierto desde el dashboard; no se ejecutó ninguna operación.")} /></div></details></> : null}
+      <div id={`review-panel-${activeSection}`} role="tabpanel" aria-labelledby={activeSection === "case" ? undefined : `review-tab-${activeSection}`} aria-label={activeSection === "case" ? "Caso de revisión" : undefined} tabIndex={-1} className="review-section-panel">
+        {activeSection === "dashboard" ? <><ReviewInbox reviewCases={reviewCases} fixtureQuery={fixtureQuery} /><details className="review-inbox-technical"><summary>Herramientas avanzadas</summary><div><OperatorExperienceNavigation model={operator} onNavigate={navigate} onOpenCase={(caseId) => openCase(caseId)} onFeedback={setFeedback} /><NucleusGlobalDashboard cases={reviewCases} evaluatedAt={new Date(now).toISOString()} onOpenCase={(caseId) => openCase(caseId, "Caso abierto desde las herramientas avanzadas; no se ejecutó ninguna operación.")} /></div></details></> : null}
 
         {activeSection === "priorities" ? <section aria-labelledby="review-priorities-title">
           <header className="review-section-header"><p className="review-kicker">PRIORIZACIÓN EXPLICABLE</p><h3 id="review-priorities-title">Casos prioritarios</h3><p className="review-muted">Vista avanzada derivada del Dashboard Global; abrir un caso no ejecuta ninguna operación.</p></header>
@@ -143,7 +147,7 @@ export default function ReviewCenter({initialCaseId, developmentFixture, develop
           {reviewCases.length === 0 ? <FeedbackEmptyState title="No hay casos prioritarios" detail="Cuando llegue un caso, aparecerá aquí con su acción requerida." /> : filteredCases.length === 0 ? <FeedbackEmptyState title="Sin coincidencias" detail="No hay casos que coincidan con los filtros actuales." action={{label: "Limpiar filtros", onClick: clearFilters}} /> : <div className="review-workspace"><div className="operator-pagination" role="status">{operator.filtered} casos · página {operator.page}/{operator.pageCount}<button type="button" className="review-button review-button-secondary" disabled={operator.page <= 1} onClick={() => setOperatorFilters((current) => ({...current, page: operator.page - 1}))}>Anterior</button><button type="button" className="review-button review-button-secondary" disabled={operator.page >= operator.pageCount} onClick={() => setOperatorFilters((current) => ({...current, page: operator.page + 1}))}>Siguiente</button></div><ReviewCaseList reviewCases={filteredCases} selectedId={selectedCase ? selectedId : null} now={now} onSelect={openCase} /></div>}
         </section> : null}
 
-        {activeSection === "case" ? <section aria-labelledby="review-nucleus-title">{selectedCase ? <><h3 id="review-nucleus-title" className="sr-only">Núcleo Resolutivo IA</h3><ReviewCaseDetails key={selectedCase.id} reviewCase={selectedCase} readOnly={selectedCase.id === developmentFixture?.id || Boolean(developmentFixtures?.some((fixture) => fixture.id === selectedCase.id))} onMarkInReview={() => transitionReviewCase(selectedCase.id, "in_review")} onReopen={() => transitionReviewCase(selectedCase.id, "open")} onDismiss={dismissSelected} onRemove={removeSelected} onSaveResolution={(resolution) => addReviewResolution(selectedCase.id, resolution)} onRemoveResolution={(issueId) => removeReviewResolution(selectedCase.id, issueId)} onMarkResolved={() => transitionReviewCase(selectedCase.id, "resolved")} onNucleusContextChange={setCaseContext} technicalExtras={selectedCase.id === developmentFixture?.id ? undefined : developmentFixtures?.some((fixture) => fixture.id === selectedCase.id) ? undefined : <><EntityIdentityLookupControls /><ReconciliationScanControls /></>} /></> : <div><h3 id="review-nucleus-title" className="sr-only">Workspace resolutivo</h3><FeedbackEmptyState title="Selecciona un caso para abrir el workspace resolutivo." detail="El Núcleo muestra el workspace del caso elegido; no inventa contexto ni ejecuta acciones al abrirse." />{operator.rows.length ? <div className="review-actions">{operator.rows.slice(0, 5).map((row) => <button key={row.caseId} type="button" className="review-button review-button-secondary" onClick={() => openCase(row.caseId)}>{row.title}</button>)}</div> : null}</div>}</section> : null}
+        {activeSection === "case" ? <section className="review-case-first" aria-label="Caso seleccionado"><nav className="review-case-context" aria-label="Ruta del caso"><button type="button" className="review-button review-button-secondary review-back-to-inbox" onClick={returnToInbox}>Volver a la Inbox</button><p><span>Revisión</span><span aria-hidden="true">›</span><strong aria-current="page">Caso</strong></p></nav>{selectedCase ? <ReviewCaseDetails key={selectedCase.id} reviewCase={selectedCase} readOnly={selectedCase.id === developmentFixture?.id || Boolean(developmentFixtures?.some((fixture) => fixture.id === selectedCase.id))} onMarkInReview={() => transitionReviewCase(selectedCase.id, "in_review")} onReopen={() => transitionReviewCase(selectedCase.id, "open")} onDismiss={dismissSelected} onRemove={removeSelected} onSaveResolution={(resolution) => addReviewResolution(selectedCase.id, resolution)} onRemoveResolution={(issueId) => removeReviewResolution(selectedCase.id, issueId)} onMarkResolved={() => transitionReviewCase(selectedCase.id, "resolved")} onNucleusContextChange={setCaseContext} technicalNavigation={<OperatorExperienceNavigation model={operator} onNavigate={navigate} onOpenCase={(caseId) => openCase(caseId)} onFeedback={setFeedback} />} technicalExtras={selectedCase.id === developmentFixture?.id ? undefined : developmentFixtures?.some((fixture) => fixture.id === selectedCase.id) ? undefined : <><EntityIdentityLookupControls /><ReconciliationScanControls /></>} /> : <div><FeedbackEmptyState title="Selecciona un caso de revisión" detail="Vuelve a la Inbox y abre el caso que quieras revisar." />{operator.rows.length ? <div className="review-actions">{operator.rows.slice(0, 5).map((row) => <button key={row.caseId} type="button" className="review-button review-button-secondary" onClick={() => openCase(row.caseId)}>{row.title}</button>)}</div> : null}</div>}</section> : null}
 
         {activeSection === "activity" ? <section className="review-subsection" aria-labelledby="review-activity-title"><header><p className="review-kicker">ACTIVIDAD DERIVADA</p><h3 id="review-activity-title">Actividad, procesos e incidencias</h3><p className="review-muted">Timeline existente derivado de snapshots; no es un segundo log.</p></header><dl className="global-dashboard-mini-metrics">{Object.entries(globalDashboard.activity.counts).map(([kind, count]) => <div key={kind}><dt>{kind.replace(/_/g, " ")}</dt><dd>{count}</dd></div>)}</dl>{globalDashboard.timeline.length ? <ol className="global-dashboard-timeline">{globalDashboard.timeline.map((entry) => <li key={entry.eventId}><strong>{entry.caseTitle}</strong><span>{entry.safeSummary}</span><small>{new Date(entry.occurredAt).toLocaleString("es-ES")} · {entry.kind.replace(/_/g, " ")}</small><button type="button" className="review-button review-button-secondary" onClick={() => openCase(entry.caseId)}>Abrir caso</button></li>)}</ol> : <p className="review-empty">Todavía no hay actividad registrada.</p>}</section> : null}
 

@@ -124,7 +124,7 @@ function main(): void {
 
   const activity = source("_laboratorio/laboratorio-ia/src/notifications/ActivityCenter.tsx");
   check(activity.includes("InteractionButton") && activity.includes("telegramCheckCapability"), "Telegram integra refresh LES 5");
-  equal(occurrences(activity, 'label: "Actualizar diagnóstico"'), 1, "Telegram conserva un único refresh seguro");
+  equal(occurrences(activity, 'label: "Actualizar estado"'), 1, "Telegram conserva un único refresh seguro con lenguaje operativo");
   check(activity.includes("getTelegramHealth()") && !activity.includes("testTelegramHealth"), "refresh Telegram usa GET y no presenta el POST de prueba como diagnóstico neutral");
   check(activity.includes("setIsCheckingTelegram(true);") && activity.includes("if (isCheckingTelegram) return;"), "diagnóstico inicial y refresh bloquean doble GET");
   equal(occurrences(activity, "retryTelegramHealth"), 0, "no queda handler de refresh duplicado");

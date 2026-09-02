@@ -516,19 +516,22 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
     checking: isCheckingTelegram,
   });
   const hasLiveTelegramIncident = liveTelegramFeedback.state === "error" || liveTelegramFeedback.state === "blocked";
-  const telegramCheckCapability = adaptRefreshInteraction({id: "telegram-health-check", label: "Actualizar diagnóstico", busyLabel: "Actualizando diagnóstico…", busy: isCheckingTelegram, source: "Telegram Health/Sandbox"});
+  const telegramCheckCapability = adaptRefreshInteraction({id: "telegram-health-check", label: "Actualizar estado", busyLabel: "Actualizando estado…", busy: isCheckingTelegram, source: "Telegram Health/Sandbox"});
 
   return (
     <section id={view === "summary" ? "laboratory-status" : view === "telegram" ? "telegram-status" : "activity-center"} style={styles.card}>
       <div style={styles.headingRow}>
         <div>
           <p style={styles.eyebrow}>
-            {view === "telegram" ? "Canal de entrega" : view === "summary" ? "Resumen operativo" : "Centro de actividad"}
+            {view === "telegram" ? "Entregas" : view === "summary" ? "Visión general" : "Seguimiento del laboratorio"}
           </p>
 
           <h2 style={styles.title}>
-            {view === "telegram" ? "Estado de Telegram" : view === "summary" ? "Estado del laboratorio" : "Actividad y procesos"}
+            {view === "telegram" ? "Estado del canal" : view === "summary" ? "Resumen de hoy" : "Qué ocurrió"}
           </h2>
+          <p style={styles.headingDescription}>
+            {view === "telegram" ? "Comprueba la disponibilidad, la última revisión y el resultado de las entregas." : view === "summary" ? "Consulta las señales principales del laboratorio." : "Revisa avisos, resultados y procesos registrados por el laboratorio."}
+          </p>
         </div>
 
         <div
@@ -676,7 +679,7 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
         <div style={styles.telegramHealthHeader}>
           <div>
             <strong style={styles.telegramHealthTitle}>
-              Historial de entregas Telegram
+              Historial de entregas
             </strong>
             <span style={styles.telegramHealthSubtitle}>
               Métricas históricas; no representan por sí solas la salud actual
@@ -753,7 +756,7 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
           <div style={styles.liveTelegramHeader}>
             <div>
               <strong style={styles.liveTelegramTitle}>
-                Diagnóstico en vivo
+                Comprobación actual
               </strong>
               <span style={styles.telegramHealthSubtitle}>
                 El estado no incluye ni expone credenciales
@@ -785,28 +788,6 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
 
             <div style={styles.liveTelegramDatum}>
               <span style={styles.telegramHealthLabel}>
-                Credenciales
-              </span>
-              <span style={styles.liveTelegramCredential}>
-                Token:{" "}
-                {liveTelegramHealth
-                  ? liveTelegramHealth.tokenConfigured
-                    ? "configurado"
-                    : "no configurado"
-                  : "—"}
-              </span>
-              <span style={styles.liveTelegramCredential}>
-                Chat ID:{" "}
-                {liveTelegramHealth
-                  ? liveTelegramHealth.chatIdConfigured
-                    ? "configurado"
-                    : "no configurado"
-                  : "—"}
-              </span>
-            </div>
-
-            <div style={styles.liveTelegramDatum}>
-              <span style={styles.telegramHealthLabel}>
                 Modo de entrega
               </span>
               <strong style={styles.telegramHealthValue}>
@@ -816,7 +797,7 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
               </strong>
               {liveTelegramHealth?.deliveryMode === "sandbox" ? (
                 <span style={styles.liveTelegramCredential}>
-                  Sin dispatches externos
+                  Sin entregas externas
                 </span>
               ) : null}
             </div>
@@ -830,6 +811,18 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
               </strong>
             </div>
           </div>
+
+          <details style={styles.telegramTechnicalDetails}>
+            <summary style={styles.telegramTechnicalSummary}>Detalles técnicos del canal</summary>
+            <div style={styles.telegramTechnicalBody}>
+              <span style={styles.liveTelegramCredential}>
+                Token: {liveTelegramHealth ? liveTelegramHealth.tokenConfigured ? "configurado" : "no configurado" : "—"}
+              </span>
+              <span style={styles.liveTelegramCredential}>
+                Chat ID: {liveTelegramHealth ? liveTelegramHealth.chatIdConfigured ? "configurado" : "no configurado" : "—"}
+              </span>
+            </div>
+          </details>
 
           {liveTelegramError ? <div role="alert"><GlobalFeedbackRegion feedback={liveTelegramFeedback} announce={false} /></div> : <GlobalFeedbackRegion feedback={liveTelegramFeedback} />}
         </div>
@@ -858,8 +851,8 @@ export default function ActivityCenter({view = "activity"}: {view?: ActivityCent
               ))}
             </div>
           ) : <FeedbackEmptyState
-            title={hasActiveFilters ? "Sin coincidencias" : "Sin actividad todavía"}
-            detail={hasActiveFilters ? "No hay notificaciones que coincidan con estos filtros." : "Los análisis, borradores y errores aparecerán aquí al momento."}
+            title={hasActiveFilters ? "Sin coincidencias" : "Todavía no hay actividad registrada"}
+            detail={hasActiveFilters ? "No hay avisos que coincidan con estos filtros." : "Los análisis, borradores y resultados aparecerán aquí cuando se produzcan."}
           />}
         </div>
 
@@ -901,6 +894,14 @@ const styles: Record<string, CSSProperties> = {
     margin: "5px 0 0",
     fontSize: 18,
     lineHeight: 1.2,
+  },
+
+  headingDescription: {
+    maxWidth: 620,
+    margin: "7px 0 0",
+    color: "#8994a0",
+    fontSize: 11,
+    lineHeight: 1.45,
   },
 
   healthBadge: {
@@ -969,7 +970,7 @@ const styles: Record<string, CSSProperties> = {
 
   filterSelect: {
     width: "100%",
-    minHeight: 32,
+    minHeight: 44,
     padding: "0 28px 0 9px",
     border: "1px solid rgba(255,255,255,0.1)",
     borderRadius: 9,
@@ -1392,6 +1393,26 @@ const styles: Record<string, CSSProperties> = {
     color: "#b2bbc4",
     fontSize: 10,
     lineHeight: 1.35,
+  },
+
+  telegramTechnicalDetails: {
+    borderTop: "1px solid rgba(255,255,255,0.065)",
+  },
+
+  telegramTechnicalSummary: {
+    display: "flex",
+    alignItems: "center",
+    minHeight: 44,
+    color: "#8d98a4",
+    fontSize: 10,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+
+  telegramTechnicalBody: {
+    display: "grid",
+    gap: 5,
+    padding: "0 0 10px",
   },
 
   liveTelegramSuccess: {

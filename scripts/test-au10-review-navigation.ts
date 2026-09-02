@@ -40,7 +40,7 @@ function main(): void {
   check(center.includes('onSelect={openCase}'));
   check(center.includes("<KnowledgeCenter reviewCase={selectedCase}"));
   check(center.includes("globalDashboard.timeline.map"));
-  check(center.includes("Selecciona un caso para abrir el workspace resolutivo."));
+  check(center.includes("Selecciona un caso de revisión"));
   check(center.includes("Todavía no hay conocimiento relevante seleccionado."));
 
   const navigation = readFileSync("_laboratorio/laboratorio-ia/src/review/components/OperatorExperienceNavigation.tsx", "utf8");

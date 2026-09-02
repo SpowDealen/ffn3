@@ -2,7 +2,15 @@ import {useCallback, useEffect, useMemo, useState} from "react";
 import {buildLaboratoryUrl, resolveLaboratoryRoute, type LaboratoryRoute} from "./laboratoryRoutes";
 
 const NAVIGATION_EVENT = "ffn3:laboratory-navigation";
-const base = import.meta.env.BASE_URL || "/";
+const base = import.meta.env?.BASE_URL || "/";
+
+export function removeLaboratoryQueryParam(search: URLSearchParams | string, key: string): string {
+  const next = new URLSearchParams(search);
+  next.delete(key);
+  const value = next.toString();
+  return value ? `?${value}` : "";
+}
+
 export function navigateLaboratory(path: string, search = ""): void {
   const url = buildLaboratoryUrl(path, base, search);
   window.history.pushState({}, "", url);

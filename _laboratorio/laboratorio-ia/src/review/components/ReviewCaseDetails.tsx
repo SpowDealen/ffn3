@@ -27,6 +27,7 @@ type ReviewCaseDetailsProps = {
   onRemoveResolution(issueId: string): void;
   onMarkResolved(): void;
   onNucleusContextChange?(context: NucleusContextView): void;
+  technicalNavigation?: ReactNode;
   technicalExtras?: ReactNode;
   readOnly?: boolean;
 };
@@ -90,6 +91,7 @@ export default function ReviewCaseDetails({
   onRemoveResolution,
   onMarkResolved,
   onNucleusContextChange,
+  technicalNavigation,
   technicalExtras,
   readOnly = false,
 }: ReviewCaseDetailsProps): ReactElement {
@@ -143,7 +145,7 @@ export default function ReviewCaseDetails({
       <header className="review-row review-row-wrap review-details-header">
         <div>
           <p className="review-kicker">Caso de revisión</p>
-          <h3 className="review-details-title">{presentation.problem.title}</h3>
+          <h2 className="review-details-title">{presentation.problem.title}</h2>
         </div>
         <div className="review-badges" aria-label="Fuente, entidad, prioridad y estado">
           {readOnly ? <span className="review-badge">Fixture DEV · solo lectura</span> : null}
@@ -156,12 +158,12 @@ export default function ReviewCaseDetails({
 
       <div className="review-human-case-flow">
         <section className="review-human-question" aria-labelledby={`review-what-${reviewCase.id}`}>
-          <h4 id={`review-what-${reviewCase.id}`}>¿Qué pasa?</h4>
+          <h3 id={`review-what-${reviewCase.id}`}>¿Qué pasa?</h3>
           <p className="review-human-answer review-human-answer-lead">{presentation.problem.summary}</p>
         </section>
 
         <section className="review-human-question" aria-labelledby={`review-why-${reviewCase.id}`}>
-          <h4 id={`review-why-${reviewCase.id}`}>¿Por qué?</h4>
+          <h3 id={`review-why-${reviewCase.id}`}>¿Por qué?</h3>
           <p className="review-human-answer">{presentation.why.summary}</p>
           {presentation.why.candidates.length ? (
             <ul className="review-human-candidates" aria-label="Candidatos considerados">
@@ -183,20 +185,20 @@ export default function ReviewCaseDetails({
         </section>
 
         <section className="review-human-question" aria-labelledby={`review-recommendation-${reviewCase.id}`}>
-          <h4 id={`review-recommendation-${reviewCase.id}`}>¿Qué recomienda el Lab?</h4>
+          <h3 id={`review-recommendation-${reviewCase.id}`}>¿Qué recomienda el Lab?</h3>
           <p className="review-human-answer">{presentation.recommendation.summary}</p>
           {presentation.recommendation.confidence ? <p className="review-human-support">Confianza: {presentation.recommendation.confidence.label.toLocaleLowerCase("es-ES")} ({presentation.recommendation.confidence.value.toFixed(0)}%).</p> : null}
           {presentation.recommendation.alternative ? <p className="review-human-support">{presentation.recommendation.alternative}</p> : null}
         </section>
 
         <section className="review-human-question" aria-labelledby={`review-effect-${reviewCase.id}`}>
-          <h4 id={`review-effect-${reviewCase.id}`}>¿Qué ocurrirá si apruebo?</h4>
+          <h3 id={`review-effect-${reviewCase.id}`}>¿Qué ocurrirá si apruebo?</h3>
           <p className="review-human-answer">{presentation.expectedEffect.summary}</p>
         </section>
       </div>
 
       <section className="review-human-actions" aria-labelledby={`review-actions-${reviewCase.id}`}>
-        <h4 id={`review-actions-${reviewCase.id}`}>Tu decisión</h4>
+        <h3 id={`review-actions-${reviewCase.id}`}>Tu decisión</h3>
         {readOnlyReason ? <p className="review-readonly-message">{readOnlyReason}</p> : null}
         {feedback ? <p className="review-feedback" role="status">{feedback}</p> : null}
         <div className="review-actions" aria-label="Acciones autorizadas del caso">
@@ -228,7 +230,7 @@ export default function ReviewCaseDetails({
               return (
                 <article className="review-human-choice" key={issue.id}>
                   <div>
-                    <h5>{issue.label}</h5>
+                    <h4>{issue.label}</h4>
                     <p>{issue.message}</p>
                   </div>
                   {resolution ? <ReviewResolutionSummary resolution={resolution} updatedAt={reviewCase.updatedAt} /> : <span className="review-badge">Decisión pendiente</span>}
@@ -267,7 +269,7 @@ export default function ReviewCaseDetails({
           <p className="review-muted">Autoridades existentes: AU7, AU8 y AU9. Aquí permanecen checkpoints, fingerprints, reconciliación, compensación y diagnóstico sin cambiar su autoridad.</p>
           <p className="review-muted">La confianza de candidatos informa la recomendación humana; la suficiencia del Núcleo representa la readiness autónoma canónica.</p>
           <section className="review-subsection">
-            <h4 className="review-subtitle">Identidad y estado interno</h4>
+            <h3 className="review-subtitle">Identidad y estado interno</h3>
             <dl className="review-definition-grid">
               <DetailField label="ID" value={reviewCase.id} />
               <DetailField label="Clave de deduplicación" value={reviewCase.dedupeKey} />
@@ -284,7 +286,7 @@ export default function ReviewCaseDetails({
           </section>
 
           <section className="review-subsection">
-            <h4 className="review-subtitle">Sujeto técnico</h4>
+            <h3 className="review-subtitle">Sujeto técnico</h3>
             <dl className="review-definition-grid">
               <DetailField label="Tipo" value={reviewCase.subject.type} />
               <DetailField label="ID de origen" value={reviewCase.subject.id} />
@@ -296,7 +298,7 @@ export default function ReviewCaseDetails({
           </section>
 
           <section className="review-subsection" id={`review-issues-${reviewCase.id}`}>
-            <h4 className="review-subtitle">Incidencias técnicas ({reviewCase.issues.length})</h4>
+            <h3 className="review-subtitle">Incidencias técnicas ({reviewCase.issues.length})</h3>
             <ReviewCaseResolutionStatus reviewCase={reviewCase} />
             <div className="review-issues">
               {reviewCase.issues.map((issue) => {
@@ -308,7 +310,7 @@ export default function ReviewCaseDetails({
 
           {reviewCase.resolutions.length ? (
             <section className="review-subsection">
-              <h4 className="review-subtitle">Resoluciones registradas</h4>
+              <h3 className="review-subtitle">Resoluciones registradas</h3>
               <div className="review-resolution-list">
                 {reviewCase.resolutions.map((resolution) => (
                   <div className="review-resolution" key={resolution.issueId}>
@@ -338,6 +340,7 @@ export default function ReviewCaseDetails({
           ) : null}
 
           <AIResolutionNucleus key={`${reviewCase.id}:${reviewCase.version}`} reviewCase={reviewCase} canEdit={canEdit && !readOnly} canFinalize={presentation.actions.approve && !readOnly} onFinalize={onMarkResolved} onContextChange={onNucleusContextChange} />
+          {technicalNavigation ? <section className="review-subsection review-technical-navigation" aria-label="Herramientas avanzadas del caso"><h3 className="review-subtitle">Herramientas avanzadas</h3>{technicalNavigation}</section> : null}
           {technicalExtras}
         </div>
       </details>

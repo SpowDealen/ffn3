@@ -14,6 +14,12 @@ const EMPTY_STATES: Readonly<Record<ReviewInboxBucket, string>> = Object.freeze(
   resolved: "Todavía no hay casos resueltos.",
 });
 
+const BUCKET_DESCRIPTIONS: Readonly<Record<ReviewInboxBucket, string>> = Object.freeze({
+  needs_attention: "Casos que necesitan una decisión antes de que el laboratorio pueda continuar.",
+  in_process: "Casos que ya se están resolviendo o esperan un resultado.",
+  resolved: "Historial de casos ya cerrados.",
+});
+
 function fixtureHref(item: ReviewInboxItem, fixtureQuery?: string): string {
   return fixtureQuery
     ? `/revision?fixture=${encodeURIComponent(fixtureQuery)}&case=${encodeURIComponent(item.caseId)}`
@@ -61,8 +67,8 @@ export default function ReviewInbox({reviewCases, fixtureQuery}: {reviewCases: r
 
   return <section className="review-inbox" aria-labelledby="review-inbox-heading">
     <header className="review-inbox-heading">
-      <div><p className="review-kicker">Bandeja unificada</p><h3 id="review-inbox-heading">Review Inbox</h3></div>
-      <p>Decide qué revisar ahora, qué sigue en curso y qué ya terminó.</p>
+      <div><p className="review-kicker">Bandeja de casos</p><h2 className="sr-only" id="review-inbox-heading">Casos de revisión</h2></div>
+      <p>{BUCKET_DESCRIPTIONS[activeBucket]}</p>
     </header>
 
     <div ref={tabsRef} className="review-inbox-tabs" role="tablist" aria-label="Estado de los casos" onKeyDown={moveTab}>
