@@ -32,12 +32,12 @@ function main(): void {
   equal(empty.priorityItems.length, 0, "5 empty sin items artificiales");
   check(empty.summary.includes("todavía no tiene asuntos relevantes"), "6 empty humano");
 
-  equal(model.metrics.needsAttention, 3, "7 métrica attention");
+  equal(model.metrics.needsAttention, 4, "7 métrica attention");
   equal(model.metrics.clearRecommendations, 1, "8 métrica clear recommendation");
   equal(model.metrics.humanDecisionRequired, 1, "9 métrica human decision");
-  equal(model.metrics.blocked, 1, "10 métrica blocked");
+  equal(model.metrics.blocked, 2, "10 métrica blocked");
   equal(model.metrics.noAction, 1, "11 métrica no action");
-  check(model.summary.includes("3 asuntos necesitan tu atención"), "12 summary directo");
+  check(model.summary.includes("4 asuntos necesitan tu atención"), "12 summary directo");
 
   const expectedOrder = selectDecisionSupportByAttention(fixture.decisions).filter((decision) => decision.priority !== "no_attention").map((decision) => decision.id);
   assert.deepEqual(model.priorityItems.map((item) => item.id), expectedOrder); assertions += 1;
@@ -72,7 +72,7 @@ function main(): void {
   check(model.presentationOnly && model.boundary.consumesDecisionSupport && model.boundary.readOnly, "33 boundary projection read-only");
   check(!model.boundary.executes && !model.boundary.persists && !model.boundary.createsAuthority && !model.boundary.mutatesReview, "34 boundary sin efectos");
 
-  equal(fixture.decisions.length, 4, "35 fixture autocontenido");
+  equal(fixture.decisions.length, 5, "35 fixture autocontenido");
   check(["clear_recommendation", "recommendation_with_caveats", "blocked_by_contradiction", "no_action_needed"].every((state) => fixture.decisions.some((decision) => decision.decisionState === state)), "36 fixture cubre estados");
   check(new Set(fixture.decisions.map((decision) => decision.subject.source)).size >= 4, "37 fixture multisource");
   const linkedCaseIds = model.priorityItems.map((item) => item.href ? new URL(item.href, "http://localhost").searchParams.get("case") : null).filter(Boolean);

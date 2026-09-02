@@ -10,4 +10,4 @@ export function isAgentConversationPromptId(value: string): value is AgentConver
   return AGENT_CONVERSATION_PROMPTS.some((prompt) => prompt.id === value);
 }
 
-export const agentConversationPromptsSecurity = Object.freeze({closedSet: true, freeText: false, actionIntents: false, executes: false, persists: false} as const);
+export const agentConversationPromptsSecurity = Object.freeze({closedSet: true, sharedRouter: true, freeText: true, actionIntents: false, executes: false, persists: false} as const);

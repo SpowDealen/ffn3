@@ -6,6 +6,7 @@ export const AGENT_WORKSPACE_FIXTURE_QUERY = "agent-workspace" as const;
 
 const VISIBLE_CONTEXT_ITEMS = Object.freeze([
   "review:case:ufc:identity",
+  "review:case:one:stale",
   "fixture:bkfc:clear",
   "editorial:ag2-insight:ag2-signal:evidence_conflicting:evento:event:conflicting:evidence:conflict",
   "review:case:external:dismissed",

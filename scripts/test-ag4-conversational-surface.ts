@@ -25,7 +25,7 @@ function main(): void {
   equal(conversation.initialMessage.role, "agent", "1 initial role agent");
   equal(conversation.initialMessage.kind, "summary", "2 initial kind summary");
   check(conversation.initialMessage.text.startsWith("He revisado el laboratorio."), "3 initial human intro");
-  check(conversation.initialMessage.text.includes("3 asuntos necesitan tu atención"), "4 initial real count");
+  check(conversation.initialMessage.text.includes("4 asuntos necesitan tu atención"), "4 initial real count");
   check(conversation.initialMessage.text.includes("1 tiene una recomendación clara"), "5 initial recommendation count");
   check(conversation.initialMessage.text.includes("1 necesita tu decisión"), "6 initial human decision count");
 
@@ -35,16 +35,16 @@ function main(): void {
 
   const attention = respondToConversationPrompt("attention", fixture.decisions, workspace);
   equal(attention.status, "answered", "9 attention answered");
-  check(attention.message.text.includes("3 asuntos") && attention.message.text.includes("1 está bloqueado"), "10 attention groups real state");
+  check(attention.message.text.includes("4 asuntos") && attention.message.text.includes("2 están bloqueados"), "10 attention groups real state");
   check(attention.message.highlights.some((entry) => entry.startsWith("Empieza por")), "11 attention orients first item");
   check(attention.message.highlights.some((entry) => entry.includes("necesita tu decisión")), "12 attention highlights human decision");
   equal(attention.message.references.length, 3, "13 attention limited references");
 
   const blocked = respondToConversationPrompt("blocked", fixture.decisions, workspace);
   equal(blocked.status, "answered", "14 blocked answered");
-  check(blocked.message.text.includes("un asunto bloqueado"), "15 blocked real count");
+  check(blocked.message.text.includes("2 asuntos bloqueados"), "15 blocked real count");
   check(blocked.message.highlights.some((entry) => entry.includes("Falta resolver")), "16 blocked says what is missing");
-  equal(blocked.message.references.length, 1, "17 blocked reference");
+  equal(blocked.message.references.length, 2, "17 blocked reference");
   equal(blocked.message.references[0]?.kind, "decision_support", "18 blocked without Review does not invent case");
 
   const recommendations = respondToConversationPrompt("recommendations", fixture.decisions, workspace);
@@ -90,8 +90,8 @@ function main(): void {
   const unsupported = respondToConversationPrompt("unexpected", fixture.decisions, workspace);
   equal(unsupported.status, "unsupported", "37 unknown fails closed");
   equal(unsupported.message.kind, "system_notice", "38 unknown system notice");
-  equal(unsupported.message.text, "Esta versión del agente solo puede consultar y explicar el estado.", "39 unknown no improvisation");
-  equal(respondToConversationPrompt("Hazlo", fixture.decisions, workspace).message.text, unsupported.message.text, "40 action intent fails closed");
+  check(unsupported.message.text.startsWith("No puedo interpretar esa petición con seguridad"), "39 unknown no improvisation");
+  check(respondToConversationPrompt("Hazlo", fixture.decisions, workspace).message.text.startsWith("Todavía no puedo ejecutar acciones"), "40 action intent fails closed");
 
   const turn = buildAgentConversationTurn(conversation, "recommendations");
   equal(turn.operatorMessage.role, "operator", "41 operator role");
@@ -105,7 +105,7 @@ function main(): void {
 
   check(conversation.ephemeral && conversation.boundary.readOnly && !conversation.boundary.sourceOfTruth, "48 ephemeral projection boundary");
   check(!conversation.boundary.executes && !conversation.boundary.persists && !conversation.boundary.plans && !conversation.boundary.createsAuthority && !conversation.boundary.mutatesReview, "49 zero authority/effects boundary");
-  check(agentConversationPromptsSecurity.closedSet && !agentConversationPromptsSecurity.freeText && !agentConversationPromptsSecurity.actionIntents, "50 closed prompts");
+  check(agentConversationPromptsSecurity.closedSet && agentConversationPromptsSecurity.sharedRouter && agentConversationPromptsSecurity.freeText && !agentConversationPromptsSecurity.actionIntents, "50 presets share read-only free-text router");
   check(agentConversationResponderSecurity.pure && agentConversationResponderSecurity.deterministic && agentConversationResponderSecurity.readOnly, "51 responder pure deterministic read-only");
   check(!agentConversationResponderSecurity.createsStore && !agentConversationResponderSecurity.persists && !agentConversationResponderSecurity.fetches && !agentConversationResponderSecurity.writes, "52 no store/network/write");
   check(!agentConversationResponderSecurity.executes && !agentConversationResponderSecurity.plans && !agentConversationResponderSecurity.createsAuthority && !agentConversationResponderSecurity.mutatesReview, "53 no planner/executor/authority/Review mutation");
@@ -119,12 +119,12 @@ function main(): void {
   const styles = source("_laboratorio/laboratorio-ia/src/styles.css");
 
   check(component.includes("useState") && component.includes("useEffect") && component.includes("model.snapshotIdentity"), "55 local state resets on snapshot");
-  check(component.includes("current.turns.filter((entry) => entry.promptId !== promptId)"), "56 one turn per preset");
+  check(component.includes("turns.filter((entry) => entry.promptId !== promptId)"), "56 one turn per preset");
   check(component.includes('aria-live="polite"') && component.includes('aria-label="Conversación con el Agente Editorial"'), "57 semantic live message list");
   check(component.includes("InteractionButton") && component.includes("InteractionLink"), "58 LES5 controls/navigation");
   check(component.includes("FeedbackBanner") && component.includes("No he podido preparar la respuesta"), "59 fail-soft LES1");
   check(component.includes("Agente") && component.includes("Tú") && component.includes("Solo consulta"), "60 roles/read-only visible");
-  check(!/<input|<textarea|contentEditable|placeholder=/.test(component), "61 no fake free text");
+  check(component.includes('type="text"') && component.includes("Pregunta por prioridades, bloqueos o una fuente…"), "61 real bounded free text");
   check(workspaceComponent.includes("<AgentConversation") && screen.includes("buildAgentConversationModel"), "62 integrated into B1");
   check(styles.includes(".agent-conversation-prompts .review-button { min-height: 44px") && styles.includes("@media (max-width: 680px)"), "63 accessible responsive targets");
   check(styles.includes("max-height: 430px") && styles.includes("overflow-y: auto"), "64 bounded thread");
