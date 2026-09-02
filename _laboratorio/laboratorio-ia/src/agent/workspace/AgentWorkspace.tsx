@@ -2,6 +2,8 @@ import type {ReactElement} from "react";
 import {FeedbackBanner, FeedbackEmptyState, FeedbackSkeleton, ProcessingBadge} from "../../components/feedback/VisualFeedback";
 import {adaptNavigationInteraction} from "../../interactions/adapters";
 import {InteractionLink} from "../../interactions/InteractionPrimitives";
+import type {AgentConversationModel} from "../conversation";
+import AgentConversation from "./AgentConversation";
 import type {AgentWorkspaceLoadState, AgentWorkspaceModel, AgentWorkspacePriorityItem} from "./types";
 
 const FEEDBACK_STATE = Object.freeze({calm: "success", attention: "warning", blocked: "blocked", empty: "idle"} as const);
@@ -24,7 +26,7 @@ function PriorityItem({item, onNavigate}: {item: AgentWorkspacePriorityItem; onN
   </li>;
 }
 
-export default function AgentWorkspace({model, loadState = "ready", onNavigate}: {model: AgentWorkspaceModel; loadState?: AgentWorkspaceLoadState; onNavigate: (path: string) => void}): ReactElement {
+export default function AgentWorkspace({model, conversation, loadState = "ready", onNavigate}: {model: AgentWorkspaceModel; conversation?: AgentConversationModel; loadState?: AgentWorkspaceLoadState; onNavigate: (path: string) => void}): ReactElement {
   return <section className={`agent-workspace agent-workspace-${model.status}`} aria-labelledby="agent-workspace-title" aria-busy={loadState === "loading" || undefined}>
     <header className="agent-workspace-heading">
       <div><p className="review-kicker">Copiloto editorial</p><h2 id="agent-workspace-title">Agente Editorial</h2></div>
@@ -35,6 +37,7 @@ export default function AgentWorkspace({model, loadState = "ready", onNavigate}:
     {loadState === "error" ? <FeedbackBanner state="error" title="No he podido actualizar el resumen del agente.">El resto del laboratorio sigue disponible.</FeedbackBanner> : null}
     {loadState === "ready" ? <>
       <div className="agent-workspace-summary"><strong>{model.headline}</strong><p>{model.summary}</p></div>
+      {conversation ? <AgentConversation model={conversation} onNavigate={onNavigate} /> : null}
       {model.status === "empty" ? <FeedbackEmptyState title="Sin asuntos relevantes" detail="El agente todavía no tiene asuntos relevantes que mostrar." announce={false} /> : <>
         <dl className="agent-workspace-metrics" aria-label="Resumen editorial del agente">
           <div><dt>Necesitan atención</dt><dd>{model.metrics.needsAttention}</dd></div>
@@ -51,4 +54,4 @@ export default function AgentWorkspace({model, loadState = "ready", onNavigate}:
   </section>;
 }
 
-export const agentWorkspaceComponentSecurity = Object.freeze({presentationOnly: true, createsStore: false, subscribes: false, fetches: false, persists: false, writes: false, executes: false, mutatesReview: false} as const);
+export const agentWorkspaceComponentSecurity = Object.freeze({presentationOnly: true, localConversationStateOnly: true, createsStore: false, subscribes: false, fetches: false, persists: false, writes: false, executes: false, mutatesReview: false} as const);
