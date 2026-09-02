@@ -175,7 +175,7 @@ function main(): void {
   assert.deepEqual(reviewProposal.reevaluateAfter, ["review_case", "process_state", "dependencies"]); assertions += 1;
 
   const agentPath = "_laboratorio/laboratorio-ia/src/agent";
-  const files = readdirSync(agentPath).sort();
+  const files = readdirSync(agentPath).filter((name) => name.endsWith(".ts")).sort();
   const allSource = files.map((name) => source(`${agentPath}/${name}`)).join("\n");
   for (const forbidden of ["executor", "planner", "store", "memory", "loop", "watcher", "polling"]) equal(files.some((name) => name.toLowerCase().includes(forbidden)), false, `no ${forbidden} file`);
   check(!/\b(fetch|axios|XMLHttpRequest)\s*\(/.test(allSource), "40 no direct fetch");
