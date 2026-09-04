@@ -29,6 +29,7 @@ export function buildAgentWorkspaceFixture() {
   const decisions = Object.freeze(VISIBLE_CONTEXT_ITEMS.map((contextItemId) => decisionFixture.decisions.find((decision) => decision.trace.contextItemId === contextItemId)!));
   return Object.freeze({
     decisions,
+    proposals: decisionFixture.proposals,
     reviewCases: Object.freeze([...structuredClone(reviewCases), clearRecommendationReviewCase(reviewCases)]),
   });
 }

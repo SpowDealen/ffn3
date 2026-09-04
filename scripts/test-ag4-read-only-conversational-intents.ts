@@ -53,7 +53,7 @@ function main(): void {
   equal(routeType("Hazlo"), "action_guard", "12 action guard");
   const guardedSource = routeAgentConversationIntent("Haz algo con UFC").intent;
   check(guardedSource.type === "action_guard" && guardedSource.source === "ufc", "13 ambiguous action+source fails closed by priority");
-  assert.deepEqual(AGENT_CONVERSATION_INTENT_PRIORITY, ["action_guard", "navigate_review", "review_source", "explain_current_case", "show_ambiguous", "blocked", "recommendations", "attention", "recent_changes", "unsupported"]); assertions += 1;
+  assert.deepEqual(AGENT_CONVERSATION_INTENT_PRIORITY, ["action_guard", "navigate_review", "why_recommended", "evidence", "alternatives", "missing_information", "expected_next", "explain_reference", "why", "review_source", "explain_current_case", "show_ambiguous", "blocked", "recommendations", "attention", "recent_changes", "unsupported"]); assertions += 1;
   const normalizedRoute = routeAgentConversationIntent("  ¿QUÉ RECOMIENDAS?! ");
   const plainRoute = routeAgentConversationIntent("que recomiendas");
   equal(normalizedRoute.normalizedInput, plainRoute.normalizedInput, "same normalized phrase");
@@ -145,8 +145,8 @@ function main(): void {
   check(component.includes("onSubmit={submit}") && component.includes('type="submit"'), "55 native Enter submit");
   check(component.includes("inputRef.current?.focus()") && styles.includes(".agent-conversation-form input:focus-visible"), "56 focus contract");
   check(component.includes("slice(-8)") && component.includes("localStateOnly"), "57 bounded ephemeral history");
-  check(component.includes("buildAgentConversationQueryTurn") && component.includes("preset.label"), "58 presets and free text share router");
-  check(screen.includes("new URLSearchParams(agentReviewSearch).get(\"case\")") && screen.includes("{currentCaseId}"), "59 safe case context from router search");
+  check(component.includes("buildAgentConversationExchange") && component.includes("preset.label"), "58 presets and free text share router");
+  check(screen.includes("new URLSearchParams(agentReviewSearch).get(\"case\")") && screen.includes("currentCaseId, proposals: agentProposals"), "59 safe case context from router search");
   check(styles.includes(".agent-conversation-form input, .agent-conversation-form button { min-height: 44px") && styles.includes(".agent-conversation-form button { width: 100%"), "60 targets desktop/mobile");
   check(component.includes('aria-live="polite"') && component.includes("Puedo consultar y explicar el estado"), "61 live region and visible limits");
 

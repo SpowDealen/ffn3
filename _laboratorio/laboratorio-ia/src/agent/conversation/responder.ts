@@ -5,11 +5,16 @@ import {
   selectDecisionSupportRequiringHuman,
   type AgentDecisionSupport,
 } from "../context/decisions";
+import type {AgentStructuredProposal} from "../context/proposals";
 import type {AgentWorkspaceModel, AgentWorkspacePriorityItem} from "../workspace/types";
+import {createAgentConversationContext, updateAgentConversationContext} from "./context";
+import {buildConversationExplainabilityItems, respondWithConversationExplainability} from "./explainability";
 import {AGENT_CONVERSATION_PROMPTS, isAgentConversationPromptId} from "./prompts";
+import {resolveAgentConversationReference} from "./references";
 import {routeAgentConversationIntent} from "./router";
 import type {
   AgentConversationIntent,
+  AgentConversationIntentType,
   AgentConversationMessage,
   AgentConversationModel,
   AgentConversationPromptId,
@@ -18,6 +23,8 @@ import type {
   AgentConversationRoute,
   AgentConversationSource,
   AgentConversationTurn,
+  AgentConversationContext,
+  AgentConversationExchange,
 } from "./types";
 
 const UNSUPPORTED_TEXT = "No puedo interpretar esa petición con seguridad todavía. Puedo ayudarte con atención, bloqueos, recomendaciones, novedades y revisión por fuente.";
@@ -43,13 +50,18 @@ function message(
   highlights: readonly string[] = Object.freeze([]),
   references: readonly AgentConversationReference[] = Object.freeze([]),
 ): AgentConversationMessage {
+  const decisionSupportIds = references.map((reference) => reference.decisionSupportId).filter((id): id is string => Boolean(id));
+  const proposalIds = references.map((reference) => reference.proposalId).filter((id): id is string => Boolean(id));
+  const reviewCaseIds = references.map((reference) => reference.reviewCaseId).filter((id): id is string => Boolean(id));
   return Object.freeze({
     id: `agent-conversation:${stableIdPart(snapshotIdentity)}:${suffix}`,
     role,
     kind,
     text,
     highlights: Object.freeze([...highlights]),
+    sections: Object.freeze([]),
     references: Object.freeze([...references]),
+    metadata: Object.freeze({intentType: null, snapshotIdentity, referencedDecisionSupportIds: Object.freeze(decisionSupportIds), referencedProposalIds: Object.freeze(proposalIds), referencedReviewCaseIds: Object.freeze(reviewCaseIds), expectedOutcomeObserved: null}),
     readOnly: true as const,
   });
 }
@@ -71,6 +83,10 @@ function referenceFor(decision: AgentDecisionSupport, workspace: AgentWorkspaceM
     entityLabel,
     href: item?.href ?? null,
     actionLabel: item?.actionLabel ?? null,
+    decisionSupportId: decision.id,
+    proposalId: decision.proposalId,
+    reviewCaseId: decision.trace.reviewCaseId ?? null,
+    freshness: decision.freshness.status,
   });
 }
 
@@ -164,7 +180,7 @@ function reviewRootHref(workspace: AgentWorkspaceModel): string {
 function navigationResponse(caseId: string | null, decisions: readonly AgentDecisionSupport[], workspace: AgentWorkspaceModel, snapshotIdentity: string): AgentConversationResponse {
   const selected = caseId ? decisions.find((decision) => decision.trace.reviewCaseId === caseId) : undefined;
   const selectedReference = selected ? referenceFor(selected, workspace) : undefined;
-  const reference = selectedReference?.href ? selectedReference : Object.freeze({id: "agent-conversation-reference:review", kind: "decision_support" as const, label: "Bandeja de revisión", sourceLabel: "Review", entityLabel: "Revisión editorial", href: reviewRootHref(workspace), actionLabel: "Abrir revisión" as const});
+  const reference = selectedReference?.href ? selectedReference : Object.freeze({id: "agent-conversation-reference:review", kind: "decision_support" as const, label: "Bandeja de revisión", sourceLabel: "Review", entityLabel: "Revisión editorial", href: reviewRootHref(workspace), actionLabel: "Abrir revisión" as const, decisionSupportId: null, proposalId: null, reviewCaseId: null, freshness: null});
   return answered(snapshotIdentity, "navigate-review", caseId && selectedReference?.href ? "Puedo llevarte al caso seleccionado en Revisión. No ejecutaré ninguna acción." : "Puedo llevarte a Revisión. No ejecutaré ninguna acción.", [], [reference]);
 }
 
@@ -200,7 +216,7 @@ function initialMessage(decisions: readonly AgentDecisionSupport[], workspace: A
   return message(snapshotIdentity, "initial", "agent", "summary", stale ? `${text} El análisis puede estar desactualizado.` : text);
 }
 
-export function buildAgentConversationModel(decisions: readonly AgentDecisionSupport[], workspace: AgentWorkspaceModel, options: Readonly<{currentCaseId?: string | null}> = {}): AgentConversationModel {
+export function buildAgentConversationModel(decisions: readonly AgentDecisionSupport[], workspace: AgentWorkspaceModel, options: Readonly<{currentCaseId?: string | null; proposals?: readonly AgentStructuredProposal[]}> = {}): AgentConversationModel {
   const currentCaseId = options.currentCaseId?.trim() || null;
   const snapshotIdentity = stableIdentity(decisions, currentCaseId);
   const response = (input: string) => respondToConversationQuery(input, decisions, workspace, {currentCaseId}).response;
@@ -219,11 +235,20 @@ export function buildAgentConversationModel(decisions: readonly AgentDecisionSup
     initialMessage: initialMessage(decisions, workspace, snapshotIdentity),
     presets: Object.freeze(AGENT_CONVERSATION_PROMPTS.map((prompt) => Object.freeze({...prompt, response: response(prompt.label)}))),
     currentCaseId,
+    explainabilityItems: buildConversationExplainabilityItems(decisions, options.proposals ?? Object.freeze([]), workspace),
     responses,
     workspaceStatus: workspace.status,
     ephemeral: true as const,
     boundary: Object.freeze({readOnly: true as const, sourceOfTruth: false as const, executes: false as const, persists: false as const, plans: false as const, createsAuthority: false as const, mutatesReview: false as const}),
   });
+}
+
+function withIntentMetadata(messageValue: AgentConversationMessage, snapshotIdentity: string, intentType: AgentConversationIntentType): AgentConversationMessage {
+  return Object.freeze({...messageValue, metadata: Object.freeze({...messageValue.metadata, intentType, snapshotIdentity})});
+}
+
+function isExplainabilityIntent(intent: AgentConversationIntent): intent is Extract<AgentConversationIntent, {type: "why" | "evidence" | "alternatives" | "why_recommended" | "missing_information" | "expected_next" | "explain_reference"}> {
+  return ["why", "evidence", "alternatives", "why_recommended", "missing_information", "expected_next", "explain_reference"].includes(intent.type);
 }
 
 function emptyWorkspace(model: AgentConversationModel): AgentWorkspaceModel {
@@ -244,17 +269,27 @@ function responseFromModel(model: AgentConversationModel, route: AgentConversati
 }
 
 export function buildAgentConversationQueryTurn(model: AgentConversationModel, input: string, sequence = 0, promptId: AgentConversationPromptId | null = null): AgentConversationTurn {
+  return buildAgentConversationExchange(model, input, createAgentConversationContext(model), sequence, promptId).turn;
+}
+
+export function buildAgentConversationExchange(model: AgentConversationModel, input: string, context: AgentConversationContext, sequence = 0, promptId: AgentConversationPromptId | null = null): AgentConversationExchange {
   const route = routeAgentConversationIntent(input, {currentCaseId: model.currentCaseId});
-  const response = responseFromModel(model, route);
+  const activeContext = context.snapshotIdentity === model.snapshotIdentity ? context : createAgentConversationContext(model);
+  const resolution = isExplainabilityIntent(route.intent) ? resolveAgentConversationReference(model, context, route) : null;
+  const response = resolution && isExplainabilityIntent(route.intent)
+    ? respondWithConversationExplainability(model.snapshotIdentity, route.intent.type, resolution)
+    : responseFromModel(model, route);
+  const agentMessage = withIntentMetadata(response.message, model.snapshotIdentity, route.intent.type);
   const queryId = promptId ?? stableIdPart(route.normalizedInput);
   const baseId = `agent-conversation:${stableIdPart(model.snapshotIdentity)}:${queryId}:${sequence}`;
-  return Object.freeze({
+  const turn: AgentConversationTurn = Object.freeze({
     id: `${baseId}:turn`,
     promptId,
     route,
     operatorMessage: message(model.snapshotIdentity, `${queryId}:${sequence}:operator`, "operator", "question", route.input),
-    agentMessage: response.message,
+    agentMessage,
   });
+  return Object.freeze({turn, context: updateAgentConversationContext(model, activeContext, route, agentMessage), resolution});
 }
 
 export function buildAgentConversationTurn(model: AgentConversationModel, promptId: AgentConversationPromptId): AgentConversationTurn {

@@ -70,7 +70,7 @@ export default function LaboratoryApp(): ReactElement {
   }, [searchKey]);
   const reviewInboxSearch = removeLaboratoryQueryParam(search, "case");
   return <LaboratoryShell route={route} onNavigate={navigate}>
-    {route.id === "status" ? <LaboratoryStatusScreen onNavigate={navigate} agentDecisions={agentWorkspaceFixture?.decisions} agentReviewSearch={agentWorkspaceFixture ? buildReviewContextSearch(search) : ""} /> : null}
+    {route.id === "status" ? <LaboratoryStatusScreen onNavigate={navigate} agentDecisions={agentWorkspaceFixture?.decisions} agentProposals={agentWorkspaceFixture?.proposals} agentReviewSearch={agentWorkspaceFixture ? buildReviewContextSearch(search) : ""} /> : null}
     <div hidden={route.id !== "editorial"}><EditorialWorkspaceScreen><PanelIA /></EditorialWorkspaceScreen></div>
     {route.id === "revision" ? <ReviewCenterScreen caseId={requestedCaseId} developmentFixture={developmentFixture} developmentFixtures={developmentFixtures} fixtureQuery={fixtureQuery} onReturnToInbox={() => navigate("/revision", reviewInboxSearch)} /> : null}
     {route.id === "activity" ? <ActivityScreen /> : null}
